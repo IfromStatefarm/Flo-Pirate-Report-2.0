@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { padding: 15px; font-family: sans-serif; color: #333; }
+    h2 { color: #ce0e2d; margin-top:0; }
+    
+    /* Input Styling */
+    input, select { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    label { font-size: 12px; font-weight: bold; display: block; margin-top: 10px; }
+    
+    /* Highlight the Source URL box so you know where to paste */
+    #sourceUrlDisplay { border: 2px solid #2563eb; background-color: #f0f9ff; }
+    
+    /* Main Submit Button */
+    .btn { width: 100%; padding: 12px; margin-top: 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background: #ce0e2d; color: white; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .btn:hover:not(:disabled) { opacity: 0.9; }
+    
+    /* New Style for the 'Grab URL' button to clean up the code */
+    .grab-btn {
+      width: 100%; 
+      padding: 8px; 
+      margin-bottom: 5px; 
+      background-color: #28a745; /* Green */
+      color: white; 
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer; 
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .grab-btn:hover { background-color: #218838; }
+
+    #loading { color: blue; font-weight: bold; margin-bottom: 10px; }
+    
+    /* Utility Link */
+    .link-btn { background:none; border:none; color:#666; font-size:10px; cursor:pointer; text-decoration:underline; float: right; }
+  </style>
+</head>
+<body>
+  <h2>FloSports Reporter</h2>
+  
+  <div id="loading">Connecting...</div>
+
+  <label>Reporter Name</label>
+  <input type="text" id="reporterName" placeholder="John Doe">
+  
+  <label>Vertical</label>
+  <select id="verticalSelect"><option value="">Loading...</option></select>
+  
+  <label>Event Name (Type to Search)</label>
+  <input type="text" id="eventInput" list="eventList" placeholder="Select or Type...">
+  <datalist id="eventList"></datalist>
+
+  <label>Source URL</label>
+  
+  <button id="btn-grab-flo" class="grab-btn">
+    Use Flosports Event and url
+  </button>
+
+  <input type="text" id="sourceUrlDisplay" placeholder="Paste URL or Click Above...">
+  
+  <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" Text</button>
+  <div style="clear:both;"></div>
+
+  <button id="startBtn" class="btn" disabled>Start Report</button>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

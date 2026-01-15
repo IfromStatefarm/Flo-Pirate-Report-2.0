@@ -1,0 +1,23 @@
+{
+  "verticals": [
+    { "name": "Var", "events": [] },
+    { "name": "FloRacing", "events": [] },
+    { "name": "FloCollege", "events": [] },
+    { "name": "FloTrack", "events": [] },
+    { "name": "MileSplit", "events": [] },
+    { "name": "FloMarching", "events": [] },
+    { "name": "FloBaseball", "events": [] },
+    { "name": "FloRugby", "events": [] },
+    { "name": "FloBikes", "events": [] },
+    { "name": "FloFootball", "events": [] },
+    { "name": "FloFC", "events": [] },
+    { "name": "FloHoops", "events": [] },
+    { "name": "FloSoftball", "events": [] },
+    { "name": "FloVolleyball", "events": [] },
+    { "name": "FloSwimming", "events": [] },
+    { "name": "FloLive", "events": [] },
+    { "name": "FloCheer", "events": [] },
+    { "name": "FloWrestling", "events": [] },
+    { "name": "FloGrappling", "events": [] }
+  ]
+}

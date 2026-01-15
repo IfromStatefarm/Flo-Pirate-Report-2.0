@@ -1,0 +1,84 @@
+{
+  "manifest_version": 3,
+  "name": "FloSports Pirate Reporter",
+  "version": "3.1",
+  "description": "Automated copyright reporting tool.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "identity",
+    "downloads",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://studio.youtube.com/*", 
+    "https://www.tiktok.com/*",
+    "https://www.youtube.com/*",
+    "https://www.instagram.com/*",
+    "https://www.facebook.com/*",
+    "https://twitter.com/*",
+    "https://x.com/*",
+    "https://www.twitch.tv/*",
+    "https://discord.com/*",
+    "https://ipr.tiktokforbusiness.com/*",
+    "https://www.googleapis.com/*",
+    "<all_urls>"
+  ],
+  "oauth2": {
+    "client_id": "1077684119158-us1g1sjkup43at9rgfq8ceh88s7sg77s.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive",
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open Reporter"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.tiktok.com/*",
+        "*://www.youtube.com/*",
+        "*://www.instagram.com/*",
+        "*://www.facebook.com/*",
+        "*://twitter.com/*",
+        "*://x.com/*",
+        "*://www.twitch.tv/*",
+        "*://discord.com/*"
+      ],
+      "js": ["content_scraper.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://studio.youtube.com/*",
+        "*://ipr.tiktokforbusiness.com/*",
+        "*://www.youtube.com/copyright_complaint_form*",
+        "*://help.instagram.com/*",
+        "*://help.x.com/*",
+        "*://www.facebook.com/help/contact/*"
+      ],
+      "js": ["content_autofill.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/jspdf.umd.min.js", "style.css", "jingle.mp3"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

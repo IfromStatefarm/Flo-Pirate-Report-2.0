@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { width: 400px; padding: 20px; font-family: sans-serif; color: #333; }
+    h2 { margin-top: 0; color: #ce0e2d; }
+    .row { margin-bottom: 15px; }
+    label { display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; }
+    input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;}
+    .btn { width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; margin-top: 10px; }
+    .primary { background: #ce0e2d; color: white; }
+    .secondary { background: #eee; color: #333; margin-top: 10px; }
+    .status { margin-top: 10px; font-size: 12px; text-align: center; color: #666; }
+    .info-bar { background: #f9f9f9; padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center; border: 1px solid #eee; }
+    .hidden { display: none; }
+
+    /* Progress Bar Styles */
+    #progress-container { width: 100%; background-color: #eee; border-radius: 10px; height: 10px; margin-top: 15px; overflow: hidden; display: none; }
+    #progress-bar { width: 0%; height: 100%; background-color: #4CAF50; transition: width 0.3s ease; }
+  </style>
+</head>
+<body>
+
+  <h2>Submit Report</h2>
+  
+  <div class="info-bar">
+    Ready to report <strong id="video-count">...</strong> videos.
+  </div>
+
+  <div id="loading">Loading Config...</div>
+
+  <div id="form" class="hidden">
+    <div class="row">
+      <label>Reporter Name</label>
+      <input type="text" id="reporterName" placeholder="Your Name">
+    </div>
+
+    <div class="row">
+      <label>Vertical</label>
+      <select id="verticalSelect"><option>Loading...</option></select>
+    </div>
+
+    <div class="row">
+      <label>Event</label>
+      <select id="eventSelect" disabled><option>Select Vertical First</option></select>
+    </div>
+
+    <div class="row" style="display: flex; align-items: center; gap: 8px;">
+      <input type="checkbox" id="screenshotToggle" checked style="width: auto;">
+      <label for="screenshotToggle" style="margin:0; font-weight: normal;">Include Screenshots</label>
+    </div>
+
+    <button id="reportBtn" class="btn primary">Submit Report</button>
+    <button id="cancelBtn" class="btn secondary">Cancel</button>
+    
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Piracy Report Options</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; width: 400px; }
+    h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-weight: bold; margin-bottom: 5px; }
+    input[type="text"] { 
+      width: 100%; 
+      padding: 8px; 
+      box-sizing: border-box; /* Ensures padding doesn't break width */
+      border: 1px solid #ccc; 
+      border-radius: 4px;
+    }
+    button {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover { background-color: #1d4ed8; }
+    #status { margin-top: 10px; color: green; font-weight: bold; height: 20px; }
+  </style>
+</head>
+<body>
+
+  <h2> Extension Setup</h2>
+
+  <div class="form-group">
+    <label for="piracy_folder_id">PIRACY FOLDER ID (Google Drive):</label>
+    <input type="text" id="piracy_folder_id" placeholder="Paste the ID here (e.g., 15J7gor-Z1mW...)">
+    <div style="font-size: 11px; color: #666; margin-top: 4px;">
+      This is the ID of the folder containing 'events_config.json'.
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label for="piracy_sheet_id">REPORT SHEET ID (Google Sheets):</label>
+    <input type="text" id="piracy_sheet_id" placeholder="Paste the Spreadsheet ID here">
+  </div>
+
+  <button id="save">Save Settings</button>
+  <div id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
