@@ -47,7 +47,20 @@ function scrapePageStrategy() {
     const videoId = params.get('v');
     if (!videoId && !url.includes('/shorts/')) return null;
 
-    const channel = document.querySelector('#channel-name a')?.innerText || "Unknown";
+    // Try to get the actual handle from the href (e.g., /@FloGrappling)
+    // Fallback to the display text if not found
+    const channelLink = document.querySelector('#channel-name a');
+    let channel = "Unknown";
+    
+    if (channelLink) {
+        const href = channelLink.getAttribute('href') || "";
+        if (href.includes('/@')) {
+            channel = href.split('/@')[1]; // Returns "FloGrappling"
+        } else {
+            channel = channelLink.innerText; // Returns Display Name
+        }
+    }
+
     // YouTube specific: High Res Thumbnail
     const screenshot = videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null;
 
@@ -56,7 +69,7 @@ function scrapePageStrategy() {
       url, 
       handle: channel, 
       screenshot: screenshot, 
-      views: "N/A", 
+      views, 
       timestamp 
     };
   }
@@ -198,7 +211,25 @@ async function initOverlay() {
 
   // --- CLICK HANDLERS ---
 
-  // 1. Check Whitelist in Background
+  // "Add" Button
+  const btnAdd = document.getElementById('flo-add');
+  
+  btnAdd.addEventListener('click', () => {
+    if (!isExtensionValid()) { handleContextInvalidated(); return; }
+    
+    const data = scrapePageStrategy();
+    
+    if (!data) { 
+        alert("❌ No valid video detected on this page."); 
+        return; 
+    }
+    
+    const originalText = btnAdd.innerText;
+    btnAdd.innerText = "Checking...";
+    btnAdd.disabled = true;
+    btnAdd.style.backgroundColor = "#ff9800"; // Orange while checking
+
+    // 1. Check Whitelist in Background
     try {
         chrome.runtime.sendMessage({ 
             action: 'checkWhitelist', 
@@ -245,6 +276,23 @@ async function initOverlay() {
     if (currentCount > 0 && !confirm(`Delete ${currentCount} items from cart?`)) return;
     try { chrome.runtime.sendMessage({ action: 'clearCart' }); } catch(e) { handleContextInvalidated(); }
   });
+}
+
+// Helper: Perform the actual saving to cart
+function saveItem(data, originalText, btnAdd) {
+    btnAdd.innerText = "Saving...";
+    chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
+        if (chrome.runtime.lastError) { handleContextInvalidated(); return; }
+        if (res && res.success) {
+            btnAdd.innerText = `${data.platform} Saved!`; 
+            btnAdd.style.backgroundColor = "#4CAF50";
+            setTimeout(() => { 
+                btnAdd.innerText = originalText; 
+                btnAdd.disabled = false; 
+                btnAdd.style.backgroundColor = "#ce0e2d";
+            }, 1500);
+        }
+    });
 }
 
 function updateCount(n) {
