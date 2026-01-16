@@ -5,10 +5,11 @@ import {
   ensureFolderHierarchy, 
   fetchConfig, 
   fetchRightsPdf,
-  getEventData,       
-  updateEventUrl,     
+  getEventData,        
+  updateEventUrl,      
   addNewEventToSheet,
-  ensureDailyScreenshotFolder
+  ensureDailyScreenshotFolder,
+  checkIfAuthorized
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 
@@ -46,6 +47,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
+  // --- NEW: Handle Whitelist Check ---
+  if (request.action === "checkWhitelist") {
+    checkIfAuthorized(request.platform, request.handle)
+      .then(isAuthorized => sendResponse({ authorized: isAuthorized }))
+      .catch(err => sendResponse({ error: err.message }));
+    return true; // Keep channel open for async response
+  }
+
   // A. FIND EVENT URL
   if (request.action === 'findEventUrl') {
     handleDynamicSearch(request.data).then(sendResponse);
