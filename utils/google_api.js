@@ -1,9 +1,9 @@
 //google_api.js
 import { getAuthToken } from './auth.js';
 
-// --- CONSTANTS ---
-const EVENT_SHEET_ID = '1K9QigjjGPexSIW3hsc2WQNjJvz9anT6_WfyTdPfiflE'; 
-const WHITELIST_TAB = 'Handles White List'; // Added missing constant
+// UPDATED: Using the Sheet ID provided by user
+const EVENT_SHEET_ID = '1IAe2GibznbCri9EoCDEOO5yl0PTVVfxnt2-LXELxWtk'; 
+const WHITELIST_TAB = 'Handles White List';
 
 // --- HELPER: GET USER OPTIONS ---
 const getOptions = () => {
