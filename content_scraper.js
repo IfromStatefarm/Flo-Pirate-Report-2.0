@@ -198,34 +198,36 @@ async function initOverlay() {
 
   // --- CLICK HANDLERS ---
 
-  // "Add" Button
-  const btnAdd = document.getElementById('flo-add');
-  btnAdd.addEventListener('click', () => {
-    if (!isExtensionValid()) { handleContextInvalidated(); return; }
-    
-    // UPDATED: Use the new Multi-Platform Scraper
-    const data = scrapePageStrategy();
-    
-    if (!data) { 
-        alert("❌ No valid video detected on this page."); 
-        return; 
-    }
-    
-    const originalText = btnAdd.innerText;
-    btnAdd.innerText = "Saving...";
-    btnAdd.disabled = true;
-
+  // 1. Check Whitelist in Background
     try {
-        chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
-            if (chrome.runtime.lastError) { handleContextInvalidated(); return; }
-            if (res && res.success) {
-                btnAdd.innerText = `${data.platform} Saved!`; // Show platform name
-                btnAdd.style.backgroundColor = "#4CAF50";
-                setTimeout(() => { 
-                    btnAdd.innerText = originalText; 
-                    btnAdd.disabled = false; 
-                    btnAdd.style.backgroundColor = "#ce0e2d";
-                }, 1500);
+        chrome.runtime.sendMessage({ 
+            action: 'checkWhitelist', 
+            platform: data.platform, 
+            handle: data.handle 
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                // If checking fails, proceed but warn in console
+                console.warn("Whitelist check failed, proceeding to save.", chrome.runtime.lastError);
+                saveItem(data, originalText, btnAdd);
+                return;
+            }
+
+            // 2. If Whitelisted, Block and Alert
+            if (response && response.authorized) {
+                alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
+                btnAdd.innerText = "Whitelisted";
+                btnAdd.style.backgroundColor = "#666"; 
+                
+                // Reset button after 2s
+                setTimeout(() => {
+                    btnAdd.innerText = originalText;
+                    btnAdd.disabled = false;
+                    btnAdd.style.backgroundColor = "#ce0e2d"; 
+                }, 2000);
+            } 
+            // 3. If Not Whitelisted, Save
+            else {
+                saveItem(data, originalText, btnAdd);
             }
         });
     } catch(e) { handleContextInvalidated(); }
