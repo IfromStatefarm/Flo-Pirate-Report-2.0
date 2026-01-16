@@ -80,8 +80,6 @@ function scrapePageStrategy() {
     if (!url.includes('/p/') && !url.includes('/reel/')) return null;
     
     // Attempt to scrape handle from title or header
-    // IG is tricky, often the handle is the first part of path if it's a profile, 
-    // but for posts it's harder. We default to "InstagramUser".
     const headerHandle = document.querySelector('header a')?.innerText;
     
     return { 
@@ -167,7 +165,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // ==========================================
-// 3. OVERLAY UI (Preserved & Updated)
+// 3. OVERLAY UI
 // ==========================================
 async function initOverlay() {
   if (document.getElementById('flo-overlay')) return;
@@ -211,10 +209,26 @@ async function initOverlay() {
 
   // --- CLICK HANDLERS ---
 
-  // "Add" Button
+  // "Add" Button Logic Extracted for clarity
   const btnAdd = document.getElementById('flo-add');
-  
-  btnAdd.addEventListener('click', () => {
+  btnAdd.addEventListener('click', () => handleAddToQueue(btnAdd));
+
+  // "Panel" Button (Opens Side Panel)
+  document.getElementById('flo-report').addEventListener('click', () => {
+    if (!isExtensionValid()) { handleContextInvalidated(); return; }
+    try { chrome.runtime.sendMessage({ action: 'openPopup' }); } catch(e) { handleContextInvalidated(); }
+  });
+
+  // "Reset" Button
+  document.getElementById('flo-reset').addEventListener('click', () => {
+    if (!isExtensionValid()) { handleContextInvalidated(); return; }
+    if (currentCount > 0 && !confirm(`Delete ${currentCount} items from cart?`)) return;
+    try { chrome.runtime.sendMessage({ action: 'clearCart' }); } catch(e) { handleContextInvalidated(); }
+  });
+}
+
+// Separated function to handle the Add Button click and Whitelist check
+function handleAddToQueue(btnAdd) {
     if (!isExtensionValid()) { handleContextInvalidated(); return; }
     
     const data = scrapePageStrategy();
@@ -261,21 +275,9 @@ async function initOverlay() {
                 saveItem(data, originalText, btnAdd);
             }
         });
-    } catch(e) { handleContextInvalidated(); }
-  });
-
-  // "Panel" Button (Opens Side Panel)
-  document.getElementById('flo-report').addEventListener('click', () => {
-    if (!isExtensionValid()) { handleContextInvalidated(); return; }
-    try { chrome.runtime.sendMessage({ action: 'openPopup' }); } catch(e) { handleContextInvalidated(); }
-  });
-
-  // "Reset" Button
-  document.getElementById('flo-reset').addEventListener('click', () => {
-    if (!isExtensionValid()) { handleContextInvalidated(); return; }
-    if (currentCount > 0 && !confirm(`Delete ${currentCount} items from cart?`)) return;
-    try { chrome.runtime.sendMessage({ action: 'clearCart' }); } catch(e) { handleContextInvalidated(); }
-  });
+    } catch(e) { 
+        handleContextInvalidated(); 
+    }
 }
 
 // Helper: Perform the actual saving to cart
