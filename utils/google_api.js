@@ -3,6 +3,7 @@ import { getAuthToken } from './auth.js';
 
 // --- CONSTANTS ---
 const EVENT_SHEET_ID = '1K9QigjjGPexSIW3hsc2WQNjJvz9anT6_WfyTdPfiflE'; 
+const WHITELIST_TAB = 'Handles White List'; // Added missing constant
 
 // --- HELPER: GET USER OPTIONS ---
 const getOptions = () => {
@@ -103,6 +104,7 @@ function getColumnLetter(platform) {
   // Default to B (TikTok) if platform is missing or typo
   return map[platform?.toLowerCase()] || 'B'; 
 }
+
 export async function checkIfAuthorized(platform, handle) {
   if (!handle) return false;
   const token = await getAuthToken();
@@ -154,8 +156,6 @@ export async function checkIfAuthorized(platform, handle) {
   }
 }
 
-// UPDATE: Writes a URL to the specific column for that platform
-export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
 // UPDATE: Writes a URL to the specific column for that platform
 export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
   const token = await getAuthToken();
