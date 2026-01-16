@@ -5,15 +5,17 @@ import {
   ensureFolderHierarchy, 
   fetchConfig, 
   fetchRightsPdf,
-  getEventData,        
-  updateEventUrl,      
+  getEventData,       
+  updateEventUrl,     
   addNewEventToSheet,
   ensureDailyScreenshotFolder,
-  checkIfAuthorized
+  checkIfAuthorized // <--- ADDED AS REQUESTED
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 
 // --- GLOBAL VARIABLES FOR SEARCH BOT ---
+// NOTE: In Manifest V3, these may reset if the service worker goes idle. 
+// For long-running tasks, consider using chrome.storage.session.
 let activeSearchTabId = null;
 let activeEventDetails = null;
 
@@ -34,6 +36,7 @@ function generateReportId() {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tabId === activeSearchTabId && changeInfo.status === 'complete') {
     console.log("🔍 Search tab loaded. Injecting Bot...");
+    // If you need to inject scripts dynamically, uncomment below:
     /* chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['search_bot.js']
@@ -161,6 +164,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     return true;
   }
+  
+  // K. Append Event (From Source Grabber)
+  if (request.action === 'appendEventToSheet') {
+      const { vertical, eventName, eventUrl } = request.data;
+      addNewEventToSheet(vertical, eventName, eventUrl)
+        .then(() => console.log("✅ Event Auto-Saved to Sheet"))
+        .catch(err => console.error("❌ Failed to save event:", err));
+      return false;
+  }
 });
 
 // ==========================================
@@ -191,9 +203,7 @@ async function handleDynamicSearch(data) {
         rowIndex: existingEvent ? existingEvent.rowIndex : 'APPEND'
     };
 
-    // --- UPDATED: Manual Search Mode ---
-    // We do NOT add the event name to the URL. 
-    // We just open the base URL (e.g., the blank search page) so you can type manually.
+    // Manual Search Mode: Open base URL, user types manually
     const finalUrl = searchBaseUrl; 
 
     const tab = await chrome.tabs.create({ url: finalUrl, active: true });
@@ -209,6 +219,7 @@ async function handleDynamicSearch(data) {
 
 async function handleAddVideo(tab, data) {
   try {
+    // Attempt to capture screenshot
     const screenshotPromise = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 50 });
     const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2000));
     const screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
@@ -230,16 +241,13 @@ async function handleAddVideo(tab, data) {
   }
 }
 
-// ======================================================
-// HANDLE BATCH REPORT (FIXED: Name & Platform Logic)
-// ======================================================
 async function handleBatchReport(formData) {
   try {
     // 1. GET DATA (INCLUDING SAVED NAME)
     const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
     const cart = storage.piracy_cart || [];
     
-    // *** FIX: Use saved name if formData is empty ***
+    // Use saved name if formData is empty
     const savedName = storage.last_reporter || "Unknown User";
     const finalReporterName = formData.reporterName || savedName;
 
@@ -276,7 +284,7 @@ async function handleBatchReport(formData) {
       
       const reportId = generateReportId();
 
-      // *** FIX: DETECT PLATFORM DYNAMICALLY ***
+      // DETECT PLATFORM DYNAMICALLY
       let detectedPlatform = "TikTok"; // Default
       const sampleUrl = urls[0] || "";
       
@@ -296,7 +304,7 @@ async function handleBatchReport(formData) {
       const pdfData = { 
           eventName: formData.eventName, 
           vertical: formData.vertical, 
-          reporterName: finalReporterName, // Use resolved name
+          reporterName: finalReporterName,
           handle, urls, 
           notes: `Report ID: ${reportId}` 
       };
@@ -325,12 +333,12 @@ async function handleBatchReport(formData) {
           detectedPlatform,               // 4. Platform (Dynamic)
           "VOD",                          // 5. Type
           viewString,                     // 6. Views
-          finalReporterName,              // 7. Found By (FIXED)
+          finalReporterName,              // 7. Found By
           urlString,                      // 8. Link
           "DMCA takedown request",        // 9. Action
           "Reported",                     // 10. Status
           `Evidence: ${pdfUpload.webViewLink}`, // 11. Notes
-          finalReporterName,              // 12. Submitter (FIXED)
+          finalReporterName,              // 12. Submitter
           "",                             // 13. Investigators
           "",                             // 14. Report #
           "",                             // 15. Resolutions
@@ -361,9 +369,6 @@ async function handleConfigFetch() {
     return { success: false, error: error.message };
   }
 }
-
-
-// background.js
 
 async function handleUrlSave(data) {
   try {
