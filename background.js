@@ -49,9 +49,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   // --- NEW: Handle Whitelist Check ---
   if (request.action === "checkWhitelist") {
+    console.log(`🛡️ Whitelist Check - Platform: ${request.platform}, Handle: ${request.handle}`);
+    
     checkIfAuthorized(request.platform, request.handle)
-      .then(isAuthorized => sendResponse({ authorized: isAuthorized }))
-      .catch(err => sendResponse({ error: err.message }));
+      .then(isAuthorized => {
+        console.log(`🛡️ Result: ${isAuthorized ? "BLOCKED (Authorized)" : "ALLOWED"}`);
+        sendResponse({ authorized: isAuthorized });
+      })
+      .catch(err => {
+        console.error("🛡️ Whitelist Check Error:", err);
+        sendResponse({ error: err.message });
+      });
+      
     return true; // Keep channel open for async response
   }
 
