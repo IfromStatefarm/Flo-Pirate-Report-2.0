@@ -156,7 +156,6 @@ export async function checkIfAuthorized(platform, handle) {
   }
 }
 
-// UPDATE: Writes a URL to the specific column for that platform
 export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
   const token = await getAuthToken();
   const colLetter = getColumnLetter(platform);
@@ -176,15 +175,12 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
 // CREATE: Appends a new event, placing the URL in the correct column
 export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
   const token = await getAuthToken();
-  const range = `${vertical}!A:H`; // We are appending a row that spans A to H
+  const range = `${vertical}!A:H`; 
   
-  // Create an array of 8 items (Columns A-H)
   // [EventName, TikTok, Instagram, YouTube, Twitter, Twitch, Facebook, Discord]
   const row = new Array(8).fill(""); 
   row[0] = eventName; // Col A is always Event Name
 
-  // Map platform to array index (0-based)
-  // A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7
   const colMap = {
     'tiktok': 1, 'instagram': 2, 'youtube': 3, 'twitter': 4, 
     'twitch': 5, 'facebook': 6, 'discord': 7
@@ -211,7 +207,6 @@ export async function ensureDailyScreenshotFolder(token, dateStr) {
   const dailyFolderId = await findOrCreateFolder(token, masterScreenshotFolderId, dateStr);
   return dailyFolderId;
 }
-
 // ==========================================
 // 2. DRIVE & FOLDER MANAGEMENT
 // ==========================================
