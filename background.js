@@ -9,15 +9,9 @@ import {
   updateEventUrl,     
   addNewEventToSheet,
   ensureDailyScreenshotFolder,
-  checkIfAuthorized // <--- ADDED AS REQUESTED
+  checkIfAuthorized
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
-
-// --- GLOBAL VARIABLES FOR SEARCH BOT ---
-// NOTE: In Manifest V3, these may reset if the service worker goes idle. 
-// For long-running tasks, consider using chrome.storage.session.
-let activeSearchTabId = null;
-let activeEventDetails = null;
 
 // Open Side Panel on Click
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
@@ -31,17 +25,21 @@ function generateReportId() {
 }
 
 // ==========================================
-// 1. BOT INJECTION LISTENER
+// 1. BOT INJECTION LISTENER (FIXED FOR MV3 STATE)
 // ==========================================
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (tabId === activeSearchTabId && changeInfo.status === 'complete') {
-    console.log("🔍 Search tab loaded. Injecting Bot...");
-    // If you need to inject scripts dynamically, uncomment below:
-    /* chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ['search_bot.js']
-    }).catch(err => console.error("Failed to inject bot:", err));
-    */
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete') {
+    // Check if this is the active search tab from session storage
+    const session = await chrome.storage.session.get(['activeSearchTabId']);
+    
+    if (session.activeSearchTabId && tabId === session.activeSearchTabId) {
+        console.log("🔍 Search tab loaded. Injecting Bot...");
+        // If you need to inject scripts dynamically, ensure 'search_bot.js' is in manifest
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ['search_bot.js']
+        }).catch(err => console.error("Failed to inject bot:", err));
+    }
   }
 });
 
@@ -83,29 +81,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // C. BOT SUCCESS
   if (request.action === 'botSearchComplete') {
-    if (activeEventDetails) {
-      const { vertical, rowIndex, originalName } = activeEventDetails;
-      console.log("🤖 Bot found URL:", request.url);
+    // Retrieve state from session
+    chrome.storage.session.get(['activeEventDetails', 'activeSearchTabId'], (session) => {
+        const activeEventDetails = session.activeEventDetails;
+        const activeSearchTabId = session.activeSearchTabId;
 
-      if (rowIndex === 'APPEND') {
-        addNewEventToSheet(vertical, originalName, request.url);
-      } else {
-        updateEventUrl(vertical, rowIndex, request.url);
-      }
-      
-      if (activeSearchTabId) {
-        chrome.tabs.remove(activeSearchTabId).catch(() => {});
-      }
+        if (activeEventDetails) {
+          const { vertical, rowIndex, originalName } = activeEventDetails;
+          console.log("🤖 Bot found URL:", request.url);
 
-      chrome.runtime.sendMessage({ 
-        action: 'urlFound', 
-        url: request.url,
-        source: 'Automated Search' 
-      });
+          if (rowIndex === 'APPEND') {
+            addNewEventToSheet(vertical, originalName, request.url);
+          } else {
+            updateEventUrl(vertical, rowIndex, request.url);
+          }
+          
+          if (activeSearchTabId) {
+            chrome.tabs.remove(activeSearchTabId).catch(() => {});
+          }
 
-      activeSearchTabId = null;
-      activeEventDetails = null;
-    }
+          chrome.runtime.sendMessage({ 
+            action: 'urlFound', 
+            url: request.url,
+            source: 'Automated Search' 
+          });
+
+          // Clear session state
+          chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
+        }
+    });
     return true;
   }
 
@@ -116,8 +120,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         action: 'botSearchFailed', 
         error: request.reason
     });
-    activeSearchTabId = null;
-    activeEventDetails = null;
+    // Clear session state
+    chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
     return true;
   }
 
@@ -196,7 +200,8 @@ async function handleDynamicSearch(data) {
     const eventKey = eventName.toLowerCase();
     const existingEvent = sheetData.eventMap[eventKey];
     
-    activeEventDetails = {
+    // Construct state object
+    const eventDetails = {
         vertical: vertical,
         eventName: eventName,
         originalName: eventName,
@@ -207,7 +212,12 @@ async function handleDynamicSearch(data) {
     const finalUrl = searchBaseUrl; 
 
     const tab = await chrome.tabs.create({ url: finalUrl, active: true });
-    activeSearchTabId = tab.id;
+    
+    // Save state to Session Storage (Persists even if SW sleeps)
+    await chrome.storage.session.set({
+        activeSearchTabId: tab.id,
+        activeEventDetails: eventDetails
+    });
 
     return { success: true, status: "tab_opened" };
 
