@@ -77,7 +77,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["lib/jspdf.umd.min.js", "style.css", "jingle.mp3"],
+      "resources": ["lib/jspdf.umd.min.js", "style.css", "jingle.mp3", "search_bot.js"],
       "matches": ["<all_urls>"]
     }
   ]
