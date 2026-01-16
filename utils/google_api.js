@@ -103,7 +103,59 @@ function getColumnLetter(platform) {
   // Default to B (TikTok) if platform is missing or typo
   return map[platform?.toLowerCase()] || 'B'; 
 }
+export async function checkIfAuthorized(platform, handle) {
+  if (!handle) return false;
+  const token = await getAuthToken();
+  
+  // Mapping based on your 'Handles White List' tab layout starting at B2
+  // B: Tiktok, C: Instagram, D: Twitter, E: Discord, F: Youtube, G: Facebook, H: Reddit
+  const platformIndexMap = {
+    'tiktok': 0,    // Col B
+    'instagram': 1, // Col C
+    'twitter': 2,   // Col D
+    'x': 2,         // Col D (Handle X same as Twitter)
+    'discord': 3,   // Col E
+    'youtube': 4,   // Col F
+    'facebook': 5,  // Col G
+    'reddit': 6     // Col H
+  };
 
+  const targetIndex = platformIndexMap[platform?.toLowerCase()];
+  
+  // If platform isn't in our whitelist map, skip check (return false) or default to false
+  if (targetIndex === undefined) return false;
+
+  // Fetch all columns B through H from row 3 downwards (skipping headers)
+  const range = `${WHITELIST_TAB}!B3:H`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
+
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+
+    if (!data.values || data.values.length === 0) return false;
+
+    // Normalize the handle for comparison (remove '@', lowercase, trim)
+    const cleanHandle = handle.replace('@', '').trim().toLowerCase();
+
+    // Check if the handle exists in the specific column for that platform
+    // Row is an array of columns [Tiktok, Insta, Twitter, Discord, YT, FB, Reddit]
+    const isAuthorized = data.values.some(row => {
+      // Check if the cell exists and matches the handle
+      const cellValue = row[targetIndex];
+      return cellValue && cellValue.trim().toLowerCase().replace('@', '') === cleanHandle;
+    });
+
+    return isAuthorized;
+
+  } catch (e) {
+    console.error("Error checking whitelist:", e);
+    return false; // Fail safe: allow if check fails, or return true to block if you want strict safety
+  }
+}
+
+// UPDATE: Writes a URL to the specific column for that platform
+export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
 // UPDATE: Writes a URL to the specific column for that platform
 export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
   const token = await getAuthToken();
