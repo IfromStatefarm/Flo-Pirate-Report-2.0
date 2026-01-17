@@ -1,5 +1,5 @@
 let configData = null;
-const ALLOWED_EMAIL = "copyright@flosports.tv";
+const ALLOWED_EMAIL = "social@flosports.tv";
 
 // --- SECURITY LOCK OVERLAY (Duplicated for Popup context) ---
 async function enforceIdentity() {
