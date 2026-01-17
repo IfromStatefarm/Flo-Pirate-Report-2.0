@@ -1,4 +1,4 @@
-// content_scraper.js (Formerly content_tiktok.js)
+/ content_scraper.js (Formerly content_tiktok.js)
 
 let currentCount = 0;
 
@@ -10,8 +10,14 @@ function isExtensionValid() {
 function handleContextInvalidated() {
   const overlay = document.getElementById('flo-overlay');
   if (overlay) {
-    overlay.innerHTML = `<div style="padding:15px; color:#666;">⚠️ Extension Updated<br><button onclick="location.reload()">Refresh Page</button></div>`;
+    overlay.innerHTML = `<div style="padding:15px; color:#666;">⚠️ Extension Updated<br><button style="margin-top:5px; padding:5px;" onclick="location.reload()">Refresh Page</button></div>`;
     overlay.style.border = "2px solid red";
+  } else {
+    // If overlay doesn't exist yet, create a simple error banner
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = "position: fixed; top: 150px; right: 20px; z-index: 2147483647; background: white; border: 2px solid red; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif;";
+    errDiv.innerHTML = `⚠️ Extension Context Invalidated.<br><button style="margin-top:5px; padding:5px; cursor:pointer;" onclick="location.reload()">Refresh Page</button>`;
+    document.body.appendChild(errDiv);
   }
 }
 
@@ -48,20 +54,18 @@ function scrapePageStrategy() {
     if (!videoId && !url.includes('/shorts/')) return null;
 
     // Try to get the actual handle from the href (e.g., /@FloGrappling)
-    // Fallback to the display text if not found
     const channelLink = document.querySelector('#channel-name a');
     let channel = "Unknown";
     
     if (channelLink) {
         const href = channelLink.getAttribute('href') || "";
         if (href.includes('/@')) {
-            channel = href.split('/@')[1]; // Returns "FloGrappling"
+            channel = href.split('/@')[1]; 
         } else {
-            channel = channelLink.innerText; // Returns Display Name
+            channel = channelLink.innerText; 
         }
     }
 
-    // YouTube specific: High Res Thumbnail
     const screenshot = videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null;
 
     return { 
@@ -76,10 +80,7 @@ function scrapePageStrategy() {
 
   // --- INSTAGRAM ---
   else if (host.includes('instagram.com')) {
-    // /p/CODE or /reel/CODE
     if (!url.includes('/p/') && !url.includes('/reel/')) return null;
-    
-    // Attempt to scrape handle from title or header
     const headerHandle = document.querySelector('header a')?.innerText;
     
     return { 
@@ -95,7 +96,6 @@ function scrapePageStrategy() {
   else if (host.includes('twitter.com') || host.includes('x.com')) {
     if (!url.includes('/status/')) return null;
     const pathParts = new URL(url).pathname.split('/');
-    // structure: /Handle/status/ID
     
     return { 
       platform: "Twitter", 
@@ -108,7 +108,6 @@ function scrapePageStrategy() {
 
   // --- TWITCH ---
   else if (host.includes('twitch.tv')) {
-    // Twitch VODs usually have /videos/ID or /clip/ID
     const pathParts = new URL(url).pathname.split('/');
     const handle = pathParts[1] || "TwitchUser";
 
@@ -123,7 +122,6 @@ function scrapePageStrategy() {
 
   // --- FACEBOOK ---
   else if (host.includes('facebook.com')) {
-    // Facebook URLs vary wildly. We permit scraping on any FB page for now.
     return { 
       platform: "Facebook", 
       url, 
@@ -135,7 +133,6 @@ function scrapePageStrategy() {
 
   // --- DISCORD ---
   else if (host.includes('discord.com')) {
-    // Usually message links: discord.com/channels/GUILD/CHANNEL/MSG
     return { 
       platform: "Discord", 
       url, 
@@ -145,12 +142,11 @@ function scrapePageStrategy() {
     };
   }
 
-  // Unsupported Site
   return null;
 }
 
 // ==========================================
-// 2. MESSAGE LISTENER (For Background triggers)
+// 2. MESSAGE LISTENER
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'addToCart') {
@@ -165,24 +161,97 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // ==========================================
-// 3. OVERLAY UI
+// 3. OVERLAY UI LOGIC
 // ==========================================
+
+// Helper: Handle Add Button Logic
+function handleAddToQueue(btnAdd) {
+    if (!isExtensionValid()) { handleContextInvalidated(); return; }
+    
+    let data = null;
+    try {
+        data = scrapePageStrategy();
+    } catch(err) {
+        console.error("Scraping error:", err);
+        alert("❌ Error scraping page data. See console.");
+        return;
+    }
+    
+    if (!data) { 
+        alert("❌ No valid video detected on this page."); 
+        return; 
+    }
+    
+    const originalText = "Add";
+    btnAdd.innerText = "Checking...";
+    btnAdd.disabled = true;
+    btnAdd.style.backgroundColor = "#ff9800"; // Orange while checking
+
+    // 1. Check Whitelist in Background
+    chrome.runtime.sendMessage({ 
+        action: 'checkWhitelist', 
+        platform: data.platform, 
+        handle: data.handle 
+    }, (response) => {
+        if (chrome.runtime.lastError) {
+            console.warn("Whitelist check error:", chrome.runtime.lastError);
+            // Fallback: Try to save anyway if whitelist check fails
+            saveItem(data, originalText, btnAdd);
+            return;
+        }
+
+        // 2. If Whitelisted, Block
+        if (response && response.authorized) {
+            alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
+            btnAdd.innerText = "Whitelisted";
+            btnAdd.style.backgroundColor = "#666"; 
+            
+            setTimeout(() => {
+                btnAdd.innerText = "+ Add";
+                btnAdd.disabled = false;
+                btnAdd.style.backgroundColor = "#ce0e2d"; 
+            }, 2000);
+        } 
+        // 3. If Not Whitelisted (or unknown), Save
+        else {
+            saveItem(data, originalText, btnAdd);
+        }
+    });
+}
+
+function saveItem(data, originalText, btnAdd) {
+    btnAdd.innerText = "Saving...";
+    chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
+        if (chrome.runtime.lastError) { 
+            handleContextInvalidated(); 
+            return; 
+        }
+        if (res && res.success) {
+            btnAdd.innerText = "Saved!"; 
+            btnAdd.style.backgroundColor = "#4CAF50";
+            setTimeout(() => { 
+                btnAdd.innerText = "+ Add"; 
+                btnAdd.disabled = false; 
+                btnAdd.style.backgroundColor = "#ce0e2d";
+            }, 1500);
+        } else {
+            btnAdd.innerText = "Error";
+            setTimeout(() => { 
+                btnAdd.innerText = "+ Add"; 
+                btnAdd.disabled = false; 
+            }, 1500);
+        }
+    });
+}
+
 async function initOverlay() {
   if (document.getElementById('flo-overlay')) return;
-  if (!isExtensionValid()) return;
-
-  try {
-    const storage = await new Promise((resolve, reject) => {
-      chrome.storage.local.get('piracy_cart', (items) => {
-        chrome.runtime.lastError ? reject() : resolve(items);
-      });
-    });
-    currentCount = (storage.piracy_cart || []).length;
-  } catch (e) {
-    handleContextInvalidated();
-    return;
+  if (!isExtensionValid()) {
+      handleContextInvalidated(); // Show error if invalid immediately
+      return;
   }
 
+  // 1. Create UI immediately (don't wait for storage)
   const overlay = document.createElement('div');
   overlay.id = 'flo-overlay';
   overlay.style.cssText = `
@@ -195,7 +264,7 @@ async function initOverlay() {
 
   overlay.innerHTML = `
     <div style="font-size: 12px; color: #666; margin-bottom: 5px;">PIRATE AI HELPER</div>
-    <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s;">${currentCount}</div>
+    <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s;">...</div>
     
     <div style="display: flex; gap: 8px; margin-bottom: 10px;">
       <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
@@ -207,94 +276,39 @@ async function initOverlay() {
 
   document.body.appendChild(overlay);
 
-  // --- CLICK HANDLERS ---
-
-  // "Add" Button Logic Extracted for clarity
+  // 2. Attach Listeners
   const btnAdd = document.getElementById('flo-add');
-  btnAdd.addEventListener('click', () => handleAddToQueue(btnAdd));
+  if (btnAdd) {
+      btnAdd.addEventListener('click', () => handleAddToQueue(btnAdd));
+  }
 
-  // "Panel" Button (Opens Side Panel)
   document.getElementById('flo-report').addEventListener('click', () => {
     if (!isExtensionValid()) { handleContextInvalidated(); return; }
-    try { chrome.runtime.sendMessage({ action: 'openPopup' }); } catch(e) { handleContextInvalidated(); }
+    try { chrome.runtime.sendMessage({ action: 'openPopup' }); } 
+    catch(e) { handleContextInvalidated(); }
   });
 
-  // "Reset" Button
   document.getElementById('flo-reset').addEventListener('click', () => {
     if (!isExtensionValid()) { handleContextInvalidated(); return; }
     if (currentCount > 0 && !confirm(`Delete ${currentCount} items from cart?`)) return;
-    try { chrome.runtime.sendMessage({ action: 'clearCart' }); } catch(e) { handleContextInvalidated(); }
+    try { chrome.runtime.sendMessage({ action: 'clearCart' }); } 
+    catch(e) { handleContextInvalidated(); }
   });
-}
 
-// Separated function to handle the Add Button click and Whitelist check
-function handleAddToQueue(btnAdd) {
-    if (!isExtensionValid()) { handleContextInvalidated(); return; }
-    
-    const data = scrapePageStrategy();
-    
-    if (!data) { 
-        alert("❌ No valid video detected on this page."); 
-        return; 
-    }
-    
-    const originalText = btnAdd.innerText;
-    btnAdd.innerText = "Checking...";
-    btnAdd.disabled = true;
-    btnAdd.style.backgroundColor = "#ff9800"; // Orange while checking
-
-    // 1. Check Whitelist in Background
-    try {
-        chrome.runtime.sendMessage({ 
-            action: 'checkWhitelist', 
-            platform: data.platform, 
-            handle: data.handle 
-        }, (response) => {
-            if (chrome.runtime.lastError) {
-                // If checking fails, proceed but warn in console
-                console.warn("Whitelist check failed, proceeding to save.", chrome.runtime.lastError);
-                saveItem(data, originalText, btnAdd);
-                return;
-            }
-
-            // 2. If Whitelisted, Block and Alert
-            if (response && response.authorized) {
-                alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
-                btnAdd.innerText = "Whitelisted";
-                btnAdd.style.backgroundColor = "#666"; 
-                
-                // Reset button after 2s
-                setTimeout(() => {
-                    btnAdd.innerText = originalText;
-                    btnAdd.disabled = false;
-                    btnAdd.style.backgroundColor = "#ce0e2d"; 
-                }, 2000);
-            } 
-            // 3. If Not Whitelisted, Save
-            else {
-                saveItem(data, originalText, btnAdd);
-            }
-        });
-    } catch(e) { 
-        handleContextInvalidated(); 
-    }
-}
-
-// Helper: Perform the actual saving to cart
-function saveItem(data, originalText, btnAdd) {
-    btnAdd.innerText = "Saving...";
-    chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
-        if (chrome.runtime.lastError) { handleContextInvalidated(); return; }
-        if (res && res.success) {
-            btnAdd.innerText = `${data.platform} Saved!`; 
-            btnAdd.style.backgroundColor = "#4CAF50";
-            setTimeout(() => { 
-                btnAdd.innerText = originalText; 
-                btnAdd.disabled = false; 
-                btnAdd.style.backgroundColor = "#ce0e2d";
-            }, 1500);
-        }
+  // 3. Fetch Data to update Count
+  try {
+    const storage = await new Promise((resolve, reject) => {
+      chrome.storage.local.get('piracy_cart', (items) => {
+        if (chrome.runtime.lastError) resolve({ piracy_cart: [] }); // Default to empty on error
+        else resolve(items);
+      });
     });
+    const cart = storage.piracy_cart || [];
+    updateCount(cart.length);
+  } catch (e) {
+    console.error("Storage load error:", e);
+    updateCount(0); // Fail safe
+  }
 }
 
 function updateCount(n) {
@@ -303,14 +317,15 @@ function updateCount(n) {
   if (el) {
     el.innerText = n;
     if (n === 0) {
-        el.style.color = "#4CAF50"; 
+        el.style.color = "#4CAF50"; // Green for empty/clean
         setTimeout(() => el.style.color = "#ce0e2d", 1000);
     } else {
-        el.style.color = "#ce0e2d";
+        el.style.color = "#ce0e2d"; // Red for items pending
     }
   }
 }
 
+// 4. Init Logic
 if (isExtensionValid()) {
     try {
         chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -326,9 +341,9 @@ let lastUrl = location.href;
 new MutationObserver(() => {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
-    // Re-check if we need overlay
     if (!document.getElementById('flo-overlay')) initOverlay();
   }
 }).observe(document, {subtree: true, childList: true});
 
+// Initial Run
 setTimeout(initOverlay, 1500);
