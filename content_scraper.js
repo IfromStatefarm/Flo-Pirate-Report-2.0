@@ -268,15 +268,15 @@ async function initOverlay() {
     background: white; padding: 15px; border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.15); width: 220px;
     border: 1px solid #e0e0e0; text-align: center;
-    font-family: sans-serif; transition: opacity 0.3s;
+    font-family: sans-serif; transition: opacity 0.3s; cursor: move; user-select: none;
   `;
 
   // Added ID to the title div and cursor style
   overlay.innerHTML = `
-    <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move; user-select: none;">
+    <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move;">
       PIRATE AI HELPER ✥
     </div>
-    <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s;">...</div>
+    <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s; pointer-events: none;">...</div>
     
     <div style="display: flex; gap: 8px; margin-bottom: 10px;">
       <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
@@ -307,12 +307,14 @@ async function initOverlay() {
     catch(e) { handleContextInvalidated(); }
   });
 
-  // --- NEW: DRAG LOGIC ---
-  const handle = document.getElementById('flo-drag-handle');
+  // --- NEW: DRAG LOGIC (WHOLE BOX) ---
   let isDragging = false;
   let startX, startY, initialLeft, initialTop;
 
-  handle.addEventListener('mousedown', (e) => {
+  overlay.addEventListener('mousedown', (e) => {
+      // Don't drag if clicking buttons
+      if (['BUTTON', 'INPUT', 'A', 'SELECT'].includes(e.target.tagName)) return;
+
       isDragging = true;
       startX = e.clientX;
       startY = e.clientY;
