@@ -1,4 +1,4 @@
-/ content_scraper.js (Formerly content_tiktok.js)
+// content_scraper.js (Formerly content_tiktok.js)
 
 let currentCount = 0;
 
@@ -28,13 +28,13 @@ function scrapePageStrategy() {
   const host = window.location.hostname;
   const url = window.location.href;
   const timestamp = new Date().toISOString();
+  let views = "N/A"; // Defined globally for all platforms
 
   // --- TIKTOK ---
   if (host.includes('tiktok.com')) {
     const match = url.match(/@([^/]+)\/video\/(\d+)/);
     if (!match) return null; // Not a video page
 
-    let views = "N/A";
     const viewEl = document.querySelector('[data-e2e="video-views"]');
     if (viewEl) views = viewEl.innerText;
 
@@ -64,6 +64,15 @@ function scrapePageStrategy() {
         } else {
             channel = channelLink.innerText; 
         }
+    }
+
+    // Attempt to scrape YouTube views
+    const viewSelector = document.querySelector('span.view-count'); // Standard video
+    const shortViewSelector = document.querySelector('span[role="text"][aria-label*="views"]'); // Shorts often differ
+    if (viewSelector) {
+        views = viewSelector.innerText.replace(' views', '');
+    } else if (shortViewSelector) {
+        views = shortViewSelector.innerText;
     }
 
     const screenshot = videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null;
@@ -173,7 +182,7 @@ function handleAddToQueue(btnAdd) {
         data = scrapePageStrategy();
     } catch(err) {
         console.error("Scraping error:", err);
-        alert("❌ Error scraping page data. See console.");
+        alert("❌ Error scraping page data. See console for details.");
         return;
     }
     
@@ -194,8 +203,8 @@ function handleAddToQueue(btnAdd) {
         handle: data.handle 
     }, (response) => {
         if (chrome.runtime.lastError) {
-            console.warn("Whitelist check error:", chrome.runtime.lastError);
-            // Fallback: Try to save anyway if whitelist check fails
+            console.warn("Whitelist check warning (proceeding anyway):", chrome.runtime.lastError);
+            // Fallback: Save anyway if check fails
             saveItem(data, originalText, btnAdd);
             return;
         }
