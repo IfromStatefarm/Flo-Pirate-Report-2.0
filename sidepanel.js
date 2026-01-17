@@ -2,10 +2,10 @@
 
 let configData = null;
 let eventLookup = {}; 
+const ALLOWED_EMAIL = "copyright@flosports.tv";
 
 // --- SECURITY LOCK OVERLAY ---
 async function enforceIdentity() {
-  const allowedEmail = "copyright@flosports.tv";
   const overlayId = 'flo-lock-overlay';
   let overlay = document.getElementById(overlayId);
   
@@ -13,20 +13,21 @@ async function enforceIdentity() {
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = overlayId;
+    // High Z-Index and !important to ensure it stays on top
     overlay.style.cssText = `
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(255, 255, 255, 0.96); z-index: 10000;
+      background: rgba(255, 255, 255, 0.98); z-index: 2147483647 !important;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       text-align: center; color: #333; font-family: sans-serif;
-      backdrop-filter: blur(4px);
+      backdrop-filter: blur(5px);
     `;
     overlay.innerHTML = `
-      <div style="background:white; padding:25px; border-radius:8px; border:2px solid #ce0e2d; box-shadow:0 8px 30px rgba(0,0,0,0.2);">
+      <div style="background:white; padding:30px; border-radius:12px; border:2px solid #ce0e2d; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
         <h2 style="color: #ce0e2d; margin: 0 0 10px 0;">🔒 Access Restricted</h2>
         <p style="margin: 0 0 15px 0; font-size:14px;">Please log into the <strong>Copyright Profile</strong> to use.</p>
-        <p style="font-size: 11px; color: #666; margin-bottom: 20px; font-family:monospace; background:#eee; padding:4px; border-radius:4px;">${allowedEmail}</p>
-        <button id="flo-login-retry" style="padding: 10px 20px; background: #ce0e2d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Check Account</button>
-        <div id="flo-lock-status" style="margin-top:10px; font-size:12px; height:15px; color:#666;"></div>
+        <p style="font-size: 12px; color: #666; margin-bottom: 20px; font-family:monospace; background:#eee; padding:6px; border-radius:4px;">${ALLOWED_EMAIL}</p>
+        <button id="flo-login-retry" style="padding: 12px 24px; background: #ce0e2d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold; font-size:14px;">Check Account</button>
+        <div id="flo-lock-status" style="margin-top:15px; font-size:12px; min-height:15px; color:#666;"></div>
       </div>
     `;
     document.body.appendChild(overlay);
@@ -40,21 +41,38 @@ async function enforceIdentity() {
   // Check Identity
   try {
     const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
-    if (response && response.email === allowedEmail) {
+    const currentEmail = response && response.email ? response.email.toLowerCase().trim() : "";
+    
+    if (currentEmail === ALLOWED_EMAIL) {
       overlay.style.display = 'none'; // Unlocked
+      return true;
     } else {
       overlay.style.display = 'flex'; // Locked
       const status = document.getElementById('flo-lock-status');
-      if (response && response.email) {
-         status.innerText = `Currently: ${response.email}`;
+      if (currentEmail) {
+         status.innerText = `Currently logged in as:\n${currentEmail}`;
          status.style.color = "red";
       } else {
-         status.innerText = "Not logged in.";
+         status.innerText = "Not logged in to Chrome/Google.";
       }
+      return false;
     }
   } catch (e) {
     console.error("Auth check failed", e);
+    return false;
   }
+}
+
+// FAIL-SAFE: Double check before any critical action
+async function verifyAccessBeforeAction() {
+    const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
+    const currentEmail = response && response.email ? response.email.toLowerCase().trim() : "";
+    if (currentEmail !== ALLOWED_EMAIL) {
+        alert(`⛔ ACCESS DENIED\n\nYou are logged in as: ${currentEmail}\nRequired: ${ALLOWED_EMAIL}`);
+        enforceIdentity(); // Re-trigger lock
+        return false;
+    }
+    return true;
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -256,6 +274,9 @@ if (eventInput) {
   // ==========================================
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
+       // --- SECURITY CHECK BEFORE ACTION ---
+       if (!(await verifyAccessBeforeAction())) return;
+
        const sourceUrl = sourceDisplay ? sourceDisplay.value : ""; 
        const evt = eventInput ? eventInput.value : "";
        const vert = verticalSelect ? verticalSelect.value : "";
@@ -391,6 +412,9 @@ const grabBtn = document.getElementById('btn-grab-flo');
 
 if (grabBtn) {
   grabBtn.addEventListener('click', async () => {
+    // --- SECURITY CHECK BEFORE ACTION ---
+    if (!(await verifyAccessBeforeAction())) return;
+
     // 1. Get the Active Tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     
