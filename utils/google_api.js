@@ -13,6 +13,22 @@ const getOptions = () => {
   }));
 };
 
+// --- HELPER: CLEAN HANDLES FOR COMPARISON ---
+// Strips URLs, @ symbols, spaces, and converts to lowercase
+function normalizeHandle(input) {
+  if (!input) return "";
+  let clean = input.toString().toLowerCase().trim();
+  
+  // Remove URL prefixes if present in the whitelist
+  clean = clean.replace(/^(https?:\/\/)?(www\.)?/, "");
+  clean = clean.replace(/^(tiktok\.com\/|instagram\.com\/|twitter\.com\/|x\.com\/|youtube\.com\/|facebook\.com\/)/, "");
+  
+  // Remove @ and trailing slashes
+  clean = clean.replace(/^@/, "").replace(/\/$/, "");
+  
+  return clean;
+}
+
 // --- HELPER: FIND FILE BY NAME ---
 export async function findFileId(name, mimeType, parentId = null) {
   const token = await getAuthToken();
@@ -36,9 +52,6 @@ export async function findFileId(name, mimeType, parentId = null) {
 export async function getEventData(vertical) {
   const token = await getAuthToken();
   
-  // CHANGED: Range expanded to include Rumble (Column I) if needed in future, 
-  // but strictly A1:H covers up to Discord based on your event tab layout description.
-  // Kept consistent with your previous structure for events.
   const range = `${vertical}!A1:I`; 
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
   
@@ -49,11 +62,10 @@ export async function getEventData(vertical) {
     return { searchUrl: null, eventMap: {} };
   }
 
-  // A. Get Search URL from Cell B1 (Preserves existing search functionality)
+  // A. Get Search URL from Cell B1
   const searchUrl = (data.values[0] && data.values[0][1]) ? data.values[0][1] : null;
 
   // B. Process Events starting at Row 3 (Index 2)
-  // Rows 1 & 2 are headers/config. Data starts at Row 3.
   const eventRows = data.values.length > 2 ? data.values.slice(2) : []; 
 
   const eventMap = {};
@@ -62,17 +74,6 @@ export async function getEventData(vertical) {
       const originalName = row[0].trim();
       const cleanName = originalName.toLowerCase(); 
       
-      // MAPPING: 
-      // Col A [0]: Event Name
-      // Col B [1]: TikTok
-      // Col C [2]: Instagram
-      // Col D [3]: YouTube
-      // Col E [4]: Twitter (X)
-      // Col F [5]: Twitch
-      // Col G [6]: Facebook
-      // Col H [7]: Discord
-      // Col I [8]: Rumble (Added for future proofing)
-
       eventMap[cleanName] = {
         name: originalName,
         rowIndex: index + 3, // +3 because we skipped 2 header rows and index is 0-based
@@ -114,9 +115,16 @@ export async function checkIfAuthorized(platform, handle) {
   if (!handle) return false;
   const token = await getAuthToken();
   
-  // Mapping based on your 'Handles White List' tab layout starting at B2
-  // B: Tiktok (0), C: Instagram (1), D: Twitter (2), E: Discord (3), 
-  // F: Youtube (4), G: Facebook (5), H: Reddit (6), I: Rumble (7)
+  // Mapping based on your 'Handles White List' tab layout starting at B2 (Column B is Index 0 relative to range)
+  // Range: B2:I
+  // Index 0: B (TikTok)
+  // Index 1: C (Instagram)
+  // Index 2: D (Twitter/X)
+  // Index 3: E (Discord)
+  // Index 4: F (YouTube) -- This matches your request "column f starting on row 2 is Youtube"
+  // Index 5: G (Facebook)
+  // Index 6: H (Reddit)
+  // Index 7: I (Rumble)
   const platformIndexMap = {
     'tiktok': 0,    
     'instagram': 1, 
@@ -131,11 +139,13 @@ export async function checkIfAuthorized(platform, handle) {
 
   const targetIndex = platformIndexMap[platform?.toLowerCase()];
   
-  // If platform isn't in our whitelist map, skip check (return false)
-  if (targetIndex === undefined) return false;
+  // If platform isn't in our whitelist map, allow it (or block depending on policy, currently returning false to allow save)
+  if (targetIndex === undefined) {
+      console.warn(`⚠️ Whitelist Check: Platform '${platform}' not mapped. Allowing.`);
+      return false;
+  }
 
-  // Fetch all columns B through I from row 2 downwards (Starting Row 2 as requested)
-  // B2:I ensures we capture the first row of data
+  // Fetch all columns B through I from row 2 downwards
   const range = `${WHITELIST_TAB}!B2:I`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
 
@@ -143,26 +153,35 @@ export async function checkIfAuthorized(platform, handle) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
 
-    if (!data.values || data.values.length === 0) return false;
+    if (!data.values || data.values.length === 0) {
+        console.warn("⚠️ Whitelist Check: Sheet is empty or not found.");
+        return false;
+    }
 
-    // Normalize the handle for comparison (remove '@', lowercase, trim)
-    const cleanHandle = handle.replace('@', '').trim().toLowerCase();
+    // Prepare the handle we are checking
+    const targetHandle = normalizeHandle(handle);
+    console.log(`🛡️ Checking Whitelist for [${platform}]: "${handle}" (Normalized: "${targetHandle}")`);
 
-    // Check if the handle exists in the specific column for that platform
+    // Iterate through rows to find a match
     const isAuthorized = data.values.some(row => {
-      // Ensure row has enough columns
+      // Ensure row has data in the target column
       if (row.length <= targetIndex) return false;
       
-      const cellValue = row[targetIndex];
-      // Compare cleaned values
-      return cellValue && cellValue.trim().toLowerCase().replace('@', '') === cleanHandle;
+      const rawCellValue = row[targetIndex];
+      const normalizedCell = normalizeHandle(rawCellValue);
+
+      if (normalizedCell === targetHandle) {
+          console.log(`✅ MATCH FOUND! Whitelisted handle: "${rawCellValue}"`);
+          return true;
+      }
+      return false;
     });
 
     return isAuthorized;
 
   } catch (e) {
-    console.error("Error checking whitelist:", e);
-    return false; // Fail safe: allow if check fails
+    console.error("❌ Error checking whitelist:", e);
+    return false; // Fail safe: allow save if check crashes
   }
 }
 
