@@ -1,4 +1,5 @@
-import { getAuthToken } from './utils/auth.js';
+// background.js
+import { getAuthToken, getUserEmail } from './utils/auth.js';
 import { 
   uploadToDrive, 
   appendToSheet, 
@@ -48,6 +49,14 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
+  // --- NEW: Security Check Handler ---
+  if (request.action === 'checkUserIdentity') {
+    getUserEmail().then(email => {
+      sendResponse({ email: email });
+    });
+    return true; // Keep channel open
+  }
+
   // --- NEW: Handle Whitelist Check ---
   if (request.action === "checkWhitelist") {
     console.log(`🛡️ Whitelist Check - Platform: ${request.platform}, Handle: ${request.handle}`);
