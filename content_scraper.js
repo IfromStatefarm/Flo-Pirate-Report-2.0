@@ -271,8 +271,11 @@ async function initOverlay() {
     font-family: sans-serif; transition: opacity 0.3s;
   `;
 
+  // Added ID to the title div and cursor style
   overlay.innerHTML = `
-    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">PIRATE AI HELPER</div>
+    <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move; user-select: none;">
+      PIRATE AI HELPER ✥
+    </div>
     <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s;">...</div>
     
     <div style="display: flex; gap: 8px; margin-bottom: 10px;">
@@ -302,6 +305,40 @@ async function initOverlay() {
     if (currentCount > 0 && !confirm(`Delete ${currentCount} items from cart?`)) return;
     try { chrome.runtime.sendMessage({ action: 'clearCart' }); } 
     catch(e) { handleContextInvalidated(); }
+  });
+
+  // --- NEW: DRAG LOGIC ---
+  const handle = document.getElementById('flo-drag-handle');
+  let isDragging = false;
+  let startX, startY, initialLeft, initialTop;
+
+  handle.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      
+      const rect = overlay.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+      
+      // IMPORTANT: Switch from 'right' positioning to 'left' positioning
+      overlay.style.right = 'auto';
+      overlay.style.left = `${initialLeft}px`;
+      overlay.style.top = `${initialTop}px`;
+      
+      e.preventDefault(); // Prevent text selection
+  });
+
+  document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      overlay.style.left = `${initialLeft + dx}px`;
+      overlay.style.top = `${initialTop + dy}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+      isDragging = false;
   });
 
   // 3. Fetch Data to update Count
