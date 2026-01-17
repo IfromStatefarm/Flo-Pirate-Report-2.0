@@ -2,7 +2,7 @@
 
 let configData = null;
 let eventLookup = {}; 
-const ALLOWED_EMAIL = "copyright@flosports.tv";
+const ALLOWED_EMAIL = "social@flosports.tv";
 
 // --- SECURITY LOCK OVERLAY ---
 async function enforceIdentity() {
