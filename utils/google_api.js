@@ -2,7 +2,7 @@
 import { getAuthToken } from './auth.js';
 
 // UPDATED: Using the Sheet ID provided by user
-const EVENT_SHEET_ID = '1IAe2GibznbCri9EoCDEOO5yl0PTVVfxnt2-LXELxWtk'; 
+const EVENT_SHEET_ID = '1K9QigjjGPexSIW3hsc2WQNjJvz9anT6_WfyTdPfiflE'; 
 const WHITELIST_TAB = 'Handles White List';
 
 // --- HELPER: GET USER OPTIONS ---
@@ -36,8 +36,10 @@ export async function findFileId(name, mimeType, parentId = null) {
 export async function getEventData(vertical) {
   const token = await getAuthToken();
   
-  // CHANGED: Range expanded from A1:B to A1:H to capture all 7 platforms
-  const range = `${vertical}!A1:H`; 
+  // CHANGED: Range expanded to include Rumble (Column I) if needed in future, 
+  // but strictly A1:H covers up to Discord based on your event tab layout description.
+  // Kept consistent with your previous structure for events.
+  const range = `${vertical}!A1:I`; 
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
   
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -60,7 +62,7 @@ export async function getEventData(vertical) {
       const originalName = row[0].trim();
       const cleanName = originalName.toLowerCase(); 
       
-      // MAPPING: Based on your request
+      // MAPPING: 
       // Col A [0]: Event Name
       // Col B [1]: TikTok
       // Col C [2]: Instagram
@@ -69,6 +71,7 @@ export async function getEventData(vertical) {
       // Col F [5]: Twitch
       // Col G [6]: Facebook
       // Col H [7]: Discord
+      // Col I [8]: Rumble (Added for future proofing)
 
       eventMap[cleanName] = {
         name: originalName,
@@ -80,7 +83,8 @@ export async function getEventData(vertical) {
             twitter:   row[4] || null,
             twitch:    row[5] || null,
             facebook:  row[6] || null,
-            discord:   row[7] || null
+            discord:   row[7] || null,
+            rumble:    row[8] || null
         }
       };
     }
@@ -91,7 +95,7 @@ export async function getEventData(vertical) {
 
 // --- HELPER: Map Platform to Column Letter ---
 function getColumnLetter(platform) {
-  // A=Event, B=TikTok, C=Instagram, D=YouTube, E=Twitter, F=Twitch, G=Facebook, H=Discord
+  // A=Event, B=TikTok, C=Instagram, D=YouTube, E=Twitter, F=Twitch, G=Facebook, H=Discord, I=Rumble
   const map = {
     'tiktok': 'B',
     'instagram': 'C',
@@ -99,7 +103,8 @@ function getColumnLetter(platform) {
     'twitter': 'E',
     'twitch': 'F',
     'facebook': 'G',
-    'discord': 'H'
+    'discord': 'H',
+    'rumble': 'I'
   };
   // Default to B (TikTok) if platform is missing or typo
   return map[platform?.toLowerCase()] || 'B'; 
@@ -110,25 +115,28 @@ export async function checkIfAuthorized(platform, handle) {
   const token = await getAuthToken();
   
   // Mapping based on your 'Handles White List' tab layout starting at B2
-  // B: Tiktok, C: Instagram, D: Twitter, E: Discord, F: Youtube, G: Facebook, H: Reddit
+  // B: Tiktok (0), C: Instagram (1), D: Twitter (2), E: Discord (3), 
+  // F: Youtube (4), G: Facebook (5), H: Reddit (6), I: Rumble (7)
   const platformIndexMap = {
-    'tiktok': 0,    // Col B
-    'instagram': 1, // Col C
-    'twitter': 2,   // Col D
-    'x': 2,         // Col D (Handle X same as Twitter)
-    'discord': 3,   // Col E
-    'youtube': 4,   // Col F
-    'facebook': 5,  // Col G
-    'reddit': 6     // Col H
+    'tiktok': 0,    
+    'instagram': 1, 
+    'twitter': 2,   
+    'x': 2,         
+    'discord': 3,   
+    'youtube': 4,   
+    'facebook': 5,  
+    'reddit': 6,
+    'rumble': 7     
   };
 
   const targetIndex = platformIndexMap[platform?.toLowerCase()];
   
-  // If platform isn't in our whitelist map, skip check (return false) or default to false
+  // If platform isn't in our whitelist map, skip check (return false)
   if (targetIndex === undefined) return false;
 
-  // Fetch all columns B through H from row 3 downwards (skipping headers)
-  const range = `${WHITELIST_TAB}!B3:H`;
+  // Fetch all columns B through I from row 2 downwards (Starting Row 2 as requested)
+  // B2:I ensures we capture the first row of data
+  const range = `${WHITELIST_TAB}!B2:I`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
 
   try {
@@ -141,10 +149,12 @@ export async function checkIfAuthorized(platform, handle) {
     const cleanHandle = handle.replace('@', '').trim().toLowerCase();
 
     // Check if the handle exists in the specific column for that platform
-    // Row is an array of columns [Tiktok, Insta, Twitter, Discord, YT, FB, Reddit]
     const isAuthorized = data.values.some(row => {
-      // Check if the cell exists and matches the handle
+      // Ensure row has enough columns
+      if (row.length <= targetIndex) return false;
+      
       const cellValue = row[targetIndex];
+      // Compare cleaned values
       return cellValue && cellValue.trim().toLowerCase().replace('@', '') === cleanHandle;
     });
 
@@ -152,7 +162,7 @@ export async function checkIfAuthorized(platform, handle) {
 
   } catch (e) {
     console.error("Error checking whitelist:", e);
-    return false; // Fail safe: allow if check fails, or return true to block if you want strict safety
+    return false; // Fail safe: allow if check fails
   }
 }
 
@@ -175,15 +185,15 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
 // CREATE: Appends a new event, placing the URL in the correct column
 export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
   const token = await getAuthToken();
-  const range = `${vertical}!A:H`; 
+  const range = `${vertical}!A:I`; 
   
-  // [EventName, TikTok, Instagram, YouTube, Twitter, Twitch, Facebook, Discord]
-  const row = new Array(8).fill(""); 
+  // [EventName, TikTok, Instagram, YouTube, Twitter, Twitch, Facebook, Discord, Rumble]
+  const row = new Array(9).fill(""); 
   row[0] = eventName; // Col A is always Event Name
 
   const colMap = {
     'tiktok': 1, 'instagram': 2, 'youtube': 3, 'twitter': 4, 
-    'twitch': 5, 'facebook': 6, 'discord': 7
+    'twitch': 5, 'facebook': 6, 'discord': 7, 'rumble': 8
   };
   
   const targetIndex = colMap[platform?.toLowerCase()] || 1;
