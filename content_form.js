@@ -104,7 +104,7 @@ function createUploadOverlay(data) {
       .flo-step { margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
       .flo-btn { background: #fe2c55; color: white; border: none; padding: 6px 10px; cursor: pointer; border-radius: 4px; }
     </style>
-    <h3>FloSports Helper</h3>
+    <h3 id="flo-overlay-header" style="cursor: move; user-select: none;">FloSports Helper ✥</h3>
 
     <div class="flo-step">
       <strong>Step 1: Rights Evidence</strong><br>
@@ -125,6 +125,40 @@ function createUploadOverlay(data) {
   `;
 
   document.body.appendChild(overlay);
+
+  // --- DRAG LOGIC ---
+  const header = document.getElementById("flo-overlay-header");
+  let isDragging = false;
+  let startX, startY, initialLeft, initialTop;
+
+  header.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      
+      const rect = overlay.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+      
+      // Fix position from 'right' to 'left' for consistency during drag
+      overlay.style.right = 'auto';
+      overlay.style.left = `${initialLeft}px`;
+      overlay.style.top = `${initialTop}px`;
+      
+      e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      overlay.style.left = `${initialLeft + dx}px`;
+      overlay.style.top = `${initialTop + dy}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+      isDragging = false;
+  });
 
   document.getElementById("flo-log-btn").addEventListener("click", () => {
     const status = document.getElementById("flo-log-status");
@@ -147,4 +181,3 @@ function createUploadOverlay(data) {
     });
   });
 }
-
