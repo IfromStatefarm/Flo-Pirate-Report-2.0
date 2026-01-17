@@ -1,6 +1,59 @@
 let configData = null;
 
+// --- SECURITY LOCK OVERLAY (Duplicated for Popup context) ---
+async function enforceIdentity() {
+  const allowedEmail = "copyright@flosports.tv";
+  const overlayId = 'flo-lock-overlay-pop';
+  let overlay = document.getElementById(overlayId);
+  
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = overlayId;
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(255, 255, 255, 0.96); z-index: 10000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; color: #333; font-family: sans-serif;
+      backdrop-filter: blur(4px);
+    `;
+    overlay.innerHTML = `
+      <div style="background:white; padding:20px; border-radius:8px; border:2px solid #ce0e2d; box-shadow:0 4px 15px rgba(0,0,0,0.2); width: 80%;">
+        <h3 style="color: #ce0e2d; margin: 0 0 10px 0;">🔒 Restricted</h3>
+        <p style="margin: 0 0 10px 0; font-size:13px;">Please log into the <strong>Copyright Profile</strong>.</p>
+        <p style="font-size: 11px; color: #666; margin-bottom: 15px; font-family:monospace; background:#eee; padding:4px; border-radius:4px;">${allowedEmail}</p>
+        <button id="flo-login-retry-pop" style="padding: 8px 15px; background: #ce0e2d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Check Account</button>
+        <div id="flo-lock-status-pop" style="margin-top:10px; font-size:12px; height:15px; color:#666;"></div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    document.getElementById('flo-login-retry-pop').addEventListener('click', () => {
+        document.getElementById('flo-lock-status-pop').innerText = "Checking...";
+        enforceIdentity();
+    });
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
+    if (response && response.email === allowedEmail) {
+      overlay.style.display = 'none'; // Unlocked
+    } else {
+      overlay.style.display = 'flex'; // Locked
+      const status = document.getElementById('flo-lock-status-pop');
+      if (response && response.email) {
+         status.innerText = `Logged in as: ${response.email}`;
+         status.style.color = "red";
+      } else {
+         status.innerText = "Not logged in.";
+      }
+    }
+  } catch (e) { console.error(e); }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+  // 1. RUN SECURITY CHECK IMMEDIATELY
+  await enforceIdentity();
+
   const cancelBtn = document.getElementById('cancelBtn');
   const reportBtn = document.getElementById('reportBtn');
   const videoCountEl = document.getElementById('video-count');
