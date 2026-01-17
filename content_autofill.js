@@ -547,12 +547,12 @@ function createUploadOverlay(data) {
   overlay.style.cssText = `
     position: fixed; top: 80px; right: 20px; width: 300px;
     background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px;
+    z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
   `;
 
   // --- UPDATED HTML WITH DRAG HEADER ---
   overlay.innerHTML = `
-    <h3 id="flo-overlay-header" style="margin-top:0; color:#ce0e2d; cursor: move; user-select: none;">FloSports Helper ✥</h3>
+    <h3 id="flo-overlay-header" style="margin-top:0; color:#ce0e2d; cursor: move;">FloSports Helper ✥</h3>
     <div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
       <strong>Platform:</strong> ${data.platform || "TikTok"}<br>
       <strong>Status:</strong> Form Filled.<br>
@@ -576,12 +576,14 @@ function createUploadOverlay(data) {
 
   document.body.appendChild(overlay);
 
-  // --- DRAG LOGIC ---
-  const header = document.getElementById("flo-overlay-header");
+  // --- NEW: DRAG LOGIC (WHOLE BOX) ---
   let isDragging = false;
   let startX, startY, initialLeft, initialTop;
 
-  header.addEventListener('mousedown', (e) => {
+  overlay.addEventListener('mousedown', (e) => {
+      // Don't drag if clicking buttons or interactive elements
+      if (['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) return;
+
       isDragging = true;
       startX = e.clientX;
       startY = e.clientY;
