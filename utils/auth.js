@@ -22,7 +22,8 @@ export async function getUserEmail() {
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await response.json();
-    return data.email;
+    // Normalize: ensure lowercase and trimmed for safe comparison
+    return data.email ? data.email.toLowerCase().trim() : null;
   } catch (error) {
     console.error("Failed to fetch user email:", error);
     return null;
