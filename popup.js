@@ -18,7 +18,7 @@ async function enforceIdentity() {
     `;
     overlay.innerHTML = `
       <div style="background:white; padding:20px; border-radius:8px; border:2px solid #ce0e2d; box-shadow:0 4px 15px rgba(0,0,0,0.2); width: 80%;">
-        <h3 style="color: #ce0e2d; margin: 0 0 10px 0;">🔒 Restricted</h3>
+        <h3 style="color: #ce0e2d; margin: 0 0 10px 0;">Restricted</h3>
         <p style="margin: 0 0 10px 0; font-size:13px;">Please log into the <strong>Copyright Profile</strong>.</p>
         <p style="font-size: 11px; color: #666; margin-bottom: 15px; font-family:monospace; background:#eee; padding:4px; border-radius:4px;">${ALLOWED_EMAIL}</p>
         <button id="flo-login-retry-pop" style="padding: 8px 15px; background: #ce0e2d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Check Account</button>
