@@ -3,7 +3,64 @@
 let configData = null;
 let eventLookup = {}; 
 
+// --- SECURITY LOCK OVERLAY ---
+async function enforceIdentity() {
+  const allowedEmail = "copyright@flosports.tv";
+  const overlayId = 'flo-lock-overlay';
+  let overlay = document.getElementById(overlayId);
+  
+  // Create if doesn't exist
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = overlayId;
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(255, 255, 255, 0.96); z-index: 10000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; color: #333; font-family: sans-serif;
+      backdrop-filter: blur(4px);
+    `;
+    overlay.innerHTML = `
+      <div style="background:white; padding:25px; border-radius:8px; border:2px solid #ce0e2d; box-shadow:0 8px 30px rgba(0,0,0,0.2);">
+        <h2 style="color: #ce0e2d; margin: 0 0 10px 0;">🔒 Access Restricted</h2>
+        <p style="margin: 0 0 15px 0; font-size:14px;">Please log into the <strong>Copyright Profile</strong> to use.</p>
+        <p style="font-size: 11px; color: #666; margin-bottom: 20px; font-family:monospace; background:#eee; padding:4px; border-radius:4px;">${allowedEmail}</p>
+        <button id="flo-login-retry" style="padding: 10px 20px; background: #ce0e2d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Check Account</button>
+        <div id="flo-lock-status" style="margin-top:10px; font-size:12px; height:15px; color:#666;"></div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    document.getElementById('flo-login-retry').addEventListener('click', () => {
+        document.getElementById('flo-lock-status').innerText = "Checking...";
+        enforceIdentity();
+    });
+  }
+
+  // Check Identity
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
+    if (response && response.email === allowedEmail) {
+      overlay.style.display = 'none'; // Unlocked
+    } else {
+      overlay.style.display = 'flex'; // Locked
+      const status = document.getElementById('flo-lock-status');
+      if (response && response.email) {
+         status.innerText = `Currently: ${response.email}`;
+         status.style.color = "red";
+      } else {
+         status.innerText = "Not logged in.";
+      }
+    }
+  } catch (e) {
+    console.error("Auth check failed", e);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+  // 1. RUN SECURITY CHECK IMMEDIATELY
+  await enforceIdentity();
+
   console.log("🚀 Sidepanel Loaded");
 
   // --- GET ELEMENTS ---
