@@ -405,6 +405,43 @@ if (eventInput) {
     });
   }
 });
+if (copyUrlBtn) {
+    copyUrlBtn.addEventListener('click', () => {
+       const txt = `Content stolen from ${eventInput ? eventInput.value : ""}. Original source: ${sourceDisplay ? sourceDisplay.value : ""}`;
+       navigator.clipboard.writeText(txt);
+       copyUrlBtn.innerText = "Copied!";
+       setTimeout(() => copyUrlBtn.innerText = 'Copy "Stolen From" Text', 2000);
+    });
+  }
+
+  // --- 6. Test Closer Button ---
+  const closerBtn = document.getElementById('testCloserBtn');
+  if (closerBtn) {
+      closerBtn.addEventListener('click', async () => {
+          if (!(await verifyAccessBeforeAction())) return;
+          
+          closerBtn.innerText = "Running...";
+          closerBtn.disabled = true;
+          
+          chrome.runtime.sendMessage({ action: 'triggerCloser' }, (res) => {
+              if (res && res.success) {
+                  closerBtn.innerText = "Check Started (See Console)";
+              } else {
+                  closerBtn.innerText = "Failed / Empty Queue";
+              }
+              
+              setTimeout(() => {
+                  closerBtn.innerText = 'Run "The Closer" (Check Status)';
+                  closerBtn.disabled = false;
+              }, 3000);
+          });
+      });
+  }
+});
+// ==========================================
+// 6. SOURCE GRABBER + "AUTO-ADD TO EXCEL"
+// ==========================================
+const grabBtn = document.getElementById('btn-grab-flo');
 // ==========================================
 // 6. SOURCE GRABBER + "AUTO-ADD TO EXCEL"
 // ==========================================
