@@ -83,12 +83,11 @@ async function runSheetScanner() {
             else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
 
             try {
-                const isDown = await verifyTakedown(url, platform); 
+                // CHANGED: Use Tab-based verification
+                const isDown = await verifyTakedownViaTab(url, platform); 
                 if (!isDown) {
                     allDown = false;
                     console.log(`  - URL Active: ${url}`);
-                    // Optimization: We could break here if we only care if *any* link is active
-                    // but sometimes checking all is useful for logging. 
                     break; 
                 }
             } catch (err) {
@@ -97,7 +96,7 @@ async function runSheetScanner() {
             }
             
             // Rate limit to be nice
-            await new Promise(r => setTimeout(r, 500)); 
+            await new Promise(r => setTimeout(r, 1000)); 
         }
 
         if (allDown) {
@@ -113,34 +112,77 @@ async function runSheetScanner() {
   }
 }
 
-// Uses oEmbed to check if video exists. 
-async function verifyTakedown(url, platform) {
+// Uses Tab Loading to check if video exists (More reliable than fetch)
+async function verifyTakedownViaTab(url, platform) {
+    let tabId = null;
     try {
-        let checkUrl = "";
-        
-        if (platform === 'youtube') {
-            checkUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-        } 
-        else if (platform === 'tiktok') {
-            checkUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
-        }
-        else if (platform === 'twitter') {
-            checkUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`;
-        }
-        else {
-            return false; // Cannot verify unknown platforms
-        }
+        // 1. Open Tab in Background
+        const tab = await chrome.tabs.create({ url: url, active: false });
+        tabId = tab.id;
 
-        const res = await fetch(checkUrl);
-        if (res.status === 404 || res.status === 403 || res.status === 401 || res.status === 400) {
-            return true; // Down
-        }
-        return false; // Active
+        // 2. Wait for Load (with timeout)
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error("Timeout")), 10000);
+            
+            const listener = (tid, info) => {
+                if (tid === tabId && info.status === 'complete') {
+                    clearTimeout(timeout);
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    resolve();
+                }
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+        });
+        
+        // Wait a bit for dynamic content to render (critical for TikTok/YouTube)
+        await new Promise(r => setTimeout(r, 2000));
+
+        // 3. Inject Script to Check Tombstone
+        const result = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: (plat) => {
+                const text = document.body.innerText.toLowerCase();
+                
+                if (plat === 'tiktok') {
+                    if (text.includes("video currently unavailable")) return true;
+                    if (text.includes("video not found")) return true;
+                    if (text.includes("couldn't find this account")) return true;
+                    if (document.querySelector('[data-e2e="video-removed"]')) return true;
+                }
+                
+                if (plat === 'youtube') {
+                    if (text.includes("video unavailable")) return true;
+                    if (text.includes("video has been removed")) return true;
+                    if (text.includes("video is private")) return true;
+                    // YouTube sometimes redirects to home if channel is gone
+                    if (window.location.href === "https://www.youtube.com/") return true; 
+                }
+                
+                if (plat === 'twitter') {
+                    if (text.includes("this page doesn’t exist")) return true;
+                    if (text.includes("tweet has been deleted")) return true;
+                }
+
+                // Generic 404 text
+                if (document.title.includes("404") || document.title.includes("Not Found")) return true;
+
+                return false;
+            },
+            args: [platform]
+        });
+
+        // 4. Cleanup
+        chrome.tabs.remove(tabId).catch(() => {});
+        
+        return result[0]?.result || false;
 
     } catch (e) {
-        return false;
+        console.error("Tab Verification Error:", e);
+        if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+        return false; // Fail safe: Assume active
     }
 }
+
 
 // ... (addToTrackingQueue removed as we scan sheet directly now)
 async function addToTrackingQueue(reportId, urls, platform) {
