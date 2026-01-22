@@ -117,14 +117,6 @@ export async function checkIfAuthorized(platform, handle) {
   
   // Mapping based on your 'Handles White List' tab layout starting at B2 (Column B is Index 0 relative to range)
   // Range: B2:I
-  // Index 0: B (TikTok)
-  // Index 1: C (Instagram)
-  // Index 2: D (Twitter/X)
-  // Index 3: E (Discord)
-  // Index 4: F (YouTube) -- This matches your request "column f starting on row 2 is Youtube"
-  // Index 5: G (Facebook)
-  // Index 6: H (Reddit)
-  // Index 7: I (Rumble)
   const platformIndexMap = {
     'tiktok': 0,    
     'instagram': 1, 
@@ -139,13 +131,11 @@ export async function checkIfAuthorized(platform, handle) {
 
   const targetIndex = platformIndexMap[platform?.toLowerCase()];
   
-  // If platform isn't in our whitelist map, allow it (or block depending on policy, currently returning false to allow save)
   if (targetIndex === undefined) {
       console.warn(`⚠️ Whitelist Check: Platform '${platform}' not mapped. Allowing.`);
       return false;
   }
 
-  // Fetch all columns B through I from row 2 downwards
   const range = `${WHITELIST_TAB}!B2:I`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
 
@@ -154,44 +144,29 @@ export async function checkIfAuthorized(platform, handle) {
     const data = await res.json();
 
     if (!data.values || data.values.length === 0) {
-        console.warn("⚠️ Whitelist Check: Sheet is empty or not found.");
         return false;
     }
 
-    // Prepare the handle we are checking
     const targetHandle = normalizeHandle(handle);
-    console.log(`🛡️ Checking Whitelist for [${platform}]: "${handle}" (Normalized: "${targetHandle}")`);
-
-    // Iterate through rows to find a match
     const isAuthorized = data.values.some(row => {
-      // Ensure row has data in the target column
       if (row.length <= targetIndex) return false;
-      
       const rawCellValue = row[targetIndex];
       const normalizedCell = normalizeHandle(rawCellValue);
-
-      if (normalizedCell === targetHandle) {
-          console.log(`✅ MATCH FOUND! Whitelisted handle: "${rawCellValue}"`);
-          return true;
-      }
-      return false;
+      return normalizedCell === targetHandle;
     });
 
     return isAuthorized;
 
   } catch (e) {
     console.error("❌ Error checking whitelist:", e);
-    return false; // Fail safe: allow save if check crashes
+    return false;
   }
 }
 
 export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
   const token = await getAuthToken();
   const colLetter = getColumnLetter(platform);
-  
-  // Example Range: "FloGrappling!D5" (Update YouTube URL for Event on Row 5)
   const range = `${vertical}!${colLetter}${rowIndex}`;
-  
   const body = { values: [[newUrl]] };
   
   await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`, {
@@ -291,19 +266,10 @@ export async function uploadToDrive(token, folderId, name, blob, mimeType) {
 
 export async function fetchConfig() {
   const { driveRootId } = await getOptions();
-  console.log(`🕵️ Looking in Folder ID: "${driveRootId}"`);
-
   if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
 
   const token = await getAuthToken();
   
-  // DEBUG: List ALL files in this folder to see what is visible
-  const debugUrl = `https://www.googleapis.com/drive/v3/files?q='${driveRootId}' in parents&fields=files(name,id)`;
-  const debugRes = await fetch(debugUrl, { headers: { Authorization: `Bearer ${token}` } });
-  const debugData = await debugRes.json();
-  console.log("📂 Files found in this folder:", debugData.files);
-
-  // ORIGINAL QUERY
   const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
      headers: { Authorization: `Bearer ${token}` }
@@ -311,12 +277,6 @@ export async function fetchConfig() {
   const data = await res.json();
   
   if (!data.files || data.files.length === 0) {
-    // If we found OTHER files, but not the config, it's a naming issue.
-    if (debugData.files && debugData.files.length > 0) {
-        const names = debugData.files.map(f => f.name).join(", ");
-        throw new Error(`Config missing. Found these instead: ${names}`);
-    }
-    // If we found NOTHING, it's a permission or ID issue.
     throw new Error("Config file not found. Folder appears empty or inaccessible.");
   }
 
@@ -334,10 +294,8 @@ export async function appendToSheet(token, logData) {
 
   // 1. Check if background.js sent us a pre-built row (The new way)
   if (logData.values && Array.isArray(logData.values)) {
-      // The Sheets API expects an array of arrays (rows), so we wrap our single row
       values = [logData.values];
   } 
-  // 2. Fallback (The old way, just in case)
   else {
       console.warn("⚠️ Received legacy data format in appendToSheet. Using fallback.");
       const now = new Date();
@@ -354,7 +312,6 @@ export async function appendToSheet(token, logData) {
         "Reported",
         "",
         logData.reporterName || "Unknown",
-        // ... (remaining empty columns)
       ]];
   }
 
@@ -394,4 +351,55 @@ export async function fetchRightsPdf(token, eventName) {
   
   const blob = await fileRes.blob();
   return { blob, name: fileName };
+}
+
+// ==========================================
+// 6. THE CLOSER: STATUS UPDATE
+// ==========================================
+
+export async function updateReportStatus(reportId, newStatus) {
+  try {
+    const { reportSheetId } = await getOptions();
+    if (!reportSheetId) throw new Error("Report Sheet ID missing");
+    
+    const token = await getAuthToken();
+
+    // 1. Search Column T (Index 19) for the Report ID
+    const searchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/T:T`;
+    const res = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+
+    if (!data.values) return false;
+
+    // Find the row index (1-based for A1 notation)
+    // data.values is array of arrays like [["ID1"], ["ID2"]...]
+    // We start searching from the end because reports are appended? 
+    // Searching from start is safer for now.
+    const rowIndex = data.values.findIndex(row => row[0] && row[0].trim() === reportId);
+
+    if (rowIndex === -1) {
+        console.warn(`⚠️ The Closer: Report ID ${reportId} not found in sheet.`);
+        return false;
+    }
+
+    const actualRow = rowIndex + 1; // 1-based index for A1
+
+    // 2. Update Column J (Status) at that row
+    // Column J is the 10th column.
+    const range = `J${actualRow}`;
+    const body = { values: [[newStatus]] };
+
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    console.log(`✅ The Closer: Updated Report ${reportId} to "${newStatus}"`);
+    return true;
+
+  } catch (e) {
+    console.error("❌ The Closer: Sheet Update Error", e);
+    return false;
+  }
 }
