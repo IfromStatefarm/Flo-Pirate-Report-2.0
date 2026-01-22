@@ -396,6 +396,51 @@ export async function updateReportStatus(reportId, newStatus) {
     });
 
     console.log(`✅ The Closer: Updated Report ${reportId} to "${newStatus}"`);
+
+    // 3. If Status is "Taken Down", strike through the URL in Column H (Index 7)
+    if (newStatus === "Taken Down") {
+        try {
+            // Get Sheet ID (GID) - needed for batchUpdate
+            const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const metaData = await metaRes.json();
+            const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
+
+            const batchBody = {
+                requests: [{
+                    repeatCell: {
+                        range: {
+                            sheetId: sheetId,
+                            startRowIndex: rowIndex, // 0-based
+                            endRowIndex: rowIndex + 1,
+                            startColumnIndex: 7, // Column H
+                            endColumnIndex: 8
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                textFormat: {
+                                    strikethrough: true,
+                                    foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 } // Grey
+                                }
+                            }
+                        },
+                        fields: "userEnteredFormat(textFormat)"
+                    }
+                }]
+            };
+
+            await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(batchBody)
+            });
+            console.log(`✅ The Closer: Struck through URL for ${reportId}`);
+        } catch (fmtErr) {
+            console.error("⚠️ The Closer: Formatting failed", fmtErr);
+        }
+    }
+
     return true;
 
   } catch (e) {
