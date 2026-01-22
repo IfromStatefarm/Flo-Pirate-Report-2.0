@@ -3,21 +3,19 @@ import { getUserEmail } from './utils/auth.js';
 let configData = null;
 const ALLOWED_EMAIL = "social@flosports.tv";
 
+// --- CRAWLER STATE ---
+let isCrawling = false;
+let crawlQueue = [];
+let consecutiveFailures = 0;
+
 // --- SECURITY CHECK ---
 async function verifyAccessBeforeAction() {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
-    if (chrome.runtime.lastError) {
-        console.error("Runtime error:", chrome.runtime.lastError);
-        return false;
-    }
-    const currentEmail = response && response.email ? response.email.toLowerCase().trim() : "";
+    if (chrome.runtime.lastError) return false;
     
-    if (currentEmail !== ALLOWED_EMAIL) {
-        // Optional: Show UI overlay if denied
-        return false;
-    }
-    return true;
+    const currentEmail = response && response.email ? response.email.toLowerCase().trim() : "";
+    return currentEmail === ALLOWED_EMAIL;
   } catch (e) {
     console.error("Auth check failed:", e);
     return false;
@@ -33,20 +31,59 @@ document.addEventListener('DOMContentLoaded', async () => {
   const grabBtn = document.getElementById('btn-grab-flo');
   const sourceDisplay = document.getElementById('sourceUrlDisplay');
   const closerBtn = document.getElementById('testCloserBtn');
+  const crawlBtn = document.getElementById('autoCrawlBtn');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const reporterInput = document.getElementById('reporterName');
+  const crawlStatusEl = document.getElementById('crawlStatus');
+
+  // --- Message Listener for Crawler ---
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!isCrawling) return;
+
+    if (msg.action === 'urlFound') {
+        consecutiveFailures = 0; // Reset failure count on success
+        if (crawlStatusEl) crawlStatusEl.innerText = "✅ URL Found! Saving...";
+        setTimeout(() => processNextCrawlItem(), 2000); 
+    } 
+    else if (msg.action === 'botSearchFailed') {
+        consecutiveFailures++;
+        if (crawlStatusEl) crawlStatusEl.innerText = `⚠️ No Result/Skipped (${consecutiveFailures}/3)`;
+        
+        if (consecutiveFailures >= 3) {
+            stopCrawl("Stopped: 3 consecutive blank results.");
+        } else {
+            setTimeout(() => processNextCrawlItem(), 2000);
+        }
+    }
+  });
+
+  // Helper to show error
+  const showInitError = (msg) => {
+      if (loadingEl) {
+          loadingEl.innerHTML = `⚠️ <strong>Connection Failed</strong><br>${msg}<br><button id="retryInitBtn" style="margin-top:5px;cursor:pointer;">Retry</button>`;
+          loadingEl.style.color = "red";
+          document.getElementById('retryInitBtn')?.addEventListener('click', () => window.location.reload());
+      }
+  };
 
   // 1. Load Config & Init
   try {
     // Check Auth first
-    const emailRes = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' }).catch(err => null);
+    // Add a timeout to prevent infinite hanging
+    const authPromise = chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
+    
+    const emailRes = await Promise.race([authPromise, timeoutPromise]).catch(err => null);
     
     if (!emailRes && chrome.runtime.lastError) {
-        if (loadingEl) {
-            loadingEl.innerHTML = "⚠️ <strong>Extension Context Invalidated</strong><br>Please close and reopen this side panel.";
-            loadingEl.style.color = "red";
-        }
+        showInitError("Extension context invalidated. Please reopen.");
         return;
+    }
+    
+    if (!emailRes) {
+         // Timeout or silent fail
+         showInitError("Background script unresponsive.");
+         return;
     }
 
     const currentEmail = emailRes && emailRes.email ? emailRes.email.toLowerCase().trim() : "";
@@ -67,11 +104,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (loadingEl) loadingEl.style.display = 'none';
       if (startBtn) startBtn.disabled = false;
     } else {
-      if (loadingEl) loadingEl.innerText = "Config Load Failed: " + (response?.error || "Unknown");
+      showInitError("Config Load Failed: " + (response?.error || "Unknown"));
     }
   } catch (e) {
     console.error("Init error:", e);
-    if (loadingEl) loadingEl.innerText = "Connection Failed. Reload Extension.";
+    showInitError(e.message || "Unknown Error");
   }
 
   // Load Saved State
@@ -131,8 +168,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           const cart = storage.piracy_cart || [];
           
           if (cart.length > 0) {
+              // Report cart
               urlsToReport = cart.map(i => i.url);
           } else {
+              // If cart empty, check if user input a "Source URL" (Infringing?)
+              // The label says "Source URL", usually implying "Where it was stolen FROM".
+              // Let's assume for now this panel triggers the batch report of the cart.
+              // If cart is empty, we alert.
               alert("Queue is empty. Use the 'Add' buttons on video pages first.");
               startBtn.disabled = false;
               startBtn.innerText = "Start Report";
@@ -200,7 +242,100 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
       });
   }
+
+  // --- CRAWLER BUTTON LOGIC ---
+  if (crawlBtn) {
+      crawlBtn.addEventListener('click', async () => {
+          if (isCrawling) {
+              stopCrawl("Stopped by user.");
+              return;
+          }
+
+          const vertical = verticalSelect.value;
+          if (!vertical) {
+              alert("Please select a Vertical first.");
+              return;
+          }
+
+          crawlStatusEl.innerText = "Fetching sheet data...";
+          crawlBtn.disabled = true;
+
+          // Fetch event data to identify blank rows
+          const response = await chrome.runtime.sendMessage({ action: 'getVerticalData', vertical });
+          
+          if (!response || !response.success) {
+              crawlStatusEl.innerText = "Error fetching data.";
+              crawlBtn.disabled = false;
+              return;
+          }
+
+          // Filter for events that lack a TikTok URL
+          // eventMap is { "key": { name: "Name", urls: { tiktok: "...", ... } } }
+          const allEvents = Object.values(response.data.eventMap);
+          
+          // Sort by row index to ensure we process in order
+          allEvents.sort((a, b) => a.rowIndex - b.rowIndex);
+
+          crawlQueue = allEvents.filter(e => !e.urls.tiktok || e.urls.tiktok.trim() === "");
+
+          if (crawlQueue.length === 0) {
+              crawlStatusEl.innerText = "No empty TikTok cells found.";
+              crawlBtn.disabled = false;
+              return;
+          }
+
+          // Start
+          isCrawling = true;
+          consecutiveFailures = 0;
+          crawlBtn.disabled = false;
+          crawlBtn.innerText = "Stop Auto-Crawl";
+          crawlBtn.style.backgroundColor = "#e74c3c"; // Red for stop
+          
+          crawlStatusEl.innerText = `Queue: ${crawlQueue.length} events. Starting...`;
+          
+          processNextCrawlItem();
+      });
+  }
 });
+
+function processNextCrawlItem() {
+    const statusEl = document.getElementById('crawlStatus');
+    const vertical = document.getElementById('verticalSelect').value;
+
+    if (!isCrawling) return;
+    
+    if (crawlQueue.length === 0) {
+        stopCrawl("Done! Queue finished.");
+        return;
+    }
+
+    const event = crawlQueue.shift();
+    if (statusEl) statusEl.innerText = `Searching: ${event.name}...`;
+
+    chrome.runtime.sendMessage({ 
+        action: 'findEventUrl', 
+        data: { 
+            eventName: event.name, 
+            vertical: vertical 
+        } 
+    });
+}
+
+function stopCrawl(reason) {
+    isCrawling = false;
+    const statusEl = document.getElementById('crawlStatus');
+    const btn = document.getElementById('autoCrawlBtn');
+    
+    if (statusEl) {
+        statusEl.innerText = reason;
+        statusEl.style.color = reason.includes("Stopped") ? "red" : "green";
+    }
+    
+    if (btn) {
+        btn.innerText = "Start Auto-Crawl (TikTok)";
+        btn.style.backgroundColor = "#f39c12"; // Restore orange
+    }
+}
 
 function populateVerticals(selectEl) {
   if (!selectEl) return;
