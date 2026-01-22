@@ -13,6 +13,7 @@ import {
   checkIfAuthorized
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
+import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
 
 // Open Side Panel on Click
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
@@ -26,7 +27,7 @@ function generateReportId() {
 }
 
 // ==========================================
-// 1. BOT INJECTION LISTENER (FIXED FOR MV3 STATE)
+// 1. BOT INJECTION LISTENER
 // ==========================================
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
@@ -35,7 +36,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     
     if (session.activeSearchTabId && tabId === session.activeSearchTabId) {
         console.log("🔍 Search tab loaded. Injecting Bot...");
-        // If you need to inject scripts dynamically, ensure 'search_bot.js' is in manifest
         chrome.scripting.executeScript({
           target: { tabId: tabId },
           files: ['search_bot.js']
@@ -49,18 +49,15 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
-  // --- NEW: Security Check Handler ---
   if (request.action === 'checkUserIdentity') {
     getUserEmail().then(email => {
       sendResponse({ email: email });
     });
-    return true; // Keep channel open
+    return true; 
   }
 
-  // --- NEW: Handle Whitelist Check ---
   if (request.action === "checkWhitelist") {
     console.log(`🛡️ Whitelist Check - Platform: ${request.platform}, Handle: ${request.handle}`);
-    
     checkIfAuthorized(request.platform, request.handle)
       .then(isAuthorized => {
         console.log(`🛡️ Result: ${isAuthorized ? "BLOCKED (Authorized)" : "ALLOWED"}`);
@@ -70,17 +67,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.error("🛡️ Whitelist Check Error:", err);
         sendResponse({ error: err.message });
       });
-      
-    return true; // Keep channel open for async response
+    return true; 
   }
 
-  // A. FIND EVENT URL
   if (request.action === 'findEventUrl') {
     handleDynamicSearch(request.data).then(sendResponse);
     return true; 
   }
 
-  // B. GET VERTICAL DATA
   if (request.action === 'getVerticalData') {
     getEventData(request.vertical).then(data => {
       sendResponse({ success: true, data: data });
@@ -88,9 +82,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; 
   }
 
-  // C. BOT SUCCESS
   if (request.action === 'botSearchComplete') {
-    // Retrieve state from session
     chrome.storage.session.get(['activeEventDetails', 'activeSearchTabId'], (session) => {
         const activeEventDetails = session.activeEventDetails;
         const activeSearchTabId = session.activeSearchTabId;
@@ -115,26 +107,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             source: 'Automated Search' 
           });
 
-          // Clear session state
           chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
         }
     });
     return true;
   }
 
-  // D. BOT FAILURE
   if (request.action === 'botSearchFailed') {
     console.warn("🤖 Bot failed to find URL.");
     chrome.runtime.sendMessage({ 
         action: 'botSearchFailed', 
         error: request.reason
     });
-    // Clear session state
     chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
     return true;
   }
 
-  // E. LOG TO SHEET (Triggered by TikTok Overlay)
   if (request.action === 'logToSheet') {
       handleBatchReport(request.data).then(res => {
           sendResponse({ success: res.success });
@@ -146,31 +134,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
   }
 
-  // F. Config Fetch
   if (request.action === 'getConfig') {
     handleConfigFetch().then(sendResponse);
     return true;
   }
 
-  // G. Add Video to Cart
+  // UPDATED: Now uses IndexedDB
   if (request.action === 'addToCart') {
     handleAddVideo(sender.tab, request.data).then(sendResponse);
     return true; 
   }
 
-  // H. Clear Cart
+  // UPDATED: Clears both Storage and IDB
   if (request.action === 'clearCart') {
-    chrome.storage.local.remove('piracy_cart', () => sendResponse({success: true}));
+    Promise.all([
+      chrome.storage.local.remove('piracy_cart'),
+      clearImages()
+    ]).then(() => sendResponse({success: true}));
     return true;
   }
 
-  // I. Save URL Manually
   if (request.action === "saveEventUrl") {
     handleUrlSave(request.data);
     return false; 
   }
 
-  // J. Open Panel
   if (request.action === 'openPopup') {
     if (sender.tab && sender.tab.id) {
         chrome.sidePanel.open({ tabId: sender.tab.id });
@@ -178,7 +166,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
   
-  // K. Append Event (From Source Grabber)
   if (request.action === 'appendEventToSheet') {
       const { vertical, eventName, eventUrl } = request.data;
       addNewEventToSheet(vertical, eventName, eventUrl)
@@ -196,6 +183,22 @@ async function playJingle() {
     chrome.runtime.sendMessage({ action: "playSuccessSound" });
 }
 
+// --- NEW: Storage Quicksand Prevention ---
+async function checkStorageQuota(bytesToAdd = 0) {
+  try {
+    const bytesInUse = await chrome.storage.local.getBytesInUse(null);
+    const quota = chrome.storage.local.QUOTA_BYTES || 5242880; // Default 5MB
+    // Safety buffer of 100KB
+    if (bytesInUse + bytesToAdd >= (quota - 102400)) {
+        throw new Error("Storage quota exceeded. Please clear your queue before adding more.");
+    }
+    return true;
+  } catch (e) {
+    console.warn("Quota check failed:", e);
+    return true; // Fail open if API not supported
+  }
+}
+
 async function handleDynamicSearch(data) {
   try {
     const { eventName, vertical } = data;
@@ -209,7 +212,6 @@ async function handleDynamicSearch(data) {
     const eventKey = eventName.toLowerCase();
     const existingEvent = sheetData.eventMap[eventKey];
     
-    // Construct state object
     const eventDetails = {
         vertical: vertical,
         eventName: eventName,
@@ -217,12 +219,9 @@ async function handleDynamicSearch(data) {
         rowIndex: existingEvent ? existingEvent.rowIndex : 'APPEND'
     };
 
-    // Manual Search Mode: Open base URL, user types manually
     const finalUrl = searchBaseUrl; 
-
     const tab = await chrome.tabs.create({ url: finalUrl, active: true });
     
-    // Save state to Session Storage (Persists even if SW sleeps)
     await chrome.storage.session.set({
         activeSearchTabId: tab.id,
         activeEventDetails: eventDetails
@@ -236,41 +235,58 @@ async function handleDynamicSearch(data) {
   }
 }
 
+// --- UPDATED: Save to IDB + Metadata to Storage ---
 async function handleAddVideo(tab, data) {
   try {
-    // Attempt to capture screenshot
+    // 1. Capture Screenshot
     const screenshotPromise = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 50 });
     const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2000));
     const screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
     
+    // 2. Generate Reference ID
+    const screenshotId = crypto.randomUUID();
+
+    // 3. Save heavy image to IndexedDB
+    if (screenshotUrl) {
+        await saveImage(screenshotId, screenshotUrl);
+    }
+
+    // 4. Prepare Lightweight Metadata
+    const newItem = {
+      ...data,
+      screenshotId: screenshotUrl ? screenshotId : null, // Store Ref, NOT Data
+      timestamp: new Date().toISOString()
+    };
+
+    // 5. Check Quota (Quicksand Prevention)
+    // Approximate size of the JSON object
+    const estimatedSize = new Blob([JSON.stringify(newItem)]).size;
+    await checkStorageQuota(estimatedSize);
+
+    // 6. Save to Local Storage
     const storage = await chrome.storage.local.get('piracy_cart');
     let cart = storage.piracy_cart || [];
     
     if (!cart.some(item => item.url === data.url)) {
-      cart.push({
-        ...data,
-        screenshot: screenshotUrl || null,
-        timestamp: new Date().toISOString()
-      });
+      cart.push(newItem);
       await chrome.storage.local.set({ 'piracy_cart': cart });
     }
     return { success: true, count: cart.length };
   } catch (e) {
+    console.error("Add to cart error:", e);
     return { success: false, error: e.message };
   }
 }
 
+// --- UPDATED: Retrieve from IDB for Report ---
 async function handleBatchReport(formData) {
   try {
-    // 1. GET DATA (INCLUDING SAVED NAME)
     const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
     const cart = storage.piracy_cart || [];
     
-    // Use saved name if formData is empty
     const savedName = storage.last_reporter || "Unknown User";
     const finalReporterName = formData.reporterName || savedName;
 
-    // Safety check for empty cart
     if (cart.length === 0 && formData.urls) {
         if (Array.isArray(formData.urls)) {
             formData.urls.forEach(u => cart.push({ url: u, handle: "Manual", views: "N/A" }));
@@ -281,11 +297,9 @@ async function handleBatchReport(formData) {
     const dateStr = new Date().toISOString().split('T')[0];
     const todayFormatted = new Date().toLocaleDateString("en-US");
 
-    // 2. Prepare Folders
     const eventFolderId = await ensureFolderHierarchy(token, formData.eventName, dateStr);
     const screenshotFolderId = await ensureDailyScreenshotFolder(token, dateStr);
 
-    // 3. Group by Handle
     const grouped = {};
     cart.forEach(item => {
       const handle = item.handle || "Unknown";
@@ -303,8 +317,7 @@ async function handleBatchReport(formData) {
       
       const reportId = generateReportId();
 
-      // DETECT PLATFORM DYNAMICALLY
-      let detectedPlatform = "TikTok"; // Default
+      let detectedPlatform = "TikTok"; 
       const sampleUrl = urls[0] || "";
       
       if (sampleUrl.includes('youtube') || sampleUrl.includes('youtu.be')) {
@@ -319,7 +332,6 @@ async function handleBatchReport(formData) {
           detectedPlatform = "Twitch";
       }
 
-      // 4. Generate & Upload PDF
       const pdfData = { 
           eventName: formData.eventName, 
           vertical: formData.vertical, 
@@ -332,11 +344,17 @@ async function handleBatchReport(formData) {
       const pdfName = `${reportId}_@${handle}.pdf`;
       const pdfUpload = await uploadToDrive(token, eventFolderId, pdfName, pdfBlob, 'application/pdf');
 
-      // 5. Upload Screenshots
+      // 5. Upload Screenshots (RESOLVE FROM IDB)
       if (screenshotFolderId) {
         for (const item of items) {
-          if(item.screenshot) {
-            const response = await fetch(item.screenshot);
+          // Resolve Image Data
+          let imgDataUrl = item.screenshot; // Legacy fallback
+          if (item.screenshotId) {
+             imgDataUrl = await getImage(item.screenshotId);
+          }
+
+          if(imgDataUrl) {
+            const response = await fetch(imgDataUrl);
             const blob = await response.blob();
             const imgName = `${formData.eventName}_${reportId}_@${handle}_Evidence.jpg`;
             await uploadToDrive(token, screenshotFolderId, imgName, blob, 'image/jpeg');
@@ -344,34 +362,36 @@ async function handleBatchReport(formData) {
         }
       }
 
-      // 6. Append to Google Sheet (20 Columns)
       const rowValues = [
-          todayFormatted,                 // 1. Date
-          formData.vertical,              // 2. Vertical
-          formData.eventName,             // 3. Event
-          detectedPlatform,               // 4. Platform (Dynamic)
-          "VOD",                          // 5. Type
-          viewString,                     // 6. Views
-          finalReporterName,              // 7. Found By
-          urlString,                      // 8. Link
-          "DMCA takedown request",        // 9. Action
-          "Reported",                     // 10. Status
-          `Evidence: ${pdfUpload.webViewLink}`, // 11. Notes
-          finalReporterName,              // 12. Submitter
-          "",                             // 13. Investigators
-          "",                             // 14. Report #
-          "",                             // 15. Resolutions
-          "",                             // 16. Flo Email
-          "",                             // 17. Name on Account
-          "",                             // 18. Canceled
-          "",                             // 19. Slack ID
-          reportId                        // 20. Report ID
+          todayFormatted,                 
+          formData.vertical,              
+          formData.eventName,             
+          detectedPlatform,               
+          "VOD",                          
+          viewString,                     
+          finalReporterName,              
+          urlString,                      
+          "DMCA takedown request",        
+          "Reported",                     
+          `Evidence: ${pdfUpload.webViewLink}`, 
+          finalReporterName,              
+          "",                             
+          "",                             
+          "",                             
+          "",                             
+          "",                             
+          "",                             
+          "",                             
+          reportId                        
       ];
 
       await appendToSheet(token, { values: rowValues });
     }
 
+    // CLEANUP: Clear both storage and IDB
     await chrome.storage.local.remove('piracy_cart');
+    await clearImages();
+    
     return { success: true };
 
   } catch (e) {
@@ -391,9 +411,7 @@ async function handleConfigFetch() {
 
 async function handleUrlSave(data) {
   try {
-    // DESTUCTURE 'platform' from the data object
     const { vertical, eventName, url, platform } = data; 
-    
     console.log(`💾 Saving ${platform || 'unknown'} URL for ${eventName}...`);
 
     const sheetData = await getEventData(vertical);
@@ -401,11 +419,9 @@ async function handleUrlSave(data) {
     const eventInfo = sheetData.eventMap[eventKey];
 
     if (eventInfo && eventInfo.rowIndex) {
-      // Pass platform to update specific column (e.g. 'youtube' -> Col D)
       await updateEventUrl(vertical, eventInfo.rowIndex, url, platform);
     } else {
       console.warn("⚠️ New event. Adding row.");
-      // Pass platform to create row with URL in correct column
       await addNewEventToSheet(vertical, eventName, url, platform);
     }
   } catch (err) {
