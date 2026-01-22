@@ -7,6 +7,10 @@ const ALLOWED_EMAIL = "social@flosports.tv";
 async function verifyAccessBeforeAction() {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
+    if (chrome.runtime.lastError) {
+        console.error("Runtime error:", chrome.runtime.lastError);
+        return false;
+    }
     const currentEmail = response && response.email ? response.email.toLowerCase().trim() : "";
     
     if (currentEmail !== ALLOWED_EMAIL) {
@@ -35,7 +39,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Load Config & Init
   try {
     // Check Auth first
-    const emailRes = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
+    const emailRes = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' }).catch(err => null);
+    
+    if (!emailRes && chrome.runtime.lastError) {
+        if (loadingEl) {
+            loadingEl.innerHTML = "⚠️ <strong>Extension Context Invalidated</strong><br>Please close and reopen this side panel.";
+            loadingEl.style.color = "red";
+        }
+        return;
+    }
+
     const currentEmail = emailRes && emailRes.email ? emailRes.email.toLowerCase().trim() : "";
     
     if (currentEmail !== ALLOWED_EMAIL) {
@@ -112,31 +125,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           startBtn.innerText = "Submitting...";
 
           // Construct Payload
-          // Note: 'urls' is usually for the *infringing* urls. 
-          // If this sidepanel is for reporting the PAGE YOU ARE ON as infringing:
           let urlsToReport = [];
           
-          // Strategy: Get current tab URL as the infringing URL?
-          // Or is 'sourceUrlDisplay' the infringing one?
-          // Usually 'Source URL' implies the legitimate source.
-          // But the context of "Pirate Reporter" sidepanel often implies "Report THIS page".
-          
-          // Let's assume the user wants to report the current tab or cart items.
-          // BUT, `logToSheet` in background expects `formData.urls` to be an array of strings.
-          
-          // Fallback: If cart is empty, use current tab? 
-          // Actually, let's grab the cart from storage first.
           const storage = await chrome.storage.local.get('piracy_cart');
           const cart = storage.piracy_cart || [];
           
           if (cart.length > 0) {
-              // Report cart
               urlsToReport = cart.map(i => i.url);
           } else {
-              // If cart empty, check if user input a "Source URL" (Infringing?)
-              // The label says "Source URL", usually implying "Where it was stolen FROM".
-              // Let's assume for now this panel triggers the batch report of the cart.
-              // If cart is empty, we alert.
               alert("Queue is empty. Use the 'Add' buttons on video pages first.");
               startBtn.disabled = false;
               startBtn.innerText = "Start Report";
@@ -154,6 +150,11 @@ document.addEventListener('DOMContentLoaded', async () => {
               startBtn.disabled = false;
               startBtn.innerText = "Start Report";
               
+              if (chrome.runtime.lastError) {
+                  alert("Communication Error: " + chrome.runtime.lastError.message);
+                  return;
+              }
+
               if (res && res.success) {
                   alert("✅ Report Logged Successfully!");
                   // clear form?
@@ -181,6 +182,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           closerBtn.disabled = true;
           
           chrome.runtime.sendMessage({ action: 'triggerCloser' }, (res) => {
+              if (chrome.runtime.lastError) {
+                  closerBtn.innerText = "Error (Reload Panel)";
+                  return;
+              }
+
               if (res && res.success) {
                   closerBtn.innerText = "Check Started";
               } else {
