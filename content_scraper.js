@@ -267,62 +267,82 @@ function handleAddToQueue(btnAdd) {
     btnAdd.disabled = true;
     btnAdd.style.backgroundColor = "#ff9800"; 
 
-    chrome.runtime.sendMessage({ 
-        action: 'checkWhitelist', 
-        platform: data.platform, 
-        handle: data.handle 
-    }, (response) => {
-        if (chrome.runtime.lastError) {
-            console.warn("Whitelist check warning:", chrome.runtime.lastError);
-            saveItem(data, originalText, btnAdd);
-            return;
-        }
+    try {
+        chrome.runtime.sendMessage({ 
+            action: 'checkWhitelist', 
+            platform: data.platform, 
+            handle: data.handle 
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                // If message fails, we fall back to just saving (or alerting)
+                console.warn("Whitelist check warning/fail:", chrome.runtime.lastError);
+                // Assume safe if check fails? Or handle invalidation.
+                if (chrome.runtime.lastError.message.includes("Extension context invalidated")) {
+                    handleContextInvalidated();
+                    return;
+                }
+                saveItem(data, originalText, btnAdd);
+                return;
+            }
 
-        if (response && response.authorized) {
-            alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
-            btnAdd.innerText = "Whitelisted";
-            btnAdd.style.backgroundColor = "#666"; 
-            
-            setTimeout(() => {
-                btnAdd.innerText = "+ Add";
-                btnAdd.disabled = false;
-                btnAdd.style.backgroundColor = "#ce0e2d"; 
-            }, 2000);
-        } else {
-            saveItem(data, originalText, btnAdd);
-        }
-    });
+            if (response && response.authorized) {
+                alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
+                btnAdd.innerText = "Whitelisted";
+                btnAdd.style.backgroundColor = "#666"; 
+                
+                setTimeout(() => {
+                    btnAdd.innerText = "+ Add";
+                    btnAdd.disabled = false;
+                    btnAdd.style.backgroundColor = "#ce0e2d"; 
+                }, 2000);
+            } else {
+                saveItem(data, originalText, btnAdd);
+            }
+        });
+    } catch (e) {
+        console.error("PIRATE AI: Message Sending Error", e);
+        handleContextInvalidated();
+    }
 }
 
 function saveItem(data, originalText, btnAdd) {
     btnAdd.innerText = "Saving...";
-    chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
-        if (chrome.runtime.lastError) { 
-            handleContextInvalidated(); 
-            return; 
-        }
-        if (res && res.success) {
-            btnAdd.innerText = "Saved!"; 
-            btnAdd.style.backgroundColor = "#4CAF50";
-            setTimeout(() => { 
-                btnAdd.innerText = "+ Add"; 
-                btnAdd.disabled = false; 
-                btnAdd.style.backgroundColor = "#ce0e2d";
-            }, 1500);
-        } else {
-            btnAdd.innerText = "Error";
-            setTimeout(() => { 
-                btnAdd.innerText = "+ Add"; 
-                btnAdd.disabled = false; 
-            }, 1500);
-        }
-    });
+    
+    try {
+        chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
+            if (chrome.runtime.lastError) { 
+                console.error("Save error:", chrome.runtime.lastError);
+                handleContextInvalidated(); 
+                return; 
+            }
+            if (res && res.success) {
+                btnAdd.innerText = "Saved!"; 
+                btnAdd.style.backgroundColor = "#4CAF50";
+                setTimeout(() => { 
+                    btnAdd.innerText = "+ Add"; 
+                    btnAdd.disabled = false; 
+                    btnAdd.style.backgroundColor = "#ce0e2d";
+                }, 1500);
+            } else {
+                btnAdd.innerText = "Error";
+                console.error("Save Response Error:", res);
+                setTimeout(() => { 
+                    btnAdd.innerText = "+ Add"; 
+                    btnAdd.disabled = false; 
+                    btnAdd.style.backgroundColor = "#ce0e2d";
+                }, 1500);
+            }
+        });
+    } catch(e) {
+        handleContextInvalidated();
+    }
 }
 
 async function initOverlay() {
   if (document.getElementById('flo-overlay')) return;
   if (!isExtensionValid()) {
-      handleContextInvalidated(); 
+      // Don't show invalidation error immediately on load, only on action
+      // handleContextInvalidated(); 
       return;
   }
 
