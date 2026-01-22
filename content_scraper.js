@@ -6,7 +6,7 @@ let currentCount = 0;
 let SELECTORS = {
   tiktok: {
     views: '[data-e2e="video-views"]',
-    // Matches @user/video/123 OR @user/photo/123
+    // We will use logic, not just this regex string, but keep it for reference
     url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)"
   },
   youtube: {
@@ -26,6 +26,7 @@ let SELECTORS = {
     if (response && response.success && response.config && response.config.platform_selectors) {
       console.log("✅ PIRATE AI: Remote Selectors Loaded");
       const remote = response.config.platform_selectors;
+      // We still load them, but our scraper logic below will be smarter about using them
       if (remote.tiktok && remote.tiktok.scraper) SELECTORS.tiktok = { ...SELECTORS.tiktok, ...remote.tiktok.scraper };
       if (remote.youtube && remote.youtube.scraper) SELECTORS.youtube = { ...SELECTORS.youtube, ...remote.youtube.scraper };
       if (remote.instagram && remote.instagram.scraper) SELECTORS.instagram = { ...SELECTORS.instagram, ...remote.instagram.scraper };
@@ -66,45 +67,40 @@ function scrapePageStrategy() {
 
   // --- TIKTOK ---
   if (host.includes('tiktok.com')) {
-    let match = null;
     let handle = "Unknown";
+    let matched = false;
 
-    // 1. Try Configured/Default Regex
-    try {
-        const pattern = SELECTORS.tiktok.url_match;
-        const regex = new RegExp(pattern);
-        match = url.match(regex);
-        if (match) {
-             // Supports both capturing group styles
-             handle = match[1] || match[3] || "Unknown";
-        }
-    } catch(e) {
-        console.error("PIRATE AI: Regex error:", e);
-    }
+    // 1. Try Simple "Video" Regex (Hardcoded Fallback - Most Robust)
+    // Matches: tiktok.com/@USER/video/ID
+    const videoRegex = /@([^/?]+)\/video\/(\d+)/;
+    const photoRegex = /@([^/?]+)\/photo\/(\d+)/;
 
-    // 2. Emergency Fallback (If config regex failed)
-    if (!match) {
-        console.warn("PIRATE AI: Primary match failed. Trying Emergency Regex...");
-        // Simple regex: looks for /video/12345
-        const emergencyRegex = /\/(?:video|photo)\/(\d+)/;
-        const simpleMatch = url.match(emergencyRegex);
-        
-        if (simpleMatch) {
-            console.log("✅ PIRATE AI: Emergency match successful.");
-            // Extract handle manually from URL structure: tiktok.com/@HANDLE/video/...
-            const parts = url.split('@');
-            if (parts.length > 1) {
-                handle = parts[1].split('/')[0];
+    let match = url.match(videoRegex) || url.match(photoRegex);
+
+    if (match) {
+        handle = match[1];
+        matched = true;
+    } else {
+        // 2. Try the Configured Regex (from JSON or default variable)
+        try {
+            const pattern = SELECTORS.tiktok.url_match;
+            const customRegex = new RegExp(pattern);
+            const customMatch = url.match(customRegex);
+            if (customMatch) {
+                // Support capturing group variations (1 or 3 depending on logic)
+                handle = customMatch[1] || customMatch[3] || "Unknown";
+                matched = true;
             }
-            match = simpleMatch; // Mark as successful
+        } catch(e) {
+            console.warn("PIRATE AI: Custom regex failed:", e);
         }
     }
 
-    if (!match) {
-        // Only log error if not on homepage
-        if (!url.includes("tiktok.com") || url.length > 30) {
-             console.error(`PIRATE AI: NO MATCH found for URL: ${url}`);
-        }
+    if (!matched) {
+        // Silent return for homepage to avoid spamming errors on non-video pages
+        if (url === "https://www.tiktok.com/" || url === "https://www.tiktok.com") return null;
+        
+        console.warn("PIRATE AI: No valid video ID found in URL.");
         return null; 
     }
 
@@ -125,6 +121,7 @@ function scrapePageStrategy() {
     const params = new URLSearchParams(window.location.search);
     const videoId = params.get('v');
     
+    // Support Standard, Shorts, and Live
     if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) {
         return null;
     }
@@ -150,6 +147,7 @@ function scrapePageStrategy() {
         views = shortViewSelector.innerText;
     }
 
+    // Parse ID for screenshot
     let targetId = videoId;
     if (!targetId && url.includes('/shorts/')) targetId = url.split('/shorts/')[1];
     if (!targetId && url.includes('/live/')) targetId = url.split('/live/')[1];
@@ -282,7 +280,6 @@ function handleAddToQueue(btnAdd) {
             handle: data.handle 
         }, (response) => {
             if (chrome.runtime.lastError) {
-                // If message fails, just save it. Whitelist check is non-blocking on error.
                 console.warn("Whitelist check warning/fail:", chrome.runtime.lastError);
                 if (chrome.runtime.lastError.message && chrome.runtime.lastError.message.includes("context invalidated")) {
                     handleContextInvalidated();
