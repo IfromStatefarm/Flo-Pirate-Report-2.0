@@ -73,6 +73,8 @@ async function runSheetScanner() {
         
         if (urls.length === 0) continue;
 
+        console.log(`Checking Row ${i+1}: ${urls.length} URLs found.`);
+
         let allDown = true;
         for (const url of urls) {
             let platform = 'unknown';
@@ -80,10 +82,20 @@ async function runSheetScanner() {
             else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
             else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
 
-            const isDown = await verifyTakedown(url, platform); 
-            if (!isDown) {
-                allDown = false;
+            try {
+                const isDown = await verifyTakedown(url, platform); 
+                if (!isDown) {
+                    allDown = false;
+                    console.log(`  - URL Active: ${url}`);
+                    // Optimization: We could break here if we only care if *any* link is active
+                    // but sometimes checking all is useful for logging. 
+                    break; 
+                }
+            } catch (err) {
+                console.warn(`  - Error verifying ${url}:`, err);
+                allDown = false; // Assume active on error
             }
+            
             // Rate limit to be nice
             await new Promise(r => setTimeout(r, 500)); 
         }
