@@ -33,7 +33,8 @@ let SELECTORS = {
       if (remote.instagram && remote.instagram.scraper) SELECTORS.instagram = { ...SELECTORS.instagram, ...remote.instagram.scraper };
     }
   } catch (e) {
-    console.warn("⚠️ PIRATE AI: Failed to load remote selectors, using defaults.", e);
+    // Suppress heavy logging for simple config fetch failures (common in dev)
+    // console.warn("⚠️ PIRATE AI: Failed to load remote selectors, using defaults.", e);
   }
 })();
 
@@ -64,6 +65,8 @@ function scrapePageStrategy() {
   const timestamp = new Date().toISOString();
   let views = "N/A"; 
 
+  console.log("PIRATE AI: Attempting scrape on", host, url);
+
   // --- TIKTOK ---
   if (host.includes('tiktok.com')) {
     const pattern = SELECTORS.tiktok.url_match;
@@ -78,8 +81,14 @@ function scrapePageStrategy() {
     }
 
     if (!match) {
-        console.log(`PIRATE AI: No match found for URL: ${url}`);
-        console.log(`PIRATE AI: Using Pattern: ${pattern}`);
+        // If the URL is just "https://www.tiktok.com/", don't log a warning, it's just the homepage.
+        if (url === "https://www.tiktok.com/" || url === "https://www.tiktok.com") {
+             console.log("PIRATE AI: Currently on homepage, no video detected.");
+             return null;
+        }
+        
+        console.warn(`PIRATE AI: URL failed to match TikTok pattern: ${pattern}`);
+        console.warn(`PIRATE AI: Actual URL seen: ${url}`);
         return null; 
     }
 
@@ -225,6 +234,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (data) {
         sendResponse({ success: true, item: data });
     } else {
+        // Send a specific error back if possible, otherwise UI handles the fail
         sendResponse({ success: false, error: "Not a valid content page." });
     }
   }
