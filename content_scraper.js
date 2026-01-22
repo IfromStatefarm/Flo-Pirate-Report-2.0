@@ -3,10 +3,12 @@
 let currentCount = 0;
 
 // DEFAULT SELECTORS (Robust Fallbacks)
+// Note: In JS string, we use \\d to mean "digit". In JSON we need \\\\d.
 let SELECTORS = {
   tiktok: {
     views: '[data-e2e="video-views"]',
-    // We will use logic, not just this regex string, but keep it for reference
+    // Matches @user/video/123 OR @user/photo/123
+    // Using non-capturing group (?:...) so match[1] is always the handle
     url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)"
   },
   youtube: {
@@ -26,7 +28,6 @@ let SELECTORS = {
     if (response && response.success && response.config && response.config.platform_selectors) {
       console.log("✅ PIRATE AI: Remote Selectors Loaded");
       const remote = response.config.platform_selectors;
-      // We still load them, but our scraper logic below will be smarter about using them
       if (remote.tiktok && remote.tiktok.scraper) SELECTORS.tiktok = { ...SELECTORS.tiktok, ...remote.tiktok.scraper };
       if (remote.youtube && remote.youtube.scraper) SELECTORS.youtube = { ...SELECTORS.youtube, ...remote.youtube.scraper };
       if (remote.instagram && remote.instagram.scraper) SELECTORS.instagram = { ...SELECTORS.instagram, ...remote.instagram.scraper };
@@ -106,6 +107,9 @@ function scrapePageStrategy() {
 
     const viewEl = document.querySelector(SELECTORS.tiktok.views);
     if (viewEl) views = viewEl.innerText;
+
+    // Confirm success in logs
+    console.log(`PIRATE AI: Scrape Success! Handle: ${handle}`);
 
     return { 
       platform: "TikTok", 
@@ -273,12 +277,26 @@ function handleAddToQueue(btnAdd) {
     btnAdd.disabled = true;
     btnAdd.style.backgroundColor = "#ff9800"; 
 
+    // --- TIMEOUT PROTECTION ---
+    // If the background script doesn't respond in 4 seconds, we assume it's OK to save.
+    let responseReceived = false;
+    
+    const safetyTimeout = setTimeout(() => {
+        if (!responseReceived) {
+            console.warn("PIRATE AI: Whitelist check timed out. Forcing save.");
+            saveItem(data, originalText, btnAdd);
+        }
+    }, 4000);
+
     try {
         chrome.runtime.sendMessage({ 
             action: 'checkWhitelist', 
             platform: data.platform, 
             handle: data.handle 
         }, (response) => {
+            responseReceived = true;
+            clearTimeout(safetyTimeout);
+
             if (chrome.runtime.lastError) {
                 console.warn("Whitelist check warning/fail:", chrome.runtime.lastError);
                 if (chrome.runtime.lastError.message && chrome.runtime.lastError.message.includes("context invalidated")) {
@@ -304,6 +322,8 @@ function handleAddToQueue(btnAdd) {
             }
         });
     } catch (e) {
+        responseReceived = true;
+        clearTimeout(safetyTimeout);
         console.error("PIRATE AI: Message Sending Error", e);
         handleContextInvalidated();
     }
