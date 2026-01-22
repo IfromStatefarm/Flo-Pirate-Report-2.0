@@ -77,27 +77,6 @@
     <button id="testCloserBtn" class="btn" style="background-color: #555; margin-top: 10px; font-size: 11px; padding: 8px;">Run "The Closer" (Check Status)</button>
   </div>
 
-  <script>
-    // This script catches errors if the extension was reloaded (invalidated context)
-    // or if the module fails to load.
-    window.addEventListener('error', function(e) {
-      if (e.message && (
-          e.message.includes('Extension context invalidated') || 
-          e.message.includes('BLOCKED_BY_CLIENT') ||
-          (e.target && e.target.src && e.target.src.includes('sidepanel.js'))
-      )) {
-         const loading = document.getElementById('loading');
-         if (loading) {
-           loading.innerHTML = "⚠️ <strong>Extension Reloaded</strong><br>Please close and reopen this panel.";
-           loading.style.color = "#ce0e2d";
-           loading.style.border = "1px solid #ce0e2d";
-           loading.style.padding = "10px";
-           loading.style.background = "#fff0f0";
-           loading.style.borderRadius = "4px";
-         }
-      }
-    }, true);
-  </script>
   <script src="sidepanel.js" type="module"></script>
 </body>
 </html>
