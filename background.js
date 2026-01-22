@@ -211,6 +211,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'checkUserIdentity') {
     getUserEmail().then(email => {
       sendResponse({ email: email });
+    }).catch(err => {
+      console.error("Auth check failed:", err);
+      sendResponse({ error: err.message });
     });
     return true; 
   }
@@ -265,12 +268,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
         }
     });
+    // This action doesn't strictly need a response to the sender if it's fire-and-forget, but returning true is safe.
+    sendResponse({ received: true });
     return true;
   }
 
   if (request.action === 'botSearchFailed') {
     chrome.runtime.sendMessage({ action: 'botSearchFailed', error: request.reason });
     chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
+    sendResponse({ received: true });
     return true;
   }
 
@@ -308,7 +314,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     Promise.all([
       chrome.storage.local.remove('piracy_cart'),
       clearImages()
-    ]).then(() => sendResponse({success: true}));
+    ]).then(() => sendResponse({success: true}))
+      .catch(err => sendResponse({ success: false, error: err.message }));
     return true;
   }
 
@@ -339,6 +346,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       return true;
   }
+  
+  // Default response for unhandled messages to close the channel cleanly
+  // sendResponse({ success: false, error: "Unknown action" }); 
+  // Returning false allows the channel to close immediately if not handled asynchronously.
+  // But since we are inside an async listener pattern, explicit return true is often safer if we might respond.
+  // Ideally, handle all known cases.
 });
 
 // ==========================================
@@ -346,7 +359,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // ==========================================
 
 async function playJingle() {
-    chrome.runtime.sendMessage({ action: "playSuccessSound" });
+    try {
+        chrome.runtime.sendMessage({ action: "playSuccessSound" });
+    } catch(e) {
+        // Ignore if no listeners
+    }
 }
 
 async function checkStorageQuota(bytesToAdd = 0) {
