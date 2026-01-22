@@ -30,7 +30,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {
-    runTheCloser();
+    runTheCloser(); // Standard run (respects time limits)
   }
 });
 
@@ -45,8 +45,8 @@ function generateReportId() {
 // 1. THE CLOSER (Automated Verification)
 // ==========================================
 
-async function runTheCloser() {
-  console.log("🕵️ 'The Closer' is running...");
+async function runTheCloser(force = false) {
+  console.log(`🕵️ 'The Closer' started. (Force Mode: ${force})`);
   
   // 1. Get Tracking Queue
   const data = await chrome.storage.local.get('tracking_queue');
@@ -64,51 +64,57 @@ async function runTheCloser() {
   let changesMade = false;
 
   for (const item of queue) {
-    // A. Check Age
-    const age = now - item.timestamp;
-    
-    // If it's verified as taken down, we don't keep it.
-    // If it's older than 7 days, we give up and drop it.
-    if (age > SEVEN_DAYS_MS) {
-        console.log(`🗑️ Dropping old item: ${item.reportId}`);
-        changesMade = true;
-        continue; 
-    }
-
-    // B. If older than 24 hours (or if checks < 1 for testing), verify
-    if (age > ONE_DAY_MS) {
-        console.log(`🔍 Verifying: ${item.platform} - ${item.reportId}`);
+    try {
+        // A. Check Age
+        const age = now - item.timestamp;
         
-        // We verify ALL URLs in the batch. If all represent missing content, we mark taken down.
-        let allDown = true;
-        for (const url of item.urls) {
-            const isDown = await verifyTakedown(url, item.platform);
-            if (!isDown) {
-                allDown = false;
-                break; // One active link means the report isn't fully "Closed"
-            }
+        // If it's verified as taken down, we don't keep it.
+        // If it's older than 7 days, we give up and drop it.
+        if (age > SEVEN_DAYS_MS) {
+            console.log(`🗑️ Dropping old item: ${item.reportId}`);
+            changesMade = true;
+            continue; 
         }
 
-        if (allDown) {
-            // Update Sheet
-            const success = await updateReportStatus(item.reportId, "Taken Down");
-            if (success) {
-                console.log(`✅ Closed Report: ${item.reportId}`);
-                changesMade = true;
-                continue; // Remove from queue
+        // B. If older than 24 hours OR force is true (manual test)
+        if (force || age > ONE_DAY_MS) {
+            console.log(`🔍 Verifying: ${item.platform} - ${item.reportId} (${item.urls.length} links)`);
+            
+            // We verify ALL URLs in the batch. If all represent missing content, we mark taken down.
+            let allDown = true;
+            for (const url of item.urls) {
+                const isDown = await verifyTakedown(url, item.platform);
+                if (!isDown) {
+                    allDown = false;
+                    console.log(`   👉 Active Link Found: ${url}`);
+                    break; // One active link means the report isn't fully "Closed"
+                }
+            }
+
+            if (allDown) {
+                // Update Sheet
+                // NOTE: updateReportStatus now handles the strikethrough formatting in google_api.js
+                const success = await updateReportStatus(item.reportId, "Taken Down");
+                if (success) {
+                    console.log(`✅ Closed Report: ${item.reportId} (Status Updated & Struck Through)`);
+                    changesMade = true;
+                    continue; // Remove from queue
+                } else {
+                    console.warn(`⚠️ Verification successful but Sheet update failed for ${item.reportId}`);
+                    updatedQueue.push(item); 
+                }
             } else {
-                console.warn(`⚠️ Verification successful but Sheet update failed for ${item.reportId}`);
-                // Keep in queue to retry sheet update later? Or assume it's stuck. 
-                // We'll keep it for now.
-                updatedQueue.push(item); 
+                console.log(`❌ Still Active: ${item.reportId}`);
+                updatedQueue.push(item);
             }
         } else {
-            console.log(`❌ Still Active: ${item.reportId}`);
+            // Too new, keep waiting
+            // console.log(`⏳ Skipping ${item.reportId} (Too new)`);
             updatedQueue.push(item);
         }
-    } else {
-        // Too new, keep waiting
-        updatedQueue.push(item);
+    } catch (err) {
+        console.error(`Error processing item ${item.reportId}:`, err);
+        updatedQueue.push(item); // Keep item in queue if error occurs
     }
   }
 
@@ -134,8 +140,6 @@ async function verifyTakedown(url, platform) {
         }
         else {
             // Fallback for others: Assume active if we can't check
-            // Or try a basic fetch? Basic fetch often fails due to auth.
-            // We'll return false (Active) to be safe.
             return false; 
         }
 
@@ -146,12 +150,7 @@ async function verifyTakedown(url, platform) {
             return true; 
         }
         
-        // If 200 OK, verify the title isn't "Video Unavailable" (YouTube sometimes does this even with oEmbed?)
-        // Usually oEmbed returns 404 for deleted videos.
-        // For standard fetch: YouTube returns 200 even for deleted videos.
-        // But oEmbed endpoint is API-like and standard compliant.
-        
-        return false; // Still exists
+        return false; // Still exists (200 OK)
 
     } catch (e) {
         console.error("Verification Fetch Error:", e);
@@ -209,14 +208,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "checkWhitelist") {
-    console.log(`🛡️ Whitelist Check - Platform: ${request.platform}, Handle: ${request.handle}`);
     checkIfAuthorized(request.platform, request.handle)
       .then(isAuthorized => {
-        console.log(`🛡️ Result: ${isAuthorized ? "BLOCKED (Authorized)" : "ALLOWED"}`);
         sendResponse({ authorized: isAuthorized });
       })
       .catch(err => {
-        console.error("🛡️ Whitelist Check Error:", err);
         sendResponse({ error: err.message });
       });
     return true; 
@@ -241,24 +237,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         if (activeEventDetails) {
           const { vertical, rowIndex, originalName } = activeEventDetails;
-          console.log("🤖 Bot found URL:", request.url);
-
           if (rowIndex === 'APPEND') {
             addNewEventToSheet(vertical, originalName, request.url);
           } else {
             updateEventUrl(vertical, rowIndex, request.url);
           }
-          
           if (activeSearchTabId) {
             chrome.tabs.remove(activeSearchTabId).catch(() => {});
           }
-
           chrome.runtime.sendMessage({ 
             action: 'urlFound', 
             url: request.url,
             source: 'Automated Search' 
           });
-
           chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
         }
     });
@@ -266,11 +257,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'botSearchFailed') {
-    console.warn("🤖 Bot failed to find URL.");
-    chrome.runtime.sendMessage({ 
-        action: 'botSearchFailed', 
-        error: request.reason
-    });
+    chrome.runtime.sendMessage({ action: 'botSearchFailed', error: request.reason });
     chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
     return true;
   }
@@ -319,9 +306,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'appendEventToSheet') {
       const { vertical, eventName, eventUrl } = request.data;
       addNewEventToSheet(vertical, eventName, eventUrl)
-        .then(() => console.log("✅ Event Auto-Saved to Sheet"))
         .catch(err => console.error("❌ Failed to save event:", err));
       return false;
+  }
+
+  if (request.action === 'triggerCloser') {
+      // Pass FORCE=TRUE to bypass the 24 hour check
+      runTheCloser(true).then(() => sendResponse({ success: true }));
+      return true;
   }
 });
 
@@ -342,7 +334,6 @@ async function checkStorageQuota(bytesToAdd = 0) {
     }
     return true;
   } catch (e) {
-    console.warn("Quota check failed:", e);
     return true; 
   }
 }
@@ -378,7 +369,6 @@ async function handleDynamicSearch(data) {
     return { success: true, status: "tab_opened" };
 
   } catch (e) {
-    console.error(e);
     return { success: false, error: e.message };
   }
 }
@@ -413,7 +403,6 @@ async function handleAddVideo(tab, data) {
     }
     return { success: true, count: cart.length };
   } catch (e) {
-    console.error("Add to cart error:", e);
     return { success: false, error: e.message };
   }
 }
@@ -561,7 +550,6 @@ async function handleUrlSave(data) {
     if (eventInfo && eventInfo.rowIndex) {
       await updateEventUrl(vertical, eventInfo.rowIndex, url, platform);
     } else {
-      console.warn("⚠️ New event. Adding row.");
       await addNewEventToSheet(vertical, eventName, url, platform);
     }
   } catch (err) {
