@@ -83,11 +83,18 @@ async function runTheCloser(force = false) {
             // We verify ALL URLs in the batch. If all represent missing content, we mark taken down.
             let allDown = true;
             for (const url of item.urls) {
-                const isDown = await verifyTakedown(url, item.platform);
-                if (!isDown) {
+                // Wrap verification in try/catch to ensure one bad URL doesn't crash the loop
+                try {
+                    const isDown = await verifyTakedown(url, item.platform);
+                    if (!isDown) {
+                        allDown = false;
+                        console.log(`   👉 Active Link Found: ${url}`);
+                        break; // One active link means the report isn't fully "Closed"
+                    }
+                } catch (vErr) {
+                    console.error(`   ❌ Verification Error for ${url}:`, vErr);
                     allDown = false;
-                    console.log(`   👉 Active Link Found: ${url}`);
-                    break; // One active link means the report isn't fully "Closed"
+                    break;
                 }
             }
 
@@ -101,6 +108,7 @@ async function runTheCloser(force = false) {
                     continue; // Remove from queue
                 } else {
                     console.warn(`⚠️ Verification successful but Sheet update failed for ${item.reportId}`);
+                    // Keep in queue to retry sheet update later
                     updatedQueue.push(item); 
                 }
             } else {
@@ -114,7 +122,7 @@ async function runTheCloser(force = false) {
         }
     } catch (err) {
         console.error(`Error processing item ${item.reportId}:`, err);
-        updatedQueue.push(item); // Keep item in queue if error occurs
+        updatedQueue.push(item); // Keep item in queue if error occurs to avoid data loss
     }
   }
 
@@ -213,6 +221,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ authorized: isAuthorized });
       })
       .catch(err => {
+        console.error("Whitelist check failed:", err);
         sendResponse({ error: err.message });
       });
     return true; 
@@ -226,6 +235,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getVerticalData') {
     getEventData(request.vertical).then(data => {
       sendResponse({ success: true, data: data });
+    }).catch(err => {
+      console.error("getVerticalData failed:", err);
+      sendResponse({ success: false, error: err.message });
     });
     return true; 
   }
@@ -269,17 +281,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
              playJingle();
              chrome.runtime.sendMessage({ action: "playSuccessSound" }); 
           }
+      }).catch(err => {
+          console.error("logToSheet failed:", err);
+          sendResponse({ success: false, error: err.message });
       });
       return true;
   }
 
   if (request.action === 'getConfig') {
-    handleConfigFetch().then(sendResponse);
+    handleConfigFetch().then(sendResponse).catch(err => {
+        console.error("getConfig failed:", err);
+        sendResponse({ success: false, error: err.message });
+    });
     return true;
   }
 
   if (request.action === 'addToCart') {
-    handleAddVideo(sender.tab, request.data).then(sendResponse);
+    handleAddVideo(sender.tab, request.data).then(sendResponse).catch(err => {
+        console.error("addToCart failed:", err);
+        sendResponse({ success: false, error: err.message });
+    });
     return true; 
   }
 
@@ -312,7 +333,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'triggerCloser') {
       // Pass FORCE=TRUE to bypass the 24 hour check
-      runTheCloser(true).then(() => sendResponse({ success: true }));
+      runTheCloser(true).then(() => sendResponse({ success: true })).catch(err => {
+          console.error("Closer trigger failed:", err);
+          sendResponse({ success: false, error: err.message });
+      });
       return true;
   }
 });
