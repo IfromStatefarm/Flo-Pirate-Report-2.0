@@ -1,6 +1,38 @@
-// content_scraper.js (Formerly content_tiktok.js)
+// content_scraper.js
 
 let currentCount = 0;
+// DEFAULT SELECTORS (Fallbacks)
+let SELECTORS = {
+  tiktok: {
+    views: '[data-e2e="video-views"]',
+    url_match: "@([^/]+)\\/video\\/(\\d+)"
+  },
+  youtube: {
+    channel_link: '#channel-name a',
+    views_std: 'span.view-count',
+    views_shorts: 'span[role="text"][aria-label*="views"]'
+  },
+  instagram: {
+    handle: 'header a'
+  }
+};
+
+// --- CONFIG LOADER ---
+(async function loadConfig() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
+    if (response && response.success && response.config && response.config.platform_selectors) {
+      console.log("✅ Remote Selectors Loaded");
+      // Merge remote selectors over defaults
+      const remote = response.config.platform_selectors;
+      if (remote.tiktok && remote.tiktok.scraper) SELECTORS.tiktok = { ...SELECTORS.tiktok, ...remote.tiktok.scraper };
+      if (remote.youtube && remote.youtube.scraper) SELECTORS.youtube = { ...SELECTORS.youtube, ...remote.youtube.scraper };
+      if (remote.instagram && remote.instagram.scraper) SELECTORS.instagram = { ...SELECTORS.instagram, ...remote.instagram.scraper };
+    }
+  } catch (e) {
+    console.warn("⚠️ Failed to load remote selectors, using defaults.", e);
+  }
+})();
 
 function isExtensionValid() {
   try { return !!chrome.runtime && !!chrome.runtime.id; } 
@@ -13,7 +45,6 @@ function handleContextInvalidated() {
     overlay.innerHTML = `<div style="padding:15px; color:#666;">⚠️ Extension Updated<br><button style="margin-top:5px; padding:5px;" onclick="location.reload()">Refresh Page</button></div>`;
     overlay.style.border = "2px solid red";
   } else {
-    // If overlay doesn't exist yet, create a simple error banner
     const errDiv = document.createElement('div');
     errDiv.style.cssText = "position: fixed; top: 150px; right: 20px; z-index: 2147483647; background: white; border: 2px solid red; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif;";
     errDiv.innerHTML = `⚠️ Extension Context Invalidated.<br><button style="margin-top:5px; padding:5px; cursor:pointer;" onclick="location.reload()">Refresh Page</button>`;
@@ -22,20 +53,22 @@ function handleContextInvalidated() {
 }
 
 // ==========================================
-// 1. THE STRATEGY SCRAPER (7 PLATFORMS)
+// 1. THE STRATEGY SCRAPER
 // ==========================================
 function scrapePageStrategy() {
   const host = window.location.hostname;
   const url = window.location.href;
   const timestamp = new Date().toISOString();
-  let views = "N/A"; // Defined globally for all platforms
+  let views = "N/A"; 
 
   // --- TIKTOK ---
   if (host.includes('tiktok.com')) {
-    const match = url.match(/@([^/]+)\/video\/(\d+)/);
-    if (!match) return null; // Not a video page
+    // Use dynamic regex if available, else fallback
+    const regex = new RegExp(SELECTORS.tiktok.url_match);
+    const match = url.match(regex);
+    if (!match) return null; 
 
-    const viewEl = document.querySelector('[data-e2e="video-views"]');
+    const viewEl = document.querySelector(SELECTORS.tiktok.views);
     if (viewEl) views = viewEl.innerText;
 
     return { 
@@ -53,8 +86,7 @@ function scrapePageStrategy() {
     const videoId = params.get('v');
     if (!videoId && !url.includes('/shorts/')) return null;
 
-    // Try to get the actual handle from the href (e.g., /@FloGrappling)
-    const channelLink = document.querySelector('#channel-name a');
+    const channelLink = document.querySelector(SELECTORS.youtube.channel_link);
     let channel = "Unknown";
     
     if (channelLink) {
@@ -66,9 +98,10 @@ function scrapePageStrategy() {
         }
     }
 
-    // Attempt to scrape YouTube views
-    const viewSelector = document.querySelector('span.view-count'); // Standard video
-    const shortViewSelector = document.querySelector('span[role="text"][aria-label*="views"]'); // Shorts often differ
+    // Attempt to scrape YouTube views using dynamic selectors
+    const viewSelector = document.querySelector(SELECTORS.youtube.views_std); 
+    const shortViewSelector = document.querySelector(SELECTORS.youtube.views_shorts); 
+    
     if (viewSelector) {
         views = viewSelector.innerText.replace(' views', '');
     } else if (shortViewSelector) {
@@ -90,7 +123,7 @@ function scrapePageStrategy() {
   // --- INSTAGRAM ---
   else if (host.includes('instagram.com')) {
     if (!url.includes('/p/') && !url.includes('/reel/')) return null;
-    const headerHandle = document.querySelector('header a')?.innerText;
+    const headerHandle = document.querySelector(SELECTORS.instagram.handle)?.innerText;
     
     return { 
       platform: "Instagram", 
@@ -173,7 +206,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // 3. OVERLAY UI LOGIC
 // ==========================================
 
-// Helper: Handle Add Button Logic
 function handleAddToQueue(btnAdd) {
     if (!isExtensionValid()) { handleContextInvalidated(); return; }
     
@@ -194,22 +226,19 @@ function handleAddToQueue(btnAdd) {
     const originalText = "Add";
     btnAdd.innerText = "Checking...";
     btnAdd.disabled = true;
-    btnAdd.style.backgroundColor = "#ff9800"; // Orange while checking
+    btnAdd.style.backgroundColor = "#ff9800"; 
 
-    // 1. Check Whitelist in Background
     chrome.runtime.sendMessage({ 
         action: 'checkWhitelist', 
         platform: data.platform, 
         handle: data.handle 
     }, (response) => {
         if (chrome.runtime.lastError) {
-            console.warn("Whitelist check warning (proceeding anyway):", chrome.runtime.lastError);
-            // Fallback: Save anyway if check fails
+            console.warn("Whitelist check warning:", chrome.runtime.lastError);
             saveItem(data, originalText, btnAdd);
             return;
         }
 
-        // 2. If Whitelisted, Block
         if (response && response.authorized) {
             alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
             btnAdd.innerText = "Whitelisted";
@@ -220,9 +249,7 @@ function handleAddToQueue(btnAdd) {
                 btnAdd.disabled = false;
                 btnAdd.style.backgroundColor = "#ce0e2d"; 
             }, 2000);
-        } 
-        // 3. If Not Whitelisted (or unknown), Save
-        else {
+        } else {
             saveItem(data, originalText, btnAdd);
         }
     });
@@ -256,11 +283,10 @@ function saveItem(data, originalText, btnAdd) {
 async function initOverlay() {
   if (document.getElementById('flo-overlay')) return;
   if (!isExtensionValid()) {
-      handleContextInvalidated(); // Show error if invalid immediately
+      handleContextInvalidated(); 
       return;
   }
 
-  // 1. Create UI immediately (don't wait for storage)
   const overlay = document.createElement('div');
   overlay.id = 'flo-overlay';
   overlay.style.cssText = `
@@ -271,7 +297,6 @@ async function initOverlay() {
     font-family: sans-serif; transition: opacity 0.3s; cursor: move; user-select: none;
   `;
 
-  // Added ID to the title div and cursor style
   overlay.innerHTML = `
     <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move;">
       PIRATE AI HELPER ✥
@@ -288,7 +313,6 @@ async function initOverlay() {
 
   document.body.appendChild(overlay);
 
-  // 2. Attach Listeners
   const btnAdd = document.getElementById('flo-add');
   if (btnAdd) {
       btnAdd.addEventListener('click', () => handleAddToQueue(btnAdd));
@@ -307,12 +331,10 @@ async function initOverlay() {
     catch(e) { handleContextInvalidated(); }
   });
 
-  // --- NEW: DRAG LOGIC (WHOLE BOX) ---
   let isDragging = false;
   let startX, startY, initialLeft, initialTop;
 
   overlay.addEventListener('mousedown', (e) => {
-      // Don't drag if clicking buttons
       if (['BUTTON', 'INPUT', 'A', 'SELECT'].includes(e.target.tagName)) return;
 
       isDragging = true;
@@ -323,12 +345,11 @@ async function initOverlay() {
       initialLeft = rect.left;
       initialTop = rect.top;
       
-      // IMPORTANT: Switch from 'right' positioning to 'left' positioning
       overlay.style.right = 'auto';
       overlay.style.left = `${initialLeft}px`;
       overlay.style.top = `${initialTop}px`;
       
-      e.preventDefault(); // Prevent text selection
+      e.preventDefault();
   });
 
   document.addEventListener('mousemove', (e) => {
@@ -343,11 +364,10 @@ async function initOverlay() {
       isDragging = false;
   });
 
-  // 3. Fetch Data to update Count
   try {
     const storage = await new Promise((resolve, reject) => {
       chrome.storage.local.get('piracy_cart', (items) => {
-        if (chrome.runtime.lastError) resolve({ piracy_cart: [] }); // Default to empty on error
+        if (chrome.runtime.lastError) resolve({ piracy_cart: [] });
         else resolve(items);
       });
     });
@@ -355,7 +375,7 @@ async function initOverlay() {
     updateCount(cart.length);
   } catch (e) {
     console.error("Storage load error:", e);
-    updateCount(0); // Fail safe
+    updateCount(0); 
   }
 }
 
@@ -365,15 +385,14 @@ function updateCount(n) {
   if (el) {
     el.innerText = n;
     if (n === 0) {
-        el.style.color = "#4CAF50"; // Green for empty/clean
+        el.style.color = "#4CAF50"; 
         setTimeout(() => el.style.color = "#ce0e2d", 1000);
     } else {
-        el.style.color = "#ce0e2d"; // Red for items pending
+        el.style.color = "#ce0e2d"; 
     }
   }
 }
 
-// 4. Init Logic
 if (isExtensionValid()) {
     try {
         chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -393,5 +412,4 @@ new MutationObserver(() => {
   }
 }).observe(document, {subtree: true, childList: true});
 
-// Initial Run
 setTimeout(initOverlay, 1500);
