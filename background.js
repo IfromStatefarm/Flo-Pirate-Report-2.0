@@ -10,7 +10,8 @@ import {
   updateEventUrl,     
   addNewEventToSheet,
   ensureDailyScreenshotFolder,
-  checkIfAuthorized
+  checkIfAuthorized,
+  updateReportStatus
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
@@ -19,6 +20,20 @@ import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
 
+// --- ALARMS & THE CLOSER SETUP ---
+const ALARM_NAME = "theCloser";
+chrome.runtime.onInstalled.addListener(() => {
+  // Check every 60 minutes
+  chrome.alarms.create(ALARM_NAME, { periodInMinutes: 60 });
+  console.log("⏰ 'The Closer' Alarm Scheduled (60m)");
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) {
+    runTheCloser();
+  }
+});
+
 // --- ID GENERATOR ---
 function generateReportId() {
   const nums = Math.floor(10 + Math.random() * 90); 
@@ -26,15 +41,149 @@ function generateReportId() {
   return `${nums}${letters}`.toUpperCase();
 }
 
-// --- RATE LIMIT HELPER ---
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// ==========================================
+// 1. THE CLOSER (Automated Verification)
+// ==========================================
+
+async function runTheCloser() {
+  console.log("🕵️ 'The Closer' is running...");
+  
+  // 1. Get Tracking Queue
+  const data = await chrome.storage.local.get('tracking_queue');
+  let queue = data.tracking_queue || [];
+  
+  if (queue.length === 0) {
+    console.log("🕵️ Tracking queue empty.");
+    return;
+  }
+
+  const now = Date.now();
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const SEVEN_DAYS_MS = 7 * ONE_DAY_MS;
+  let updatedQueue = [];
+  let changesMade = false;
+
+  for (const item of queue) {
+    // A. Check Age
+    const age = now - item.timestamp;
+    
+    // If it's verified as taken down, we don't keep it.
+    // If it's older than 7 days, we give up and drop it.
+    if (age > SEVEN_DAYS_MS) {
+        console.log(`🗑️ Dropping old item: ${item.reportId}`);
+        changesMade = true;
+        continue; 
+    }
+
+    // B. If older than 24 hours (or if checks < 1 for testing), verify
+    if (age > ONE_DAY_MS) {
+        console.log(`🔍 Verifying: ${item.platform} - ${item.reportId}`);
+        
+        // We verify ALL URLs in the batch. If all represent missing content, we mark taken down.
+        let allDown = true;
+        for (const url of item.urls) {
+            const isDown = await verifyTakedown(url, item.platform);
+            if (!isDown) {
+                allDown = false;
+                break; // One active link means the report isn't fully "Closed"
+            }
+        }
+
+        if (allDown) {
+            // Update Sheet
+            const success = await updateReportStatus(item.reportId, "Taken Down");
+            if (success) {
+                console.log(`✅ Closed Report: ${item.reportId}`);
+                changesMade = true;
+                continue; // Remove from queue
+            } else {
+                console.warn(`⚠️ Verification successful but Sheet update failed for ${item.reportId}`);
+                // Keep in queue to retry sheet update later? Or assume it's stuck. 
+                // We'll keep it for now.
+                updatedQueue.push(item); 
+            }
+        } else {
+            console.log(`❌ Still Active: ${item.reportId}`);
+            updatedQueue.push(item);
+        }
+    } else {
+        // Too new, keep waiting
+        updatedQueue.push(item);
+    }
+  }
+
+  if (changesMade) {
+      await chrome.storage.local.set({ tracking_queue: updatedQueue });
+  }
+}
+
+// Uses oEmbed to check if video exists. 
+// 404/403 usually means deleted or private (effective takedown).
+async function verifyTakedown(url, platform) {
+    try {
+        let checkUrl = "";
+        
+        if (platform.toLowerCase() === 'youtube') {
+            checkUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+        } 
+        else if (platform.toLowerCase() === 'tiktok') {
+            checkUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
+        }
+        else if (platform.toLowerCase().includes('twitter') || platform.toLowerCase().includes('x.com')) {
+            checkUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`;
+        }
+        else {
+            // Fallback for others: Assume active if we can't check
+            // Or try a basic fetch? Basic fetch often fails due to auth.
+            // We'll return false (Active) to be safe.
+            return false; 
+        }
+
+        const res = await fetch(checkUrl);
+        
+        // If 404 (Not Found), 403 (Forbidden), 401 (Unauthorized) -> Content is effectively gone/private
+        if (res.status === 404 || res.status === 403 || res.status === 401 || res.status === 400) {
+            return true; 
+        }
+        
+        // If 200 OK, verify the title isn't "Video Unavailable" (YouTube sometimes does this even with oEmbed?)
+        // Usually oEmbed returns 404 for deleted videos.
+        // For standard fetch: YouTube returns 200 even for deleted videos.
+        // But oEmbed endpoint is API-like and standard compliant.
+        
+        return false; // Still exists
+
+    } catch (e) {
+        console.error("Verification Fetch Error:", e);
+        return false; // Assume active on error
+    }
+}
+
+// Add to Queue Helper
+async function addToTrackingQueue(reportId, urls, platform) {
+    try {
+        const data = await chrome.storage.local.get('tracking_queue');
+        const queue = data.tracking_queue || [];
+        
+        queue.push({
+            reportId,
+            urls, // Array of strings
+            platform,
+            timestamp: Date.now()
+        });
+        
+        await chrome.storage.local.set({ tracking_queue: queue });
+        console.log(`📝 Added Report ${reportId} to 'The Closer' queue.`);
+    } catch(e) {
+        console.error("Failed to add to tracking queue", e);
+    }
+}
 
 // ==========================================
-// 1. BOT INJECTION LISTENER
+// 2. BOT INJECTION LISTENER
 // ==========================================
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
-    // Check if this is the active search tab from session storage
     const session = await chrome.storage.session.get(['activeSearchTabId']);
     
     if (session.activeSearchTabId && tabId === session.activeSearchTabId) {
@@ -48,7 +197,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 // ==========================================
-// 2. MAIN MESSAGE HANDLER
+// 3. MAIN MESSAGE HANDLER
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
@@ -126,18 +275,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // --- CHANGED: Renamed action to be more descriptive or handle general processing ---
-  if (request.action === 'processQueue' || request.action === 'logToSheet') {
+  if (request.action === 'logToSheet') {
       handleBatchReport(request.data).then(res => {
-          if (res.success) {
-             playJingle();
-             chrome.runtime.sendMessage({ action: "progressComplete" }); // Notify UI of finish
-          } else {
-             chrome.runtime.sendMessage({ action: "progressError", error: res.error });
-          }
           sendResponse({ success: res.success });
+          if(res.success) {
+             playJingle();
+             chrome.runtime.sendMessage({ action: "playSuccessSound" }); 
+          }
       });
-      return true; // Async response
+      return true;
   }
 
   if (request.action === 'getConfig') {
@@ -145,13 +291,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // UPDATED: Now uses IndexedDB
   if (request.action === 'addToCart') {
     handleAddVideo(sender.tab, request.data).then(sendResponse);
     return true; 
   }
 
-  // UPDATED: Clears both Storage and IDB
   if (request.action === 'clearCart') {
     Promise.all([
       chrome.storage.local.remove('piracy_cart'),
@@ -182,26 +326,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // ==========================================
-// 3. HELPER FUNCTIONS
+// 4. HELPER FUNCTIONS
 // ==========================================
 
 async function playJingle() {
     chrome.runtime.sendMessage({ action: "playSuccessSound" });
 }
 
-// --- NEW: Storage Quicksand Prevention ---
 async function checkStorageQuota(bytesToAdd = 0) {
   try {
     const bytesInUse = await chrome.storage.local.getBytesInUse(null);
-    const quota = chrome.storage.local.QUOTA_BYTES || 5242880; // Default 5MB
-    // Safety buffer of 100KB
+    const quota = chrome.storage.local.QUOTA_BYTES || 5242880; 
     if (bytesInUse + bytesToAdd >= (quota - 102400)) {
         throw new Error("Storage quota exceeded. Please clear your queue before adding more.");
     }
     return true;
   } catch (e) {
     console.warn("Quota check failed:", e);
-    return true; // Fail open if API not supported
+    return true; 
   }
 }
 
@@ -241,35 +383,27 @@ async function handleDynamicSearch(data) {
   }
 }
 
-// --- UPDATED: Save to IDB + Metadata to Storage ---
 async function handleAddVideo(tab, data) {
   try {
-    // 1. Capture Screenshot
     const screenshotPromise = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 50 });
     const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2000));
     const screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
     
-    // 2. Generate Reference ID
     const screenshotId = crypto.randomUUID();
 
-    // 3. Save heavy image to IndexedDB
     if (screenshotUrl) {
         await saveImage(screenshotId, screenshotUrl);
     }
 
-    // 4. Prepare Lightweight Metadata
     const newItem = {
       ...data,
-      screenshotId: screenshotUrl ? screenshotId : null, // Store Ref, NOT Data
+      screenshotId: screenshotUrl ? screenshotId : null, 
       timestamp: new Date().toISOString()
     };
 
-    // 5. Check Quota (Quicksand Prevention)
-    // Approximate size of the JSON object
     const estimatedSize = new Blob([JSON.stringify(newItem)]).size;
     await checkStorageQuota(estimatedSize);
 
-    // 6. Save to Local Storage
     const storage = await chrome.storage.local.get('piracy_cart');
     let cart = storage.piracy_cart || [];
     
@@ -284,7 +418,6 @@ async function handleAddVideo(tab, data) {
   }
 }
 
-// --- UPDATED: Retrieve from IDB for Report ---
 async function handleBatchReport(formData) {
   try {
     const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
@@ -304,15 +437,8 @@ async function handleBatchReport(formData) {
     const todayFormatted = new Date().toLocaleDateString("en-US");
 
     const eventFolderId = await ensureFolderHierarchy(token, formData.eventName, dateStr);
-    
-    // Only verify screenshots folder if toggle is on (or if not provided, assume true for safety)
-    const uploadScreenshots = formData.uploadScreenshots !== false; 
-    let screenshotFolderId = null;
-    if (uploadScreenshots) {
-       screenshotFolderId = await ensureDailyScreenshotFolder(token, dateStr);
-    }
+    const screenshotFolderId = await ensureDailyScreenshotFolder(token, dateStr);
 
-    // Group items by Handle to reduce PDF generation count
     const grouped = {};
     cart.forEach(item => {
       const handle = item.handle || "Unknown";
@@ -321,20 +447,9 @@ async function handleBatchReport(formData) {
     });
 
     const handles = Object.keys(grouped);
-    const totalHandles = handles.length;
 
-    for (let i = 0; i < totalHandles; i++) {
-      const handle = handles[i];
+    for (const handle of handles) {
       const items = grouped[handle];
-      
-      // Update UI Progress
-      const percent = Math.round(((i + 1) / totalHandles) * 100);
-      chrome.runtime.sendMessage({ 
-          action: 'progressUpdate', 
-          percent: percent,
-          status: `Processing @${handle} (${i + 1}/${totalHandles})...`
-      });
-
       const urls = items.map(i => i.url);
       const urlString = urls.join('\n'); 
       const viewString = items.map(i => i.views || "N/A").join('\n');
@@ -368,12 +483,10 @@ async function handleBatchReport(formData) {
       const pdfName = `${reportId}_@${handle}.pdf`;
       const pdfUpload = await uploadToDrive(token, eventFolderId, pdfName, pdfBlob, 'application/pdf');
 
-      // 5. Upload Screenshots (RESOLVE FROM IDB)
-      // Only if folder exists (meaning user checked the box)
+      // 5. Upload Screenshots
       if (screenshotFolderId) {
         for (const item of items) {
-          // Resolve Image Data
-          let imgDataUrl = item.screenshot; // Legacy fallback
+          let imgDataUrl = item.screenshot; 
           if (item.screenshotId) {
              imgDataUrl = await getImage(item.screenshotId);
           }
@@ -381,7 +494,6 @@ async function handleBatchReport(formData) {
           if(imgDataUrl) {
             const response = await fetch(imgDataUrl);
             const blob = await response.blob();
-            // Naming convention: Event_ReportID_@Handle_Evidence.jpg
             const imgName = `${formData.eventName}_${reportId}_@${handle}_Evidence.jpg`;
             await uploadToDrive(token, screenshotFolderId, imgName, blob, 'image/jpeg');
           }
@@ -413,13 +525,10 @@ async function handleBatchReport(formData) {
 
       await appendToSheet(token, { values: rowValues });
 
-      // === RATE LIMITING (THROTTLE) ===
-      // Wait 1.5 seconds between sheet writes to prevent 429 errors
-      console.log(`⏳ Rate Limit: Pausing 1.5s after @${handle}`);
-      await wait(1500); 
+      // --- THE CLOSER: TRACK THIS REPORT ---
+      await addToTrackingQueue(reportId, urls, detectedPlatform);
     }
 
-    // CLEANUP: Clear both storage and IDB
     await chrome.storage.local.remove('piracy_cart');
     await clearImages();
     
