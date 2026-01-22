@@ -1,4 +1,4 @@
-import { getUserEmail } from './utils/auth.js';
+mport { getUserEmail } from './utils/auth.js';
 
 let configData = null;
 const ALLOWED_EMAIL = "social@flosports.tv";
@@ -7,6 +7,24 @@ const ALLOWED_EMAIL = "social@flosports.tv";
 let isCrawling = false;
 let crawlQueue = [];
 let consecutiveFailures = 0;
+
+// --- GLOBAL ERROR LISTENER (Moved from HTML) ---
+window.addEventListener('error', function(e) {
+  if (e.message && (
+      e.message.includes('Extension context invalidated') || 
+      e.message.includes('BLOCKED_BY_CLIENT')
+  )) {
+     const loading = document.getElementById('loading');
+     if (loading) {
+       loading.innerHTML = "⚠️ <strong>Extension Reloaded</strong><br>Please close and reopen this panel.";
+       loading.style.color = "#ce0e2d";
+       loading.style.border = "1px solid #ce0e2d";
+       loading.style.padding = "10px";
+       loading.style.background = "#fff0f0";
+       loading.style.borderRadius = "4px";
+     }
+  }
+}, true);
 
 // --- SECURITY CHECK ---
 async function verifyAccessBeforeAction() {
