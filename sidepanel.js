@@ -29,6 +29,9 @@ window.addEventListener('error', function(e) {
 // --- SECURITY CHECK ---
 async function verifyAccessBeforeAction() {
   try {
+    if (!chrome.runtime?.id) {
+        throw new Error("Extension context invalidated");
+    }
     const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
     if (chrome.runtime.lastError) return false;
     
@@ -86,6 +89,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 1. Load Config & Init
   try {
+    // Check for invalid context immediately
+    if (!chrome.runtime?.id) {
+        showInitError("Extension context invalidated. Please reopen.");
+        return;
+    }
+
     // Check Auth first
     // Add a timeout to prevent infinite hanging
     const authPromise = chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
