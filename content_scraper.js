@@ -1,11 +1,15 @@
 // content_scraper.js
 
 let currentCount = 0;
-// DEFAULT SELECTORS (Fallbacks)
+
+// DEFAULT SELECTORS (Robust Fallbacks)
+// Note: In JS string, we use \\d to mean "digit". In JSON we need \\\\d.
 let SELECTORS = {
   tiktok: {
     views: '[data-e2e="video-views"]',
-    url_match: "@([^/]+)\\/video\\/(\\d+)"
+    // Matches @user/video/123 OR @user/photo/123
+    // Using non-capturing group (?:...) so match[1] is always the handle
+    url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)"
   },
   youtube: {
     channel_link: '#channel-name a',
@@ -22,15 +26,14 @@ let SELECTORS = {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
     if (response && response.success && response.config && response.config.platform_selectors) {
-      console.log("✅ Remote Selectors Loaded");
-      // Merge remote selectors over defaults
+      console.log("✅ PIRATE AI: Remote Selectors Loaded");
       const remote = response.config.platform_selectors;
       if (remote.tiktok && remote.tiktok.scraper) SELECTORS.tiktok = { ...SELECTORS.tiktok, ...remote.tiktok.scraper };
       if (remote.youtube && remote.youtube.scraper) SELECTORS.youtube = { ...SELECTORS.youtube, ...remote.youtube.scraper };
       if (remote.instagram && remote.instagram.scraper) SELECTORS.instagram = { ...SELECTORS.instagram, ...remote.instagram.scraper };
     }
   } catch (e) {
-    console.warn("⚠️ Failed to load remote selectors, using defaults.", e);
+    console.warn("⚠️ PIRATE AI: Failed to load remote selectors, using defaults.", e);
   }
 })();
 
@@ -63,10 +66,27 @@ function scrapePageStrategy() {
 
   // --- TIKTOK ---
   if (host.includes('tiktok.com')) {
-    // Use dynamic regex if available, else fallback
-    const regex = new RegExp(SELECTORS.tiktok.url_match);
-    const match = url.match(regex);
-    if (!match) return null; 
+    const pattern = SELECTORS.tiktok.url_match;
+    let match = null;
+    
+    // Safety check for Regex construction
+    try {
+        const regex = new RegExp(pattern);
+        match = url.match(regex);
+    } catch(e) {
+        console.error("PIRATE AI: Regex construction failed for:", pattern, e);
+    }
+
+    if (!match) {
+        console.log(`PIRATE AI: No match found for URL: ${url}`);
+        console.log(`PIRATE AI: Using Pattern: ${pattern}`);
+        return null; 
+    }
+
+    // Handles logic for both default (non-capturing group) and JSON (capturing groups)
+    // Default JS: match[1]=handle, match[2]=id
+    // JSON Config: match[1]=handle, match[2]=id OR match[3]=handle, match[4]=id
+    const handle = match[1] || match[3] || "Unknown";
 
     const viewEl = document.querySelector(SELECTORS.tiktok.views);
     if (viewEl) views = viewEl.innerText;
@@ -74,7 +94,7 @@ function scrapePageStrategy() {
     return { 
       platform: "TikTok", 
       url, 
-      handle: match[1], 
+      handle: handle, 
       views, 
       timestamp 
     };
@@ -84,7 +104,11 @@ function scrapePageStrategy() {
   else if (host.includes('youtube.com')) {
     const params = new URLSearchParams(window.location.search);
     const videoId = params.get('v');
-    if (!videoId && !url.includes('/shorts/')) return null;
+    
+    // Support Standard, Shorts, and Live
+    if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) {
+        return null;
+    }
 
     const channelLink = document.querySelector(SELECTORS.youtube.channel_link);
     let channel = "Unknown";
@@ -98,7 +122,6 @@ function scrapePageStrategy() {
         }
     }
 
-    // Attempt to scrape YouTube views using dynamic selectors
     const viewSelector = document.querySelector(SELECTORS.youtube.views_std); 
     const shortViewSelector = document.querySelector(SELECTORS.youtube.views_shorts); 
     
@@ -108,7 +131,13 @@ function scrapePageStrategy() {
         views = shortViewSelector.innerText;
     }
 
-    const screenshot = videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null;
+    // Parse ID for screenshot
+    let targetId = videoId;
+    if (!targetId && url.includes('/shorts/')) targetId = url.split('/shorts/')[1];
+    if (!targetId && url.includes('/live/')) targetId = url.split('/live/')[1];
+    
+    const cleanId = targetId ? targetId.split('?')[0] : null;
+    const screenshot = cleanId ? `https://img.youtube.com/vi/${cleanId}/maxresdefault.jpg` : null;
 
     return { 
       platform: "YouTube", 
@@ -219,7 +248,7 @@ function handleAddToQueue(btnAdd) {
     }
     
     if (!data) { 
-        alert("❌ No valid video detected on this page."); 
+        alert("❌ No valid video detected on this page. Check Console (F12) for 'PIRATE AI' logs."); 
         return; 
     }
     
