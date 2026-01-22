@@ -1,4 +1,4 @@
-mport { getUserEmail } from './utils/auth.js';
+import { getUserEmail } from './utils/auth.js';
 
 let configData = null;
 const ALLOWED_EMAIL = "social@flosports.tv";
