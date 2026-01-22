@@ -26,6 +26,9 @@ function generateReportId() {
   return `${nums}${letters}`.toUpperCase();
 }
 
+// --- RATE LIMIT HELPER ---
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // ==========================================
 // 1. BOT INJECTION LISTENER
 // ==========================================
@@ -123,15 +126,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'logToSheet') {
+  // --- CHANGED: Renamed action to be more descriptive or handle general processing ---
+  if (request.action === 'processQueue' || request.action === 'logToSheet') {
       handleBatchReport(request.data).then(res => {
-          sendResponse({ success: res.success });
-          if(res.success) {
+          if (res.success) {
              playJingle();
-             chrome.runtime.sendMessage({ action: "playSuccessSound" }); 
+             chrome.runtime.sendMessage({ action: "progressComplete" }); // Notify UI of finish
+          } else {
+             chrome.runtime.sendMessage({ action: "progressError", error: res.error });
           }
+          sendResponse({ success: res.success });
       });
-      return true;
+      return true; // Async response
   }
 
   if (request.action === 'getConfig') {
@@ -298,8 +304,15 @@ async function handleBatchReport(formData) {
     const todayFormatted = new Date().toLocaleDateString("en-US");
 
     const eventFolderId = await ensureFolderHierarchy(token, formData.eventName, dateStr);
-    const screenshotFolderId = await ensureDailyScreenshotFolder(token, dateStr);
+    
+    // Only verify screenshots folder if toggle is on (or if not provided, assume true for safety)
+    const uploadScreenshots = formData.uploadScreenshots !== false; 
+    let screenshotFolderId = null;
+    if (uploadScreenshots) {
+       screenshotFolderId = await ensureDailyScreenshotFolder(token, dateStr);
+    }
 
+    // Group items by Handle to reduce PDF generation count
     const grouped = {};
     cart.forEach(item => {
       const handle = item.handle || "Unknown";
@@ -308,9 +321,20 @@ async function handleBatchReport(formData) {
     });
 
     const handles = Object.keys(grouped);
+    const totalHandles = handles.length;
 
-    for (const handle of handles) {
+    for (let i = 0; i < totalHandles; i++) {
+      const handle = handles[i];
       const items = grouped[handle];
+      
+      // Update UI Progress
+      const percent = Math.round(((i + 1) / totalHandles) * 100);
+      chrome.runtime.sendMessage({ 
+          action: 'progressUpdate', 
+          percent: percent,
+          status: `Processing @${handle} (${i + 1}/${totalHandles})...`
+      });
+
       const urls = items.map(i => i.url);
       const urlString = urls.join('\n'); 
       const viewString = items.map(i => i.views || "N/A").join('\n');
@@ -345,6 +369,7 @@ async function handleBatchReport(formData) {
       const pdfUpload = await uploadToDrive(token, eventFolderId, pdfName, pdfBlob, 'application/pdf');
 
       // 5. Upload Screenshots (RESOLVE FROM IDB)
+      // Only if folder exists (meaning user checked the box)
       if (screenshotFolderId) {
         for (const item of items) {
           // Resolve Image Data
@@ -356,6 +381,7 @@ async function handleBatchReport(formData) {
           if(imgDataUrl) {
             const response = await fetch(imgDataUrl);
             const blob = await response.blob();
+            // Naming convention: Event_ReportID_@Handle_Evidence.jpg
             const imgName = `${formData.eventName}_${reportId}_@${handle}_Evidence.jpg`;
             await uploadToDrive(token, screenshotFolderId, imgName, blob, 'image/jpeg');
           }
@@ -386,6 +412,11 @@ async function handleBatchReport(formData) {
       ];
 
       await appendToSheet(token, { values: rowValues });
+
+      // === RATE LIMITING (THROTTLE) ===
+      // Wait 1.5 seconds between sheet writes to prevent 429 errors
+      console.log(`⏳ Rate Limit: Pausing 1.5s after @${handle}`);
+      await wait(1500); 
     }
 
     // CLEANUP: Clear both storage and IDB
