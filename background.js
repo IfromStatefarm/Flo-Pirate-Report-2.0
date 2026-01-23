@@ -12,6 +12,7 @@ import {
   ensureDailyScreenshotFolder,
   checkIfAuthorized,
   getColumnHData,
+  updateRowStatus,
   formatCellAsTakenDown
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
@@ -29,7 +30,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {
-    runSheetScanner(); // Running the robust scanner periodically too
+    runSheetScanner(1); // Default to row 1 on auto-run
   }
 });
 
@@ -44,16 +45,19 @@ function generateReportId() {
 // 1. THE SHEET SCANNER (The Closer 2.0)
 // ==========================================
 
-async function runSheetScanner() {
-  console.log("🕵️ Sheet Scanner: Starting...");
+async function runSheetScanner(startRow = 1) {
+  console.log(`🕵️ Sheet Scanner: Starting from Row ${startRow}...`);
   
   try {
     const rows = await getColumnHData();
     let consecutiveBlanks = 0;
     
-    // Start from row 1 (skip header row 0)
-    for (let i = 1; i < rows.length; i++) {
-        // Safety Break
+    // Safety check: startRow cannot be less than 1 (header is 0)
+    if (startRow < 1) startRow = 1;
+
+    // Loop through rows
+    for (let i = startRow; i < rows.length; i++) {
+        // Safety Break for 3 consecutive blanks
         if (consecutiveBlanks >= 3) {
             console.log("🕵️ Sheet Scanner: Hit 3 blank cells. Stopping.");
             break;
@@ -61,6 +65,7 @@ async function runSheetScanner() {
 
         const cellValue = rows[i][0]; // Column H is index 0 in the response values
         
+        // Skip empty cells but count them for safety break
         if (!cellValue) {
             consecutiveBlanks++;
             continue;
@@ -68,14 +73,17 @@ async function runSheetScanner() {
         
         consecutiveBlanks = 0; // Reset count on non-blank
 
-        // Extract URLs (split by newline or space)
-        const urls = cellValue.split(/\s+/).filter(u => u.startsWith('http'));
+        // Extract URLs (split by newline, space, or comma)
+        // Matches http/https URLs
+        const urls = cellValue.match(/https?:\/\/[^\s,]+/g);
         
-        if (urls.length === 0) continue;
+        if (!urls || urls.length === 0) continue;
 
-        console.log(`Checking Row ${i+1}: ${urls.length} URLs found.`);
+        console.log(`Row ${i+1}: Checking ${urls.length} links...`);
 
-        let allDown = true;
+        let activeCount = 0;
+        let deadCount = 0;
+
         for (const url of urls) {
             let platform = 'unknown';
             if (url.includes('tiktok')) platform = 'tiktok';
@@ -83,30 +91,40 @@ async function runSheetScanner() {
             else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
             else if (url.includes('instagram')) platform = 'instagram';
             else if (url.includes('facebook')) platform = 'facebook';
+            else if (url.includes('twitch')) platform = 'twitch';
 
             try {
                 // Check using Tab-based verification
                 const isDown = await verifyTakedownViaTab(url, platform); 
-                if (!isDown) {
-                    allDown = false;
-                    console.log(`  - URL Active: ${url}`);
-                    break; 
+                if (isDown) {
+                    deadCount++;
+                    console.log(`  - DOWN: ${url}`);
                 } else {
-                    console.log(`  - URL Down: ${url}`);
+                    activeCount++;
+                    console.log(`  - ACTIVE: ${url}`);
                 }
             } catch (err) {
-                console.warn(`  - Error verifying ${url}:`, err);
-                allDown = false; // Assume active on error to be safe
+                console.warn(`  - Error checking ${url}:`, err);
+                activeCount++; // Assume active on error
             }
             
-            // Rate limit
-            await new Promise(r => setTimeout(r, 1000)); 
+            // Rate limit (1.5s) to avoid browser throttling tabs
+            await new Promise(r => setTimeout(r, 1500)); 
         }
 
-        if (allDown) {
-            console.log(`Row ${i+1}: All URLs Down. Formatting...`);
-            // This function is imported from utils/google_api.js
-            await formatCellAsTakenDown(i);
+        // Determine Status based on counts
+        if (deadCount > 0 && activeCount === 0) {
+            console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
+            await updateRowStatus(i, "Resolved");
+        } else if (activeCount > 0 && deadCount > 0) {
+             // Only mark investigating if mix? Or if ANY active?
+             // User request: "If there are some urls still up it would write 'Investigating'"
+            console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
+            await updateRowStatus(i, "Investigating");
+        } else if (activeCount > 0 && deadCount === 0) {
+             // All active, maybe mark nothing or investigating?
+             // We'll leave it alone or mark investigating.
+             // console.log(`Row ${i+1}: All active.`);
         }
     }
     
@@ -117,7 +135,7 @@ async function runSheetScanner() {
   }
 }
 
-// Uses Tab Loading to check if video exists (More reliable than fetch)
+// Uses Tab Loading to check if video exists
 async function verifyTakedownViaTab(url, platform) {
     let tabId = null;
     try {
@@ -127,7 +145,7 @@ async function verifyTakedownViaTab(url, platform) {
 
         // 2. Wait for Load (with timeout)
         await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => resolve("timeout"), 15000); // Increased timeout to 15s
+            const timeout = setTimeout(() => resolve("timeout"), 12000); 
             
             const listener = (tid, info) => {
                 if (tid === tabId && info.status === 'complete') {
@@ -140,7 +158,7 @@ async function verifyTakedownViaTab(url, platform) {
         });
         
         // Wait a bit for dynamic content to render
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise(r => setTimeout(r, 2000));
 
         // 3. Inject Script to Check Tombstone
         const result = await chrome.scripting.executeScript({
@@ -149,14 +167,13 @@ async function verifyTakedownViaTab(url, platform) {
                 const text = document.body.innerText.toLowerCase();
                 const title = document.title.toLowerCase();
                 
-                // Generic 404/Not Found checks (covers many sites)
-                if (title.includes("404") || title.includes("not found") || title.includes("page not found") || title.includes("unavailable")) return true;
+                // Generic Tombstones
+                if (title.includes("404") || title.includes("not found") || title.includes("page not found")) return true;
 
                 if (plat === 'tiktok') {
                     if (text.includes("video currently unavailable")) return true;
                     if (text.includes("video not found")) return true;
                     if (text.includes("couldn't find this account")) return true;
-                    if (text.includes("page not available")) return true;
                     if (document.querySelector('[data-e2e="video-removed"]')) return true;
                 }
                 
@@ -164,8 +181,6 @@ async function verifyTakedownViaTab(url, platform) {
                     if (text.includes("video unavailable")) return true;
                     if (text.includes("video has been removed")) return true;
                     if (text.includes("video is private")) return true;
-                    if (text.includes("this video is no longer available")) return true;
-                    // If redirected to home, likely removed (heuristic)
                     if (window.location.href === "https://www.youtube.com/") return true; 
                 }
                 
@@ -175,13 +190,9 @@ async function verifyTakedownViaTab(url, platform) {
                     if (text.includes("account suspended")) return true;
                 }
                 
-                if (plat === 'instagram') {
+                if (plat === 'instagram' || plat === 'facebook') {
                     if (text.includes("sorry, this page isn't available")) return true;
                     if (text.includes("link you followed may be broken")) return true;
-                }
-                
-                if (plat === 'facebook') {
-                    if (text.includes("isn't available right now")) return true;
                     if (text.includes("content isn't available")) return true;
                 }
 
@@ -196,17 +207,14 @@ async function verifyTakedownViaTab(url, platform) {
         return result[0]?.result || false;
 
     } catch (e) {
-        console.error("Tab Verification Error:", e);
+        console.error("Tab Check Error:", e);
         if (tabId) chrome.tabs.remove(tabId).catch(() => {});
         return false; // Fail safe: Assume active
     }
 }
 
-
-// ... (addToTrackingQueue removed as we scan sheet directly now)
-async function addToTrackingQueue(reportId, urls, platform) {
-    // No-op for now as we use sheet scanning
-}
+// ... (addToTrackingQueue legacy helper, kept empty if needed by other files)
+async function addToTrackingQueue(reportId, urls, platform) {}
 
 // ==========================================
 // 2. BOT INJECTION LISTENER
@@ -324,14 +332,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
   }
 
+  // UPDATED LISTENER FOR CLOSER
   if (request.action === 'triggerCloser') {
-      // New Sheet Scanner Mode
-      runSheetScanner().then(() => sendResponse({ success: true }));
+      // Pass startRow if provided, or default to 1
+      const startRow = request.startRow || 1;
+      runSheetScanner(startRow).then(() => sendResponse({ success: true }));
       return true;
   }
 });
 
-// ... (Helper functions handleDynamicSearch, handleAddVideo, handleBatchReport, handleUrlSave kept as is, they are fine)
+// ==========================================
+// 4. HELPER FUNCTIONS
+// ==========================================
+
 async function handleDynamicSearch(data) {
   try {
     const { eventName, vertical } = data;
