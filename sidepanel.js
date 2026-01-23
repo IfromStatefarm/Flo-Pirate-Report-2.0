@@ -8,7 +8,7 @@ let isCrawling = false;
 let crawlQueue = [];
 let consecutiveFailures = 0;
 
-// --- GLOBAL ERROR LISTENER (Moved from HTML) ---
+// --- GLOBAL ERROR LISTENER ---
 window.addEventListener('error', function(e) {
   if (e.message && (
       e.message.includes('Extension context invalidated') || 
@@ -56,10 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const startRowInput = document.getElementById('startRowInput');
   const closerStatusEl = document.getElementById('closerStatus'); 
   
-  // Create Stop Button dynamically if not present in HTML, or expect it to be added.
-  // Ideally it should be in HTML, but we can inject or toggle visibility.
-  // For now, let's reuse closerBtn text/state or add a dedicated stop button.
-  // Let's toggle the existing button for simplicity first, or inject a stop button.
+  // Create Stop Button dynamically if not present
   let stopCloserBtn = document.getElementById('stopCloserBtn');
   if (!stopCloserBtn && closerBtn) {
       stopCloserBtn = document.createElement('button');
@@ -71,9 +68,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       stopCloserBtn.style.padding = '8px';
       stopCloserBtn.innerText = 'Stop Scanner';
       stopCloserBtn.style.display = 'none';
-      closerBtn.parentNode.appendChild(stopCloserBtn); // Append next to run button container
-      // Actually better to append to the parent of the flex container
-      closerBtn.parentNode.parentNode.insertBefore(stopCloserBtn, closerStatusEl);
+      if(closerBtn.parentNode && closerBtn.parentNode.parentNode) {
+          closerBtn.parentNode.parentNode.insertBefore(stopCloserBtn, closerStatusEl);
+      }
   }
 
   // --- Message Listener for Crawler & Closer ---
@@ -131,8 +128,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 1. Load Config & Init
   try {
-    // Check Auth first
-    // Add a timeout to prevent infinite hanging
     const authPromise = chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
     
@@ -144,7 +139,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     if (!emailRes) {
-         // Timeout or silent fail
          showInitError("Background script unresponsive.");
          return;
     }
@@ -179,16 +173,75 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (res.last_reporter && reporterInput) reporterInput.value = res.last_reporter;
       if (res.last_vertical && verticalSelect) {
           verticalSelect.value = res.last_vertical;
-          // Trigger change manually to load events
-          if (configData) populateEvents(res.last_vertical, eventList);
+          // Trigger change logic manually to load events
+          verticalSelect.dispatchEvent(new Event('change'));
       }
   });
 
   // 2. Event Listeners
   if (verticalSelect) {
-      verticalSelect.addEventListener('change', () => {
-          populateEvents(verticalSelect.value, eventList);
-          chrome.storage.local.set({ last_vertical: verticalSelect.value });
+      verticalSelect.addEventListener('change', async () => {
+          const vertical = verticalSelect.value;
+          chrome.storage.local.set({ last_vertical: vertical });
+          
+          if (eventList) eventList.innerHTML = ''; // Clear current options
+
+          if (vertical) {
+              // Show temporary loading state in the placeholder if possible, or just log
+              if (eventInput) eventInput.placeholder = "Loading events...";
+              
+              try {
+                  // Fetch live data from the Sheet instead of static config
+                  const response = await chrome.runtime.sendMessage({ action: 'getVerticalData', vertical });
+                  
+                  if (response && response.success && response.data && response.data.eventMap) {
+                      const events = Object.values(response.data.eventMap).map(e => e.name);
+                      // Sort alphabetically for easier searching
+                      events.sort();
+                      
+                      eventList.innerHTML = '';
+                      events.forEach(name => {
+                          const opt = document.createElement('option');
+                          opt.value = name;
+                          eventList.appendChild(opt);
+                      });
+                      
+                      if (eventInput) eventInput.placeholder = "Select or Type...";
+                  }
+              } catch(e) {
+                  console.error("Error fetching events:", e);
+                  if (eventInput) eventInput.placeholder = "Error loading events";
+              }
+          }
+      });
+  }
+
+  if (eventInput) {
+      // Add Enter key listener to trigger Search
+      eventInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+              const vertical = verticalSelect.value;
+              const eventName = eventInput.value;
+              
+              if (vertical && eventName) {
+                  // Provide visual feedback
+                  if (loadingEl) {
+                      loadingEl.innerText = "Opening Search Page...";
+                      loadingEl.style.display = "block";
+                      loadingEl.style.color = "blue";
+                  }
+                  
+                  chrome.runtime.sendMessage({ 
+                      action: 'findEventUrl', 
+                      data: { eventName, vertical } 
+                  }, (res) => {
+                      if (loadingEl) loadingEl.style.display = "none";
+                      if (!res.success) {
+                          alert("Error opening search: " + res.error);
+                      }
+                  });
+              }
+          }
       });
   }
 
@@ -214,8 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const reporterName = reporterInput.value;
           const vertical = verticalSelect.value;
           const eventName = eventInput.value;
-          const sourceUrl = sourceDisplay.value;
-
+          
           if (!reporterName || !vertical || !eventName) {
               alert("Please fill in Reporter, Vertical, and Event Name.");
               return;
@@ -231,13 +283,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           const cart = storage.piracy_cart || [];
           
           if (cart.length > 0) {
-              // Report cart
               urlsToReport = cart.map(i => i.url);
           } else {
-              // If cart empty, check if user input a "Source URL" (Infringing?)
-              // The label says "Source URL", usually implying "Where it was stolen FROM".
-              // Let's assume for now this panel triggers the batch report of the cart.
-              // If cart is empty, we alert.
               alert("Queue is empty. Use the 'Add' buttons on video pages first.");
               startBtn.disabled = false;
               startBtn.innerText = "Start Report";
@@ -262,7 +309,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
               if (res && res.success) {
                   alert("✅ Report Logged Successfully!");
-                  // clear form?
               } else {
                   alert("❌ Error: " + (res ? res.error : "Unknown"));
               }
@@ -280,7 +326,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --- Test Closer Button (UPDATED) ---
+  // --- Test Closer Button ---
   if (closerBtn) {
       closerBtn.addEventListener('click', async () => {
           const startVal = startRowInput ? startRowInput.value : 1;
@@ -291,7 +337,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           if(closerStatusEl) closerStatusEl.style.display = 'block';
           if(closerStatusEl) closerStatusEl.innerText = "Initializing Scanner...";
           
-          // Send startRow to background
           chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow }, (res) => {
               if (chrome.runtime.lastError) {
                   closerBtn.innerText = "Error (Reload Panel)";
@@ -299,7 +344,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                   if(closerStatusEl) closerStatusEl.innerText = "Error: " + chrome.runtime.lastError.message;
                   return;
               }
-              // Background script will send updates via messages
           });
       });
   }
@@ -330,7 +374,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           crawlStatusEl.innerText = "Fetching sheet data...";
           crawlBtn.disabled = true;
 
-          // Fetch event data to identify blank rows
           const response = await chrome.runtime.sendMessage({ action: 'getVerticalData', vertical });
           
           if (!response || !response.success) {
@@ -339,11 +382,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
 
-          // Filter for events that lack a TikTok URL
-          // eventMap is { "key": { name: "Name", urls: { tiktok: "...", ... } } }
           const allEvents = Object.values(response.data.eventMap);
-          
-          // Sort by row index to ensure we process in order
           allEvents.sort((a, b) => a.rowIndex - b.rowIndex);
 
           crawlQueue = allEvents.filter(e => !e.urls.tiktok || e.urls.tiktok.trim() === "");
@@ -354,12 +393,11 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
 
-          // Start
           isCrawling = true;
           consecutiveFailures = 0;
           crawlBtn.disabled = false;
           crawlBtn.innerText = "Stop Auto-Crawl";
-          crawlBtn.style.backgroundColor = "#e74c3c"; // Red for stop
+          crawlBtn.style.backgroundColor = "#e74c3c";
           
           crawlStatusEl.innerText = `Queue: ${crawlQueue.length} events. Starting...`;
           
@@ -417,20 +455,6 @@ function populateVerticals(selectEl) {
       opt.value = v.name;
       opt.innerText = v.name;
       selectEl.appendChild(opt);
-    });
-  }
-}
-
-function populateEvents(verticalName, dataListEl) {
-  if (!dataListEl) return;
-  dataListEl.innerHTML = '';
-  
-  const selectedV = configData.verticals.find(v => v.name === verticalName);
-  if (selectedV && selectedV.events) {
-    selectedV.events.forEach(e => {
-      const opt = document.createElement('option');
-      opt.value = e.eventName;
-      dataListEl.appendChild(opt);
     });
   }
 }
