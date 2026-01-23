@@ -29,9 +29,6 @@ window.addEventListener('error', function(e) {
 // --- SECURITY CHECK ---
 async function verifyAccessBeforeAction() {
   try {
-    if (!chrome.runtime?.id) {
-        throw new Error("Extension context invalidated");
-    }
     const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
     if (chrome.runtime.lastError) return false;
     
@@ -56,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
+  const startRowInput = document.getElementById('startRowInput'); // NEW
 
   // --- Message Listener for Crawler ---
   chrome.runtime.onMessage.addListener((msg) => {
@@ -96,7 +94,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Check Auth first
-    // Add a timeout to prevent infinite hanging
     const authPromise = chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
     
@@ -108,7 +105,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     if (!emailRes) {
-         // Timeout or silent fail
          showInitError("Background script unresponsive.");
          return;
     }
@@ -244,26 +240,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --- Test Closer Button ---
+  // --- Test Closer Button (UPDATED) ---
   if (closerBtn) {
       closerBtn.addEventListener('click', async () => {
+          const startVal = startRowInput ? startRowInput.value : 1;
+          const startRow = parseInt(startVal) || 1;
+
           closerBtn.innerText = "Running...";
           closerBtn.disabled = true;
           
-          chrome.runtime.sendMessage({ action: 'triggerCloser' }, (res) => {
+          // Send startRow to background
+          chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow }, (res) => {
               if (chrome.runtime.lastError) {
                   closerBtn.innerText = "Error (Reload Panel)";
                   return;
               }
 
               if (res && res.success) {
-                  closerBtn.innerText = "Check Started";
+                  closerBtn.innerText = "Scanning Started...";
               } else {
                   closerBtn.innerText = "Failed";
               }
               
               setTimeout(() => {
-                  closerBtn.innerText = 'Run "The Closer" (Check Status)';
+                  closerBtn.innerText = 'Run "The Closer"';
                   closerBtn.disabled = false;
               }, 3000);
           });
