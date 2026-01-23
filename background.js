@@ -41,6 +41,9 @@ function generateReportId() {
   return `${nums}${letters}`.toUpperCase();
 }
 
+// --- STOP FLAG ---
+let stopScannerSignal = false;
+
 // ==========================================
 // 1. THE SHEET SCANNER (The Closer 2.0)
 // ==========================================
@@ -55,6 +58,7 @@ function sendProgress(status, details) {
 }
 
 async function runSheetScanner(startRow = 1) {
+  stopScannerSignal = false;
   console.log(`🕵️ Sheet Scanner: Starting from Row ${startRow}...`);
   sendProgress(`Starting from Row ${startRow}`, "Fetching sheet data...");
   
@@ -67,6 +71,13 @@ async function runSheetScanner(startRow = 1) {
 
     // Loop through rows
     for (let i = startRow; i < rows.length; i++) {
+        // Stop check
+        if (stopScannerSignal) {
+            console.log("🛑 Sheet Scanner: Stopped by user.");
+            sendProgress("Scanner Stopped", "User interrupted the process.");
+            break;
+        }
+
         // Safety Break for 3 consecutive blanks
         if (consecutiveBlanks >= 3) {
             console.log("🕵️ Sheet Scanner: Hit 3 blank cells. Stopping.");
@@ -97,6 +108,8 @@ async function runSheetScanner(startRow = 1) {
         let deadCount = 0;
 
         for (let j = 0; j < urls.length; j++) {
+            if (stopScannerSignal) break;
+
             const url = urls[j];
             sendProgress(`Row ${i+1}`, `Checking Link ${j+1}/${urls.length}...`);
             
@@ -127,6 +140,12 @@ async function runSheetScanner(startRow = 1) {
             await new Promise(r => setTimeout(r, 1500)); 
         }
 
+        if (stopScannerSignal) {
+            console.log("🛑 Sheet Scanner: Stopped by user (during URL check).");
+            sendProgress("Scanner Stopped", "User interrupted.");
+            break;
+        }
+
         // Determine Status based on counts
         if (deadCount > 0 && activeCount === 0) {
             console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
@@ -145,8 +164,10 @@ async function runSheetScanner(startRow = 1) {
         }
     }
     
-    console.log("🕵️ Sheet Scanner: Complete.");
-    sendProgress("Scanner Complete", "Finished processing rows.");
+    if (!stopScannerSignal) {
+        console.log("🕵️ Sheet Scanner: Complete.");
+        sendProgress("Scanner Complete", "Finished processing rows.");
+    }
 
   } catch (e) {
     console.error("Sheet Scanner Failed:", e);
@@ -354,15 +375,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
   }
 
+  // UPDATED LISTENER FOR CLOSER
   if (request.action === 'triggerCloser') {
       // Pass startRow if provided, or default to 1
       const startRow = request.startRow || 1;
       runSheetScanner(startRow).then(() => sendResponse({ success: true }));
       return true;
   }
+
+  // --- STOP LISTENER ---
+  if (request.action === 'stopSheetScanner') {
+      stopScannerSignal = true;
+      sendResponse({ success: true });
+      return true;
+  }
 });
 
-// ... (Helper functions handleDynamicSearch, handleAddVideo, handleBatchReport, handleUrlSave kept as is, they are fine)
+// ==========================================
+// 4. HELPER FUNCTIONS
+// ==========================================
+
 async function handleDynamicSearch(data) {
   try {
     const { eventName, vertical } = data;
