@@ -54,7 +54,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
-  const closerStatusEl = document.getElementById('closerStatus'); // NEW
+  const closerStatusEl = document.getElementById('closerStatus'); 
+  
+  // Create Stop Button dynamically if not present in HTML, or expect it to be added.
+  // Ideally it should be in HTML, but we can inject or toggle visibility.
+  // For now, let's reuse closerBtn text/state or add a dedicated stop button.
+  // Let's toggle the existing button for simplicity first, or inject a stop button.
+  let stopCloserBtn = document.getElementById('stopCloserBtn');
+  if (!stopCloserBtn && closerBtn) {
+      stopCloserBtn = document.createElement('button');
+      stopCloserBtn.id = 'stopCloserBtn';
+      stopCloserBtn.className = 'btn';
+      stopCloserBtn.style.backgroundColor = '#e74c3c'; // Red
+      stopCloserBtn.style.marginTop = '5px';
+      stopCloserBtn.style.fontSize = '11px';
+      stopCloserBtn.style.padding = '8px';
+      stopCloserBtn.innerText = 'Stop Scanner';
+      stopCloserBtn.style.display = 'none';
+      closerBtn.parentNode.appendChild(stopCloserBtn); // Append next to run button container
+      // Actually better to append to the parent of the flex container
+      closerBtn.parentNode.parentNode.insertBefore(stopCloserBtn, closerStatusEl);
+  }
 
   // --- Message Listener for Crawler & Closer ---
   chrome.runtime.onMessage.addListener((msg) => {
@@ -63,12 +83,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (closerStatusEl) {
             closerStatusEl.style.display = 'block';
             closerStatusEl.innerHTML = `<strong>${msg.status}</strong><br>${msg.details || ''}`;
-            if (msg.status.includes("Complete") || msg.status.includes("Stop")) {
-                 closerBtn.disabled = false;
-                 closerBtn.innerText = 'Run "The Closer"';
+            
+            // If running, show stop button
+            if (!msg.status.includes("Complete") && !msg.status.includes("Stop") && !msg.status.includes("Failed")) {
+                 if (closerBtn) closerBtn.style.display = 'none';
+                 if (stopCloserBtn) stopCloserBtn.style.display = 'block';
+            } else {
+                 // Stopped/Done
+                 if (closerBtn) {
+                     closerBtn.style.display = 'block';
+                     closerBtn.disabled = false;
+                     closerBtn.innerText = 'Run "The Closer"';
+                 }
+                 if (stopCloserBtn) stopCloserBtn.style.display = 'none';
             }
         }
-        return; // Don't block other listeners
+        return; 
     }
 
     if (!isCrawling) return;
@@ -256,7 +286,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const startVal = startRowInput ? startRowInput.value : 1;
           const startRow = parseInt(startVal) || 1;
 
-          closerBtn.innerText = "Running...";
+          closerBtn.innerText = "Starting...";
           closerBtn.disabled = true;
           if(closerStatusEl) closerStatusEl.style.display = 'block';
           if(closerStatusEl) closerStatusEl.innerText = "Initializing Scanner...";
@@ -265,11 +295,21 @@ document.addEventListener('DOMContentLoaded', async () => {
           chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow }, (res) => {
               if (chrome.runtime.lastError) {
                   closerBtn.innerText = "Error (Reload Panel)";
+                  closerBtn.disabled = false;
                   if(closerStatusEl) closerStatusEl.innerText = "Error: " + chrome.runtime.lastError.message;
                   return;
               }
               // Background script will send updates via messages
           });
+      });
+  }
+
+  // --- Stop Closer Button Listener ---
+  if (stopCloserBtn) {
+      stopCloserBtn.addEventListener('click', () => {
+          stopCloserBtn.innerText = "Stopping...";
+          stopCloserBtn.disabled = true;
+          chrome.runtime.sendMessage({ action: 'stopSheetScanner' });
       });
   }
 
