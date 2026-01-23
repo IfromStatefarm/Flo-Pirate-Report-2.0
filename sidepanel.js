@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const closerBtn = document.getElementById('testCloserBtn');
   const crawlBtn = document.getElementById('autoCrawlBtn');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
+  const searchEventBtn = document.getElementById('searchEventBtn'); // New Button
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
@@ -216,33 +217,45 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
+  // Shared Search Function
+  const performSearch = () => {
+      const vertical = verticalSelect.value;
+      const eventName = eventInput.value;
+      
+      if (vertical && eventName) {
+          // Provide visual feedback
+          if (loadingEl) {
+              loadingEl.innerText = "Opening Search Page...";
+              loadingEl.style.display = "block";
+              loadingEl.style.color = "blue";
+          }
+          
+          chrome.runtime.sendMessage({ 
+              action: 'findEventUrl', 
+              data: { eventName, vertical } 
+          }, (res) => {
+              if (loadingEl) loadingEl.style.display = "none";
+              if (!res.success) {
+                  alert("Error opening search: " + res.error);
+              }
+          });
+      } else {
+          alert("Please select a Vertical and enter an Event Name.");
+      }
+  };
+
   if (eventInput) {
       // Add Enter key listener to trigger Search
       eventInput.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') {
-              const vertical = verticalSelect.value;
-              const eventName = eventInput.value;
-              
-              if (vertical && eventName) {
-                  // Provide visual feedback
-                  if (loadingEl) {
-                      loadingEl.innerText = "Opening Search Page...";
-                      loadingEl.style.display = "block";
-                      loadingEl.style.color = "blue";
-                  }
-                  
-                  chrome.runtime.sendMessage({ 
-                      action: 'findEventUrl', 
-                      data: { eventName, vertical } 
-                  }, (res) => {
-                      if (loadingEl) loadingEl.style.display = "none";
-                      if (!res.success) {
-                          alert("Error opening search: " + res.error);
-                      }
-                  });
-              }
+              performSearch();
           }
       });
+  }
+
+  // Search Button Listener
+  if (searchEventBtn) {
+      searchEventBtn.addEventListener('click', performSearch);
   }
 
   if (reporterInput) {
