@@ -79,12 +79,15 @@ async function runSheetScanner(startRow = 1) {
         
         if (!urls || urls.length === 0) continue;
 
-        console.log(`Row ${i+1}: Checking ${urls.length} links...`);
+        console.log(`Row ${i+1}: Found ${urls.length} links.`);
 
         let activeCount = 0;
         let deadCount = 0;
 
-        for (const url of urls) {
+        for (let j = 0; j < urls.length; j++) {
+            const url = urls[j];
+            console.log(`Row ${i+1} - URL ${j + 1} of ${urls.length}: Checking...`);
+            
             let platform = 'unknown';
             if (url.includes('tiktok')) platform = 'tiktok';
             else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
@@ -116,7 +119,7 @@ async function runSheetScanner(startRow = 1) {
         if (deadCount > 0 && activeCount === 0) {
             console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
             await updateRowStatus(i, "Resolved");
-        } else if (activeCount > 0 && deadCount > 0) {
+        } else if (activeCount > 0) {
              // Only mark investigating if mix? Or if ANY active?
              // User request: "If there are some urls still up it would write 'Investigating'"
             console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
@@ -174,6 +177,7 @@ async function verifyTakedownViaTab(url, platform) {
                     if (text.includes("video currently unavailable")) return true;
                     if (text.includes("video not found")) return true;
                     if (text.includes("couldn't find this account")) return true;
+                    if (text.includes("page not available")) return true;
                     if (document.querySelector('[data-e2e="video-removed"]')) return true;
                 }
                 
@@ -181,6 +185,8 @@ async function verifyTakedownViaTab(url, platform) {
                     if (text.includes("video unavailable")) return true;
                     if (text.includes("video has been removed")) return true;
                     if (text.includes("video is private")) return true;
+                    if (text.includes("this video is no longer available")) return true;
+                    // If redirected to home, likely removed (heuristic)
                     if (window.location.href === "https://www.youtube.com/") return true; 
                 }
                 
