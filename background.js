@@ -90,9 +90,7 @@ async function runSheetScanner() {
                 if (!isDown) {
                     allDown = false;
                     console.log(`  - URL Active: ${url}`);
-                    // If any URL in the cell is active, we don't strike out the cell.
-                    // We must check them all to be sure, but logically if one is up, the report isn't "closed".
-                    // However, we continue checking others just for logs.
+                    break; 
                 } else {
                     console.log(`  - URL Down: ${url}`);
                 }
@@ -129,7 +127,7 @@ async function verifyTakedownViaTab(url, platform) {
 
         // 2. Wait for Load (with timeout)
         await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => resolve("timeout"), 10000); // Resolve as timeout instead of rejecting to clean up
+            const timeout = setTimeout(() => resolve("timeout"), 15000); // Increased timeout to 15s
             
             const listener = (tid, info) => {
                 if (tid === tabId && info.status === 'complete') {
@@ -142,7 +140,7 @@ async function verifyTakedownViaTab(url, platform) {
         });
         
         // Wait a bit for dynamic content to render
-        await new Promise(r => setTimeout(r, 2500));
+        await new Promise(r => setTimeout(r, 3000));
 
         // 3. Inject Script to Check Tombstone
         const result = await chrome.scripting.executeScript({
@@ -152,7 +150,7 @@ async function verifyTakedownViaTab(url, platform) {
                 const title = document.title.toLowerCase();
                 
                 // Generic 404/Not Found checks (covers many sites)
-                if (title.includes("404") || title.includes("not found") || title.includes("page not found")) return true;
+                if (title.includes("404") || title.includes("not found") || title.includes("page not found") || title.includes("unavailable")) return true;
 
                 if (plat === 'tiktok') {
                     if (text.includes("video currently unavailable")) return true;
