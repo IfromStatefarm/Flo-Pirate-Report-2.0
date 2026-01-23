@@ -13,7 +13,8 @@ import {
   checkIfAuthorized,
   getColumnHData,
   updateRowStatus,
-  formatCellAsTakenDown
+  formatCellAsTakenDown,
+  updateCellWithRichText
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
@@ -95,23 +96,32 @@ async function runSheetScanner(startRow = 1) {
         
         consecutiveBlanks = 0; // Reset count on non-blank
 
-        // Extract URLs (split by newline, space, or comma)
-        // Matches http/https URLs
-        const urls = cellValue.match(/https?:\/\/[^\s,]+/g);
+        // Extract URLs with indices for Rich Text formatting
+        const urlRegex = /https?:\/\/[^\s,]+/g;
+        let match;
+        const matches = [];
+        while ((match = urlRegex.exec(cellValue)) !== null) {
+            matches.push({ url: match[0], index: match.index, end: match.index + match[0].length });
+        }
         
-        if (!urls || urls.length === 0) continue;
+        if (matches.length === 0) continue;
 
-        console.log(`Row ${i+1}: Checking ${urls.length} links...`);
-        sendProgress(`Scanning Row ${i+1}`, `Found ${urls.length} link(s)...`);
+        console.log(`Row ${i+1}: Checking ${matches.length} links...`);
+        sendProgress(`Scanning Row ${i+1}`, `Found ${matches.length} link(s)...`);
 
         let activeCount = 0;
         let deadCount = 0;
+        
+        const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 } };
+        const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 } };
+        
+        const urlStatuses = [];
 
-        for (let j = 0; j < urls.length; j++) {
+        for (let j = 0; j < matches.length; j++) {
             if (stopScannerSignal) break;
 
-            const url = urls[j];
-            sendProgress(`Row ${i+1}`, `Checking Link ${j+1}/${urls.length}...`);
+            const { url, index, end } = matches[j];
+            sendProgress(`Row ${i+1}`, `Checking Link ${j+1}/${matches.length}...`);
             
             let platform = 'unknown';
             if (url.includes('tiktok')) platform = 'tiktok';
@@ -127,39 +137,54 @@ async function runSheetScanner(startRow = 1) {
                 if (isDown) {
                     deadCount++;
                     console.log(`  - DOWN: ${url}`);
+                    urlStatuses.push({ index, end, isDead: true });
                 } else {
                     activeCount++;
                     console.log(`  - ACTIVE: ${url}`);
+                    urlStatuses.push({ index, end, isDead: false });
                 }
             } catch (err) {
                 console.warn(`  - Error checking ${url}:`, err);
                 activeCount++; // Assume active on error
+                urlStatuses.push({ index, end, isDead: false });
             }
             
             // Rate limit (1.5s) to avoid browser throttling tabs
             await new Promise(r => setTimeout(r, 1500)); 
         }
 
-        if (stopScannerSignal) {
-            console.log("🛑 Sheet Scanner: Stopped by user (during URL check).");
-            sendProgress("Scanner Stopped", "User interrupted.");
-            break;
-        }
+        if (stopScannerSignal) break;
 
         // Determine Status based on counts
         if (deadCount > 0 && activeCount === 0) {
             console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
             sendProgress(`Row ${i+1}: Resolved`, "Updating Sheet...");
             await updateRowStatus(i, "Resolved");
-        } else if (activeCount > 0) {
-             // Only mark investigating if mix? Or if ANY active?
-             // User request: "If there are some urls still up it would write 'Investigating'"
-            console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
-            sendProgress(`Row ${i+1}: Investigating`, `${activeCount} active links found.`);
-            await updateRowStatus(i, "Investigating");
+        } else if (activeCount > 0 && deadCount > 0) {
+             console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
+             sendProgress(`Row ${i+1}: Investigating`, `Striking ${deadCount} dead links...`);
+             await updateRowStatus(i, "Investigating");
+
+             // Build Rich Text Runs for Partial Formatting
+             const runs = [];
+             let currentIndex = 0;
+             runs.push({ startIndex: 0, format: defaultStyle });
+
+             for (const status of urlStatuses) {
+                if (status.isDead) {
+                    // Add run for dead link
+                    runs.push({ startIndex: status.index, format: deadStyle });
+                    // Add run to reset style after link
+                    if (status.end < cellValue.length) {
+                        runs.push({ startIndex: status.end, format: defaultStyle });
+                    }
+                }
+                currentIndex = status.end;
+             }
+             
+             await updateCellWithRichText(i, cellValue, runs);
+
         } else if (activeCount > 0 && deadCount === 0) {
-             // All active, maybe mark nothing or investigating?
-             // We'll leave it alone or mark investigating.
              // console.log(`Row ${i+1}: All active.`);
         }
     }
