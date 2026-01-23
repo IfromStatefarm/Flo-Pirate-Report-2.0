@@ -36,6 +36,17 @@
     
     /* Utility Link */
     .link-btn { background:none; border:none; color:#666; font-size:10px; cursor:pointer; text-decoration:underline; float: right; }
+
+    /* Closer Status */
+    #closerStatus {
+        margin-top: 5px;
+        font-size: 11px;
+        color: #555;
+        background: #eee;
+        padding: 5px;
+        border-radius: 4px;
+        display: none; /* Hidden by default */
+    }
   </style>
 </head>
 <body>
@@ -79,6 +90,7 @@
         <input type="number" id="startRowInput" placeholder="Start Row (e.g. 2)" style="flex:1;" min="1">
         <button id="testCloserBtn" class="btn" style="background-color: #555; margin-top: 0; font-size: 11px; padding: 8px; flex:2;">Run "The Closer"</button>
     </div>
+    <div id="closerStatus">Waiting to start...</div>
     <div style="font-size: 10px; color:#666; margin-top:4px;">Scans Column H for dead links. Updates Status to 'Resolved' or 'Investigating'.</div>
   </div>
 
