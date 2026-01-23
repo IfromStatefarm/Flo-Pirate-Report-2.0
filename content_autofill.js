@@ -493,3 +493,202 @@ async function fillInput(labelText, value, excludeTerm = null) {
     input.blur();
   }
 }
+
+// --- SHADOW DOM HELPERS ---
+
+async function findDeep(selector, root = document.body) {
+    let el = root.querySelector(selector);
+    if (el) return el;
+    const elements = root.querySelectorAll('*');
+    for (const element of elements) {
+        if (element.shadowRoot) {
+            const found = await findDeep(selector, element.shadowRoot);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+async function typeInField(el, value) {
+    if (!el || !value) return;
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await sleep(200);
+
+    if (el.shadowRoot) {
+        const inner = el.shadowRoot.querySelector('input, textarea');
+        if (inner) el = inner;
+    } else if (el.tagName.includes('-')) {
+         const inner = el.querySelector('input, textarea');
+         if (inner) el = inner;
+    }
+
+    el.focus();
+    el.value = value;
+    
+    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: value[0], bubbles: true, composed: true }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { key: value[0], bubbles: true, composed: true }));
+    
+    el.blur();
+}
+
+async function fillDeep(selector, value) {
+    const el = await findDeep(selector);
+    if(el) await typeInField(el, value);
+}
+
+async function selectDropdownOption(label, optionText) {
+    console.log(`🔽 Selecting: ${label} -> ${optionText}`);
+
+    const triggerXpath = `
+        //*[@id="${label}"]//ytcp-dropdown-trigger |
+        //ytcp-dropdown-trigger[contains(@aria-label, '${label}')] |
+        //ytcp-form-select[contains(@aria-label, '${label}')]//ytcp-dropdown-trigger |
+        //ytcp-dropdown-trigger[.//div[contains(text(), '${label}')]] |
+        //ytcp-text-dropdown-trigger[.//div[contains(text(), '${label}')]] 
+    `;
+    const triggerResult = document.evaluate(triggerXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    const trigger = triggerResult.singleNodeValue;
+
+    if (trigger) {
+        trigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        trigger.click();
+        await sleep(800); 
+
+        const optionXpath = `
+            //paper-item[contains(., '${optionText}')] | 
+            //ytcp-text-menu-item[contains(., '${optionText}')] | 
+            //tp-yt-paper-item[contains(., '${optionText}')]
+        `;
+        const optionResult = document.evaluate(optionXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        const option = optionResult.singleNodeValue;
+
+        if (option) {
+            option.click();
+            await sleep(1000); 
+            return true;
+        } else {
+            document.body.click(); 
+        }
+    }
+    return false;
+}
+
+// ==========================================
+// 7. OVERLAY
+// ==========================================
+function createUploadOverlay(data) {
+  const existing = document.getElementById("flo-upload-overlay");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "flo-upload-overlay";
+  overlay.style.cssText = `
+    position: fixed; top: 80px; right: 20px; width: 300px;
+    background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
+  `;
+
+  overlay.innerHTML = `
+    <h3 id="flo-overlay-header" style="margin-top:0; color:#ce0e2d; cursor: move;">FloSports Helper ✥</h3>
+    <div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+      <strong>Platform:</strong> ${data.platform || "TikTok"}<br>
+      <strong>Status:</strong> Form Filled.<br>
+      <small style="color:#666;">Double check all fields.</small>
+    </div>
+    <div style="margin-bottom: 15px;">
+      <strong>Step 2:</strong> Submit Report<br>
+      <small>Click "Send" on the form.</small>
+    </div>
+    <div>
+      <strong>Step 3:</strong> Log to Sheet<br>
+      <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%; margin-top:5px;">Log & Finish</button>
+      
+      <div id="flo-progress-container" style="display:none; width: 100%; background-color: #f1f1f1; border-radius: 4px; margin-top: 10px; overflow: hidden;">
+        <div id="flo-progress-fill" style="width: 0%; height: 8px; background-color: #ce0e2d; border-radius: 4px; transition: width 0.3s ease-in-out;"></div>
+      </div>
+      
+      <div id="flo-log-status" style="margin-top:8px; font-size:12px; font-weight:bold;"></div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  let isDragging = false;
+  let startX, startY, initialLeft, initialTop;
+
+  overlay.addEventListener('mousedown', (e) => {
+      if (['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) return;
+
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      
+      const rect = overlay.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+      
+      overlay.style.right = 'auto';
+      overlay.style.left = `${initialLeft}px`;
+      overlay.style.top = `${initialTop}px`;
+      
+      e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      overlay.style.left = `${initialLeft + dx}px`;
+      overlay.style.top = `${initialTop + dy}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+      isDragging = false;
+  });
+
+  document.getElementById("flo-log-btn").addEventListener("click", () => {
+    const status = document.getElementById("flo-log-status");
+    const btn = document.getElementById("flo-log-btn");
+    const progressContainer = document.getElementById("flo-progress-container");
+    const progressFill = document.getElementById("flo-progress-fill");
+    
+    status.innerText = "⏳ Generating PDF & Logging...";
+    status.style.color = "blue";
+    btn.disabled = true;
+    btn.style.background = "#ccc";
+    progressContainer.style.display = "block";
+
+    let width = 0;
+    const interval = setInterval(() => {
+        if (width >= 90) {
+            clearInterval(interval); 
+        } else {
+            width += (Math.random() * 5); 
+            progressFill.style.width = width + "%";
+        }
+    }, 200);
+
+    chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+      clearInterval(interval); 
+
+      if (response && response.success) {
+        progressFill.style.width = "100%";
+        progressFill.style.backgroundColor = "#4CAF50"; 
+        
+        status.innerText = "✅ Logged Successfully! Closing...";
+        status.style.color = "green";
+        setTimeout(() => overlay.remove(), 2500);
+      } else {
+        progressFill.style.backgroundColor = "red";
+        status.innerText = "❌ Log Failed.";
+        status.style.color = "red";
+        btn.disabled = false;
+        btn.style.background = "#ce0e2d";
+      }
+    });
+  });
+}
