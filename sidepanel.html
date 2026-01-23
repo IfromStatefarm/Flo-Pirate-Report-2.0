@@ -74,7 +74,12 @@
     <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
 
     <!-- The Closer -->
-    <button id="testCloserBtn" class="btn" style="background-color: #555; margin-top: 10px; font-size: 11px; padding: 8px;">Run "The Closer" (Check Status)</button>
+    <label style="margin-top: 15px;">Sheet Scanner Options</label>
+    <div style="display:flex; gap:5px; align-items:center;">
+        <input type="number" id="startRowInput" placeholder="Start Row (e.g. 2)" style="flex:1;" min="1">
+        <button id="testCloserBtn" class="btn" style="background-color: #555; margin-top: 0; font-size: 11px; padding: 8px; flex:2;">Run "The Closer"</button>
+    </div>
+    <div style="font-size: 10px; color:#666; margin-top:4px;">Scans Column H for dead links. Updates Status to 'Resolved' or 'Investigating'.</div>
   </div>
 
   <script src="sidepanel.js" type="module"></script>
