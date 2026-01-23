@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const closerBtn = document.getElementById('testCloserBtn');
   const crawlBtn = document.getElementById('autoCrawlBtn');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
-  const searchEventBtn = document.getElementById('searchEventBtn'); // New Button
+  const searchEventBtn = document.getElementById('searchEventBtn');
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
@@ -188,16 +188,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (eventList) eventList.innerHTML = ''; // Clear current options
 
           if (vertical) {
-              // Show temporary loading state in the placeholder if possible, or just log
               if (eventInput) eventInput.placeholder = "Loading events...";
               
               try {
-                  // Fetch live data from the Sheet instead of static config
                   const response = await chrome.runtime.sendMessage({ action: 'getVerticalData', vertical });
                   
                   if (response && response.success && response.data && response.data.eventMap) {
                       const events = Object.values(response.data.eventMap).map(e => e.name);
-                      // Sort alphabetically for easier searching
                       events.sort();
                       
                       eventList.innerHTML = '';
@@ -217,13 +214,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
-  // Shared Search Function
   const performSearch = () => {
       const vertical = verticalSelect.value;
       const eventName = eventInput.value;
       
       if (vertical && eventName) {
-          // Provide visual feedback
           if (loadingEl) {
               loadingEl.innerText = "Opening Search Page...";
               loadingEl.style.display = "block";
@@ -245,7 +240,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   if (eventInput) {
-      // Add Enter key listener to trigger Search
       eventInput.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') {
               performSearch();
@@ -253,7 +247,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
-  // Search Button Listener
   if (searchEventBtn) {
       searchEventBtn.addEventListener('click', performSearch);
   }
@@ -264,7 +257,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
-  // Grab Source URL from current tab
   if (grabBtn) {
       grabBtn.addEventListener('click', async () => {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -274,12 +266,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
-  // Start Report
+  // --- START REPORT LOGIC (UPDATED) ---
   if (startBtn) {
       startBtn.addEventListener('click', async () => {
           const reporterName = reporterInput.value;
           const vertical = verticalSelect.value;
           const eventName = eventInput.value;
+          const sourceUrl = document.getElementById('sourceUrlDisplay').value;
           
           if (!reporterName || !vertical || !eventName) {
               alert("Please fill in Reporter, Vertical, and Event Name.");
@@ -287,44 +280,57 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
 
           startBtn.disabled = true;
-          startBtn.innerText = "Submitting...";
+          startBtn.innerText = "Checking Queue...";
 
-          // Construct Payload
-          let urlsToReport = [];
-          
+          // 1. Check Cart
           const storage = await chrome.storage.local.get('piracy_cart');
           const cart = storage.piracy_cart || [];
           
-          if (cart.length > 0) {
-              urlsToReport = cart.map(i => i.url);
-          } else {
+          if (cart.length === 0) {
               alert("Queue is empty. Use the 'Add' buttons on video pages first.");
               startBtn.disabled = false;
               startBtn.innerText = "Start Report";
               return;
           }
 
-          const payload = {
-              reporterName,
-              vertical,
-              eventName,
-              urls: urlsToReport 
-          };
-          
-          chrome.runtime.sendMessage({ action: 'logToSheet', data: payload }, (res) => {
+          // 2. Determine Platform & URL
+          const firstUrl = cart[0].url;
+          let reportUrl = "";
+          let platform = "TikTok";
+
+          if (firstUrl.includes("youtube") || firstUrl.includes("youtu.be")) {
+              platform = "YouTube";
+              reportUrl = "https://www.youtube.com/copyright_complaint_form";
+          } else if (firstUrl.includes("tiktok")) {
+              platform = "TikTok";
+              reportUrl = "https://www.tiktok.com/legal/report/Copyright";
+          } else {
+              // Fallback or handle other platforms
+              platform = "Other";
+              alert("Auto-reporting is currently optimized for TikTok and YouTube. Please manually report other platforms.");
               startBtn.disabled = false;
               startBtn.innerText = "Start Report";
-              
-              if (chrome.runtime.lastError) {
-                  alert("Communication Error: " + chrome.runtime.lastError.message);
-                  return;
-              }
+              return;
+          }
 
-              if (res && res.success) {
-                  alert("✅ Report Logged Successfully!");
-              } else {
-                  alert("❌ Error: " + (res ? res.error : "Unknown"));
-              }
+          // 3. Save Context for Content Script
+          const reporterInfo = {
+              name: reporterName,
+              email: await getUserEmail() || "copyright@flosports.tv",
+              eventName: eventName,
+              vertical: vertical,
+              sourceUrl: sourceUrl || ""
+          };
+
+          await chrome.storage.local.set({ reporterInfo });
+
+          // 4. Open Reporting Page
+          startBtn.innerText = `Opening ${platform}...`;
+          
+          chrome.tabs.create({ url: reportUrl }, (tab) => {
+              // Done. The content script on that page will pick up 'reporterInfo' and 'piracy_cart'.
+              startBtn.disabled = false;
+              startBtn.innerText = "Start Report";
           });
       });
   }
