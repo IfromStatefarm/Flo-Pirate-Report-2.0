@@ -72,7 +72,7 @@ async function runSheetScanner(startRow = 1) {
 
     // Loop through rows
     for (let i = startRow; i < rows.length; i++) {
-        // Stop check at row start
+        // Stop check
         if (stopScannerSignal) {
             console.log("🛑 Sheet Scanner: Stopped by user.");
             sendProgress("Scanner Stopped", "User interrupted the process.");
@@ -115,8 +115,13 @@ async function runSheetScanner(startRow = 1) {
         const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 } };
         const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 } };
         
-        // Keep track of dead ranges for this cell
-        const deadRanges = [];
+        // --- REAL-TIME RICH TEXT TRACKING ---
+        // Initialize runs for the whole cell as default
+        // We will update this array progressively
+        let currentRuns = [{ startIndex: 0, format: defaultStyle }];
+        
+        // Helper to regenerate runs based on known dead ranges
+        const deadRanges = []; // Array of {start, end}
 
         for (let j = 0; j < matches.length; j++) {
             // CRITICAL STOP CHECK INSIDE INNER LOOP
@@ -146,42 +151,30 @@ async function runSheetScanner(startRow = 1) {
                     
                     // Add to dead ranges
                     deadRanges.push({ start: index, end: end });
-                    
-                    // Sort ranges just in case
                     deadRanges.sort((a, b) => a.start - b.start);
 
                     // Rebuild Runs for Real-time Update
-                    const runs = [];
+                    const newRuns = [];
                     let cursor = 0;
                     
-                    // If the first dead range doesn't start at 0, add default run
                     if (deadRanges.length > 0 && deadRanges[0].start > 0) {
-                         runs.push({ startIndex: 0, format: defaultStyle });
+                         newRuns.push({ startIndex: 0, format: defaultStyle });
                     }
                     
                     for (const range of deadRanges) {
-                        // If there is a gap between cursor and start of dead range, it's default text
-                        // (Handled by the logic that text inherits previous run style, but we need strict starts)
-                        
-                        // BUT Google Sheets API `textFormatRuns`: 
-                        // "The format will be applied to the text starting at the given index."
-                        // We must define runs explicitly.
-                        
                         if (range.start > cursor) {
-                            runs.push({ startIndex: cursor, format: defaultStyle });
+                            newRuns.push({ startIndex: cursor, format: defaultStyle });
                         }
-                        
-                        runs.push({ startIndex: range.start, format: deadStyle });
+                        newRuns.push({ startIndex: range.start, format: deadStyle });
                         cursor = range.end;
                     }
                     
-                    // If there is text remaining after the last dead range, reset to default
                     if (cursor < cellValue.length) {
-                        runs.push({ startIndex: cursor, format: defaultStyle });
+                        newRuns.push({ startIndex: cursor, format: defaultStyle });
                     }
 
-                    // Perform the update immediately
-                    await updateCellWithRichText(i, cellValue, runs);
+                    // Perform the update immediately so user sees strikethrough
+                    await updateCellWithRichText(i, cellValue, newRuns);
                     
                 } else {
                     activeCount++;
@@ -206,11 +199,10 @@ async function runSheetScanner(startRow = 1) {
             console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
             sendProgress(`Row ${i+1}: Resolved`, "Updating Sheet...");
             await updateRowStatus(i, "Resolved");
-        } else if (activeCount > 0) {
+        } else if (activeCount > 0 && deadCount > 0) {
              console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
              sendProgress(`Row ${i+1}: Investigating`, `${deadCount} dead links struck.`);
              await updateRowStatus(i, "Investigating");
-             // Note: Rich text is already updated in real-time loop above
         } else if (activeCount > 0 && deadCount === 0) {
              // console.log(`Row ${i+1}: All active.`);
         }
