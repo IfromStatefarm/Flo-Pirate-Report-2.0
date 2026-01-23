@@ -53,10 +53,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
-  const startRowInput = document.getElementById('startRowInput'); // NEW
+  const startRowInput = document.getElementById('startRowInput');
+  const closerStatusEl = document.getElementById('closerStatus'); // NEW
 
-  // --- Message Listener for Crawler ---
+  // --- Message Listener for Crawler & Closer ---
   chrome.runtime.onMessage.addListener((msg) => {
+    // Closer Status Update
+    if (msg.action === 'closerProgress') {
+        if (closerStatusEl) {
+            closerStatusEl.style.display = 'block';
+            closerStatusEl.innerHTML = `<strong>${msg.status}</strong><br>${msg.details || ''}`;
+            if (msg.status.includes("Complete") || msg.status.includes("Stop")) {
+                 closerBtn.disabled = false;
+                 closerBtn.innerText = 'Run "The Closer"';
+            }
+        }
+        return; // Don't block other listeners
+    }
+
     if (!isCrawling) return;
 
     if (msg.action === 'urlFound') {
@@ -87,13 +101,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 1. Load Config & Init
   try {
-    // Check for invalid context immediately
-    if (!chrome.runtime?.id) {
-        showInitError("Extension context invalidated. Please reopen.");
-        return;
-    }
-
     // Check Auth first
+    // Add a timeout to prevent infinite hanging
     const authPromise = chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
     
@@ -105,6 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     if (!emailRes) {
+         // Timeout or silent fail
          showInitError("Background script unresponsive.");
          return;
     }
@@ -248,24 +258,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           closerBtn.innerText = "Running...";
           closerBtn.disabled = true;
+          if(closerStatusEl) closerStatusEl.style.display = 'block';
+          if(closerStatusEl) closerStatusEl.innerText = "Initializing Scanner...";
           
           // Send startRow to background
           chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow }, (res) => {
               if (chrome.runtime.lastError) {
                   closerBtn.innerText = "Error (Reload Panel)";
+                  if(closerStatusEl) closerStatusEl.innerText = "Error: " + chrome.runtime.lastError.message;
                   return;
               }
-
-              if (res && res.success) {
-                  closerBtn.innerText = "Scanning Started...";
-              } else {
-                  closerBtn.innerText = "Failed";
-              }
-              
-              setTimeout(() => {
-                  closerBtn.innerText = 'Run "The Closer"';
-                  closerBtn.disabled = false;
-              }, 3000);
+              // Background script will send updates via messages
           });
       });
   }
