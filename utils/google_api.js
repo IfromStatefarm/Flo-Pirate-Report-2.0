@@ -13,18 +13,12 @@ const getOptions = () => {
 };
 
 // --- HELPER: CLEAN HANDLES FOR COMPARISON ---
-// Strips URLs, @ symbols, spaces, and converts to lowercase
 function normalizeHandle(input) {
   if (!input) return "";
   let clean = input.toString().toLowerCase().trim();
-  
-  // Remove URL prefixes if present in the whitelist
   clean = clean.replace(/^(https?:\/\/)?(www\.)?/, "");
   clean = clean.replace(/^(tiktok\.com\/|instagram\.com\/|twitter\.com\/|x\.com\/|youtube\.com\/|facebook\.com\/)/, "");
-  
-  // Remove @ and trailing slashes
   clean = clean.replace(/^@/, "").replace(/\/$/, "");
-  
   return clean;
 }
 
@@ -47,7 +41,6 @@ export async function findFileId(name, mimeType, parentId = null) {
 // 1. EVENT URL MANAGER (Dynamic Search)
 // ==========================================
 
-// READ: Fetches Search URL (Cell B1) and Platform Links (Columns A-H, Rows 3+)
 export async function getEventData(vertical) {
   const token = await getAuthToken();
   
@@ -61,10 +54,7 @@ export async function getEventData(vertical) {
     return { searchUrl: null, eventMap: {} };
   }
 
-  // A. Get Search URL from Cell B1
   const searchUrl = (data.values[0] && data.values[0][1]) ? data.values[0][1] : null;
-
-  // B. Process Events starting at Row 3 (Index 2)
   const eventRows = data.values.length > 2 ? data.values.slice(2) : []; 
 
   const eventMap = {};
@@ -72,10 +62,9 @@ export async function getEventData(vertical) {
     if (row[0]) {
       const originalName = row[0].trim();
       const cleanName = originalName.toLowerCase(); 
-      
       eventMap[cleanName] = {
         name: originalName,
-        rowIndex: index + 3, // +3 because we skipped 2 header rows and index is 0-based
+        rowIndex: index + 3,
         urls: {
             tiktok:    row[1] || null,
             instagram: row[2] || null,
@@ -93,47 +82,24 @@ export async function getEventData(vertical) {
   return { searchUrl, eventMap };
 }
 
-// --- HELPER: Map Platform to Column Letter ---
 function getColumnLetter(platform) {
-  // A=Event, B=TikTok, C=Instagram, D=YouTube, E=Twitter, F=Twitch, G=Facebook, H=Discord, I=Rumble
   const map = {
-    'tiktok': 'B',
-    'instagram': 'C',
-    'youtube': 'D',
-    'twitter': 'E',
-    'twitch': 'F',
-    'facebook': 'G',
-    'discord': 'H',
-    'rumble': 'I'
+    'tiktok': 'B', 'instagram': 'C', 'youtube': 'D', 'twitter': 'E',
+    'twitch': 'F', 'facebook': 'G', 'discord': 'H', 'rumble': 'I'
   };
-  // Default to B (TikTok) if platform is missing or typo
   return map[platform?.toLowerCase()] || 'B'; 
 }
 
 export async function checkIfAuthorized(platform, handle) {
   if (!handle) return false;
   const token = await getAuthToken();
-  
-  // Mapping based on your 'Handles White List' tab layout starting at B2 (Column B is Index 0 relative to range)
-  // Range: B2:I
   const platformIndexMap = {
-    'tiktok': 0,    
-    'instagram': 1, 
-    'twitter': 2,   
-    'x': 2,         
-    'discord': 3,   
-    'youtube': 4,   
-    'facebook': 5,  
-    'reddit': 6,
-    'rumble': 7     
+    'tiktok': 0, 'instagram': 1, 'twitter': 2, 'x': 2, 'discord': 3,
+    'youtube': 4, 'facebook': 5, 'reddit': 6, 'rumble': 7     
   };
-
   const targetIndex = platformIndexMap[platform?.toLowerCase()];
   
-  if (targetIndex === undefined) {
-      console.warn(`⚠️ Whitelist Check: Platform '${platform}' not mapped. Allowing.`);
-      return false;
-  }
+  if (targetIndex === undefined) return false;
 
   const range = `${WHITELIST_TAB}!B2:I`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
@@ -142,19 +108,15 @@ export async function checkIfAuthorized(platform, handle) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
 
-    if (!data.values || data.values.length === 0) {
-        return false;
-    }
+    if (!data.values || data.values.length === 0) return false;
 
     const targetHandle = normalizeHandle(handle);
-    const isAuthorized = data.values.some(row => {
+    return data.values.some(row => {
       if (row.length <= targetIndex) return false;
       const rawCellValue = row[targetIndex];
       const normalizedCell = normalizeHandle(rawCellValue);
       return normalizedCell === targetHandle;
     });
-
-    return isAuthorized;
 
   } catch (e) {
     console.error("❌ Error checking whitelist:", e);
@@ -175,14 +137,12 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
   });
 }
 
-// CREATE: Appends a new event, placing the URL in the correct column
 export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
   const token = await getAuthToken();
   const range = `${vertical}!A:I`; 
   
-  // [EventName, TikTok, Instagram, YouTube, Twitter, Twitch, Facebook, Discord, Rumble]
   const row = new Array(9).fill(""); 
-  row[0] = eventName; // Col A is always Event Name
+  row[0] = eventName;
 
   const colMap = {
     'tiktok': 1, 'instagram': 2, 'youtube': 3, 'twitter': 4, 
@@ -210,6 +170,7 @@ export async function ensureDailyScreenshotFolder(token, dateStr) {
   const dailyFolderId = await findOrCreateFolder(token, masterScreenshotFolderId, dateStr);
   return dailyFolderId;
 }
+
 // ==========================================
 // 2. DRIVE & FOLDER MANAGEMENT
 // ==========================================
@@ -291,12 +252,10 @@ export async function appendToSheet(token, logData) {
   
   let values;
 
-  // 1. Check if background.js sent us a pre-built row (The new way)
   if (logData.values && Array.isArray(logData.values)) {
       values = [logData.values];
   } 
   else {
-      console.warn("⚠️ Received legacy data format in appendToSheet. Using fallback.");
       const now = new Date();
       values = [[
         now.toLocaleDateString(),
@@ -314,7 +273,6 @@ export async function appendToSheet(token, logData) {
       ]];
   }
 
-  // 3. Send to Google Sheets
   await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/A1:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -368,13 +326,11 @@ export async function getColumnHData() {
   return data.values || [];
 }
 
-// UPDATED: Now handles Status updates based on verification result
 export async function updateRowStatus(rowIndex, status) {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
 
-  // 1. Update Text in Column J (Index 9)
-  const range = `J${rowIndex + 1}`; // +1 because sheet is 1-based, rowIndex is 0-based
+  const range = `J${rowIndex + 1}`; 
   const valueBody = { values: [[status]] };
   
   await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
@@ -383,52 +339,83 @@ export async function updateRowStatus(rowIndex, status) {
       body: JSON.stringify(valueBody)
   });
 
-  // 2. If Resolved, Strike Through Column H (Index 7)
   if (status === "Resolved") {
-      const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
-          headers: { Authorization: `Bearer ${token}` }
-      });
-      const metaData = await metaRes.json();
-      const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
-
-      const formatBody = {
-          requests: [{
-              repeatCell: {
-                  range: {
-                      sheetId: sheetId,
-                      startRowIndex: rowIndex,
-                      endRowIndex: rowIndex + 1,
-                      startColumnIndex: 7, // Column H
-                      endColumnIndex: 8
-                  },
-                  cell: {
-                      userEnteredFormat: {
-                          textFormat: {
-                              strikethrough: true,
-                              foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 } // Grey
-                          }
-                      }
-                  },
-                  fields: "userEnteredFormat(textFormat)"
-              }
-          }]
-      };
-
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(formatBody)
-      });
+      await formatCellAsTakenDown(rowIndex);
   }
 }
 
-// Legacy export for compatibility if needed, but we'll use updateRowStatus now
 export async function formatCellAsTakenDown(rowIndex) {
-    return updateRowStatus(rowIndex, "Resolved");
+  const { reportSheetId } = await getOptions();
+  const token = await getAuthToken();
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
+      headers: { Authorization: `Bearer ${token}` }
+  });
+  const metaData = await metaRes.json();
+  const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
+
+  const requests = [{
+      repeatCell: {
+          range: {
+              sheetId: sheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 7, 
+              endColumnIndex: 8
+          },
+          cell: {
+              userEnteredFormat: {
+                  textFormat: {
+                      strikethrough: true,
+                      foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }
+                  }
+              }
+          },
+          fields: "userEnteredFormat(textFormat)"
+      }
+  }];
+
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
+  });
+}
+
+export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns) {
+  const { reportSheetId } = await getOptions();
+  const token = await getAuthToken();
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
+      headers: { Authorization: `Bearer ${token}` }
+  });
+  const metaData = await metaRes.json();
+  const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
+
+  const requests = [{
+      updateCells: {
+          rows: [{
+              values: [{
+                  userEnteredValue: { stringValue: cellValue },
+                  textFormatRuns: textFormatRuns
+              }]
+          }],
+          range: {
+              sheetId: sheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 7, 
+              endColumnIndex: 8
+          },
+          fields: "userEnteredValue,textFormatRuns"
+      }
+  }];
+
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
+  });
 }
 
 export async function updateReportStatus(reportId, newStatus) {
-    // This is the old "ID-based" lookup. 
-    // We are moving to row-index based scanning in background.js, but keeping this doesn't hurt.
     return true; 
 }
