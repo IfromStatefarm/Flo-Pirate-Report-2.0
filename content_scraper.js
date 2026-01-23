@@ -2,6 +2,10 @@
 
 (function() { // Wrap in IIFE to prevent variable leaks
   
+  // Guard against re-injection
+  if (window.hasFloScraperRun) return;
+  window.hasFloScraperRun = true;
+
   let currentCount = 0;
 
   // DEFAULT SELECTORS (Robust Fallbacks)
