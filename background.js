@@ -45,8 +45,18 @@ function generateReportId() {
 // 1. THE SHEET SCANNER (The Closer 2.0)
 // ==========================================
 
+// Helper to send progress to sidepanel
+function sendProgress(status, details) {
+    chrome.runtime.sendMessage({ 
+        action: 'closerProgress', 
+        status: status,
+        details: details 
+    }).catch(() => {}); // Ignore error if panel closed
+}
+
 async function runSheetScanner(startRow = 1) {
   console.log(`🕵️ Sheet Scanner: Starting from Row ${startRow}...`);
+  sendProgress(`Starting from Row ${startRow}`, "Fetching sheet data...");
   
   try {
     const rows = await getColumnHData();
@@ -60,6 +70,7 @@ async function runSheetScanner(startRow = 1) {
         // Safety Break for 3 consecutive blanks
         if (consecutiveBlanks >= 3) {
             console.log("🕵️ Sheet Scanner: Hit 3 blank cells. Stopping.");
+            sendProgress("Scanner Stopped", "Hit 3 consecutive blank cells.");
             break;
         }
 
@@ -79,14 +90,15 @@ async function runSheetScanner(startRow = 1) {
         
         if (!urls || urls.length === 0) continue;
 
-        console.log(`Row ${i+1}: Found ${urls.length} links.`);
+        console.log(`Row ${i+1}: Checking ${urls.length} links...`);
+        sendProgress(`Scanning Row ${i+1}`, `Found ${urls.length} link(s)...`);
 
         let activeCount = 0;
         let deadCount = 0;
 
         for (let j = 0; j < urls.length; j++) {
             const url = urls[j];
-            console.log(`Row ${i+1} - URL ${j + 1} of ${urls.length}: Checking...`);
+            sendProgress(`Row ${i+1}`, `Checking Link ${j+1}/${urls.length}...`);
             
             let platform = 'unknown';
             if (url.includes('tiktok')) platform = 'tiktok';
@@ -118,11 +130,13 @@ async function runSheetScanner(startRow = 1) {
         // Determine Status based on counts
         if (deadCount > 0 && activeCount === 0) {
             console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
+            sendProgress(`Row ${i+1}: Resolved`, "Updating Sheet...");
             await updateRowStatus(i, "Resolved");
         } else if (activeCount > 0) {
              // Only mark investigating if mix? Or if ANY active?
              // User request: "If there are some urls still up it would write 'Investigating'"
             console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
+            sendProgress(`Row ${i+1}: Investigating`, `${activeCount} active links found.`);
             await updateRowStatus(i, "Investigating");
         } else if (activeCount > 0 && deadCount === 0) {
              // All active, maybe mark nothing or investigating?
@@ -132,9 +146,11 @@ async function runSheetScanner(startRow = 1) {
     }
     
     console.log("🕵️ Sheet Scanner: Complete.");
+    sendProgress("Scanner Complete", "Finished processing rows.");
 
   } catch (e) {
     console.error("Sheet Scanner Failed:", e);
+    sendProgress("Scanner Failed", e.message);
   }
 }
 
@@ -338,7 +354,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
   }
 
-  // UPDATED LISTENER FOR CLOSER
   if (request.action === 'triggerCloser') {
       // Pass startRow if provided, or default to 1
       const startRow = request.startRow || 1;
@@ -347,10 +362,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// ==========================================
-// 4. HELPER FUNCTIONS
-// ==========================================
-
+// ... (Helper functions handleDynamicSearch, handleAddVideo, handleBatchReport, handleUrlSave kept as is, they are fine)
 async function handleDynamicSearch(data) {
   try {
     const { eventName, vertical } = data;
