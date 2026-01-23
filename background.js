@@ -118,7 +118,11 @@ async function runSheetScanner(startRow = 1) {
         const urlStatuses = [];
 
         for (let j = 0; j < matches.length; j++) {
-            if (stopScannerSignal) break;
+            // CRITICAL STOP CHECK INSIDE INNER LOOP
+            if (stopScannerSignal) {
+                console.log("🛑 Stop signal received. Aborting inner loop.");
+                break;
+            }
 
             const { url, index, end } = matches[j];
             sendProgress(`Row ${i+1}`, `Checking Link ${j+1}/${matches.length}...`);
@@ -153,7 +157,10 @@ async function runSheetScanner(startRow = 1) {
             await new Promise(r => setTimeout(r, 1500)); 
         }
 
-        if (stopScannerSignal) break;
+        if (stopScannerSignal) {
+             sendProgress("Scanner Stopped", "Operation cancelled.");
+             break;
+        }
 
         // Determine Status based on counts
         if (deadCount > 0 && activeCount === 0) {
@@ -410,6 +417,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // --- STOP LISTENER ---
   if (request.action === 'stopSheetScanner') {
+      console.log("🛑 Stop Signal Received.");
       stopScannerSignal = true;
       sendResponse({ success: true });
       return true;
