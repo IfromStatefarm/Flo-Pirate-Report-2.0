@@ -328,6 +328,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           startBtn.innerText = `Opening ${platform}...`;
           
           chrome.tabs.create({ url: reportUrl }, (tab) => {
+              // For TikTok, manually inject content_autofill.js because the manifest 
+              // might not match the specific legal report page URL automatically.
+              if (platform === "TikTok") {
+                  const listener = (tabId, changeInfo, tabInfo) => {
+                      if (tabId === tab.id && changeInfo.status === 'complete') {
+                          chrome.tabs.onUpdated.removeListener(listener);
+                          chrome.scripting.executeScript({
+                              target: { tabId: tabId },
+                              files: ['content_autofill.js']
+                          }).then(() => console.log("Autofill script injected for TikTok"))
+                            .catch(err => console.warn("Injection failed:", err));
+                      }
+                  };
+                  chrome.tabs.onUpdated.addListener(listener);
+              }
+
               // Done. The content script on that page will pick up 'reporterInfo' and 'piracy_cart'.
               startBtn.disabled = false;
               startBtn.innerText = "Start Report";
