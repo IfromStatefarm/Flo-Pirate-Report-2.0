@@ -81,26 +81,33 @@ async function runSheetScanner() {
             if (url.includes('tiktok')) platform = 'tiktok';
             else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
             else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
+            else if (url.includes('instagram')) platform = 'instagram';
+            else if (url.includes('facebook')) platform = 'facebook';
 
             try {
-                // CHANGED: Use Tab-based verification
+                // Check using Tab-based verification
                 const isDown = await verifyTakedownViaTab(url, platform); 
                 if (!isDown) {
                     allDown = false;
                     console.log(`  - URL Active: ${url}`);
-                    break; 
+                    // If any URL in the cell is active, we don't strike out the cell.
+                    // We must check them all to be sure, but logically if one is up, the report isn't "closed".
+                    // However, we continue checking others just for logs.
+                } else {
+                    console.log(`  - URL Down: ${url}`);
                 }
             } catch (err) {
                 console.warn(`  - Error verifying ${url}:`, err);
-                allDown = false; // Assume active on error
+                allDown = false; // Assume active on error to be safe
             }
             
-            // Rate limit to be nice
+            // Rate limit
             await new Promise(r => setTimeout(r, 1000)); 
         }
 
         if (allDown) {
             console.log(`Row ${i+1}: All URLs Down. Formatting...`);
+            // This function is imported from utils/google_api.js
             await formatCellAsTakenDown(i);
         }
     }
@@ -116,37 +123,42 @@ async function runSheetScanner() {
 async function verifyTakedownViaTab(url, platform) {
     let tabId = null;
     try {
-        // 1. Open Tab in Background
+        // 1. Open Tab in Background (active: false)
         const tab = await chrome.tabs.create({ url: url, active: false });
         tabId = tab.id;
 
         // 2. Wait for Load (with timeout)
         await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error("Timeout")), 10000);
+            const timeout = setTimeout(() => resolve("timeout"), 10000); // Resolve as timeout instead of rejecting to clean up
             
             const listener = (tid, info) => {
                 if (tid === tabId && info.status === 'complete') {
                     clearTimeout(timeout);
                     chrome.tabs.onUpdated.removeListener(listener);
-                    resolve();
+                    resolve("complete");
                 }
             };
             chrome.tabs.onUpdated.addListener(listener);
         });
         
-        // Wait a bit for dynamic content to render (critical for TikTok/YouTube)
-        await new Promise(r => setTimeout(r, 2000));
+        // Wait a bit for dynamic content to render
+        await new Promise(r => setTimeout(r, 2500));
 
         // 3. Inject Script to Check Tombstone
         const result = await chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: (plat) => {
                 const text = document.body.innerText.toLowerCase();
+                const title = document.title.toLowerCase();
                 
+                // Generic 404/Not Found checks (covers many sites)
+                if (title.includes("404") || title.includes("not found") || title.includes("page not found")) return true;
+
                 if (plat === 'tiktok') {
                     if (text.includes("video currently unavailable")) return true;
                     if (text.includes("video not found")) return true;
                     if (text.includes("couldn't find this account")) return true;
+                    if (text.includes("page not available")) return true;
                     if (document.querySelector('[data-e2e="video-removed"]')) return true;
                 }
                 
@@ -154,17 +166,26 @@ async function verifyTakedownViaTab(url, platform) {
                     if (text.includes("video unavailable")) return true;
                     if (text.includes("video has been removed")) return true;
                     if (text.includes("video is private")) return true;
-                    // YouTube sometimes redirects to home if channel is gone
+                    if (text.includes("this video is no longer available")) return true;
+                    // If redirected to home, likely removed (heuristic)
                     if (window.location.href === "https://www.youtube.com/") return true; 
                 }
                 
                 if (plat === 'twitter') {
                     if (text.includes("this page doesn’t exist")) return true;
                     if (text.includes("tweet has been deleted")) return true;
+                    if (text.includes("account suspended")) return true;
                 }
-
-                // Generic 404 text
-                if (document.title.includes("404") || document.title.includes("Not Found")) return true;
+                
+                if (plat === 'instagram') {
+                    if (text.includes("sorry, this page isn't available")) return true;
+                    if (text.includes("link you followed may be broken")) return true;
+                }
+                
+                if (plat === 'facebook') {
+                    if (text.includes("isn't available right now")) return true;
+                    if (text.includes("content isn't available")) return true;
+                }
 
                 return false;
             },
