@@ -1,106 +1,79 @@
 // content_autofill.js
 
-// Prevent re-declaration errors if script is injected multiple times or conflicts with scraper
+// 1. DEFAULT CONFIGURATION (Fallback if Google Drive fails)
+// This matches the structure of your events_config.json
 if (typeof AUTOFILL_CONFIG === 'undefined') {
-
-var AUTOFILL_CONFIG = {
-  tiktok: {
-    autofill: {
-      email_candidates: ["input[type='email']", "#email", "#contact_email", "[name='email']", "[placeholder*='email' i]", "[placeholder*='example.com' i]"],
-      email_labels: ["Email address", "Verify your email", "Contact email"],
-      next_button: "button",
-      next_button_text: "Next",
-      main_form_wait: "#name input",
-      inputs: {
-        name: ["#name", "Signature", "Sign your name"],
-        company: ["#nameOfOwner", "Copyright owner name"],
-        phone: ["#phoneNumber", "Phone number"],
-        address: ["#address", "Address"],
-        urls: ["tiktok.com/@tiktok/video", "Content to report", "Enter the URL(s)", "Infringing material"]
+  var AUTOFILL_CONFIG = {
+    tiktok: {
+      autofill: {
+        email_candidates: ['input[type="email"]', "#email", "#contact_email", "[name='email']"],
+        inputs: {
+          name: ["#name", "Signature", "Sign your name"],
+          company: ["#nameOfOwner", "Copyright owner name"],
+          phone: ["#phoneNumber", "Phone number"],
+          address: ["#address", "Address"],
+          urls: ["tiktok.com/@tiktok/video", "Content to report", "Enter the URL(s)", "Infringing material"]
+        }
       }
-    }
-  },
-  youtube: {
-    autofill: {
-      buttons: { add_video: "Add a video", save: "#save-button" },
-      inputs: {
-        source_url: ["#videoLink", "[aria-label='My video URL']"],
-        video_title: ["#videoTitle", "[aria-label='Title']"],
-        infringing_url: ["#targetVideo", "[aria-label='YouTube URL of video to be removed']"],
-        claimant_name: "#claimant-name",
-        phone: "//ytcp-form-textarea[.//div[contains(text(), 'Phone')]]",
-        secondary_email: "[aria-label='Secondary email']",
-        authority: "#requester-authority",
-        street: "[aria-label='Street address']",
-        city: "[aria-label='City']",
-        state: "#state",
-        zip: "[aria-label='Zip code']",
-        signature: "[aria-label='Signature']"
-      },
-      dropdowns: {
-        type_work: { label: "Type of work", value: "Video" },
-        subcategory: { label: "Subcategory", value: "Internet video" },
-        source: { label: "Source", value: "From outside of YouTube" },
-        location: { label: "Location of infringing content", value: "Entire video" },
-        affected_party: { label: "Affected party", value: "My company, organization, or client" },
-        country: { label: "country-select", value: "United States" }
-      },
-      radios: { standard_timing: "ytcp-radio-button[name='removal-timing-option'][aria-label*='Standard']" },
-      checkboxes: {
-        prevent_copies: "ytcp-checkbox-lit[aria-label*='Prevent future copies']",
-        agreements: ["good faith", "accurate", "abuse"]
+    },
+    youtube: {
+      autofill: {
+        buttons: { add_video: "Add a video", save: "#save-button" },
+        inputs: {
+          source_url: ["#videoLink", '[aria-label="My video URL"]'],
+          video_title: ["#videoTitle", '[aria-label="Title"]'],
+          infringing_url: ["#targetVideo", '[aria-label="YouTube URL of video to be removed"]'],
+          claimant_name: "#claimant-name",
+          authority: "#requester-authority",
+          street: '[aria-label="Street address"]',
+          city: '[aria-label="City"]',
+          state: "#state",
+          zip: '[aria-label="Zip code"]',
+          signature: '[aria-label="Signature"]'
+        },
+        dropdowns: {
+          type_work: { label: "Type of work", value: "Video" },
+          subcategory: { label: "Subcategory", value: "Internet video" },
+          source: { label: "Source", value: "From outside of YouTube" },
+          location: { label: "Location of infringing content", value: "Entire video" },
+          affected_party: { label: "Affected party", value: "My company, organization, or client" },
+          country: { label: "country-select", value: "United States" }
+        }
       }
-    }
-  },
-  instagram: {
-    autofill: {
-      name: "your_name",
-      email: "email",
-      urls: ["textarea[name='content_urls']", "textarea[name='links']"],
-      signature: "electronic_signature"
-    }
-  },
-  twitter: {
-    autofill: {
-      name: "reporter_name",
-      email: "email",
-      company: "company_name",
-      urls: "textarea[name='source_url']",
-      signature: "signature"
-    }
-  }
-};
-
+    },
+    instagram: { autofill: { name: "your_name", email: "email", urls: ['textarea[name="content_urls"]'], signature: "electronic_signature" } },
+    twitter: { autofill: { name: "reporter_name", email: "email", company: "company_name", urls: 'textarea[name="source_url"]', signature: "signature" } }
+  };
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // --- LOAD REMOTE CONFIG ---
+// This ensures your Google Drive JSON is actually used
 (async function initConfig() {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
     if (response && response.success && response.config && response.config.platform_selectors) {
+      console.log("✅ Remote Config Loaded (Background)");
       const remote = response.config.platform_selectors;
-      // Deep merge logic (simplified)
-      ['tiktok', 'youtube', 'instagram', 'twitter'].forEach(p => {
-        if(remote[p] && remote[p].autofill) AUTOFILL_CONFIG[p].autofill = remote[p].autofill;
-      });
-      console.log("✅ Remote Autofill Selectors Loaded");
+      
+      // Merge remote config into global object
+      if (remote.tiktok?.autofill) AUTOFILL_CONFIG.tiktok.autofill = { ...AUTOFILL_CONFIG.tiktok.autofill, ...remote.tiktok.autofill };
+      if (remote.youtube?.autofill) AUTOFILL_CONFIG.youtube.autofill = { ...AUTOFILL_CONFIG.youtube.autofill, ...remote.youtube.autofill };
+      if (remote.instagram?.autofill) AUTOFILL_CONFIG.instagram.autofill = { ...AUTOFILL_CONFIG.instagram.autofill, ...remote.instagram.autofill };
+      if (remote.twitter?.autofill) AUTOFILL_CONFIG.twitter.autofill = { ...AUTOFILL_CONFIG.twitter.autofill, ...remote.twitter.autofill };
     }
-  } catch(e) { console.warn("Using default autofill selectors."); }
+  } catch(e) { console.warn("Using default local strategies.", e); }
 })();
 
 // ==========================================
-// 1. LISTENERS & AUTO-RUN
+// 2. LISTENERS & AUTO-RUN
 // ==========================================
 
-// Check if listener is already added to avoid duplicates if script injected twice
 if (!window.hasFloAutofillListener) {
   window.hasFloAutofillListener = true;
-  
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "startFullAutomation") {
-        console.log("🤖 Received Automation Data:", request.data);
         routeAutofill(request.data)
           .then(() => sendResponse({ success: true }))
           .catch(err => sendResponse({ success: false, error: err.message }));
@@ -110,7 +83,6 @@ if (!window.hasFloAutofillListener) {
 }
 
 (async function init() {
-    // Only run if not already running
     if (window.floAutofillRunning) return;
     window.floAutofillRunning = true;
 
@@ -138,39 +110,26 @@ if (!window.hasFloAutofillListener) {
         sourceUrl: info.sourceUrl
     };
 
-    console.log(`🤖 Auto-Running for ${platform}...`);
+    // Wait briefly for config to load
+    await sleep(500); 
     routeAutofill(data);
 })();
 
-// ==========================================
-// 2. THE ROUTER
-// ==========================================
 async function routeAutofill(data) {
     const host = window.location.hostname;
-
-    if (host.includes('tiktok')) {
-        await fillTikTok(data);
-    } else if (host.includes('youtube')) {
-        await fillYouTube(data);
-    } else if (host.includes('instagram')) {
-        await fillInstagram(data);
-    } else if (host.includes('facebook')) {
-        await fillFacebook(data);
-    } else if (host.includes('twitter') || host.includes('x.com')) {
-        await fillTwitter(data);
-    } else {
-        console.log("No autofill strategy for this site.");
-        return;
-    }
-
+    if (host.includes('tiktok')) await fillTikTok(data);
+    else if (host.includes('youtube')) await fillYouTube(data);
+    else if (host.includes('instagram')) await fillInstagram(data);
+    else if (host.includes('facebook')) await fillFacebook(data);
+    else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
     createUploadOverlay(data);
 }
 
 // ==========================================
-// 3. TIKTOK STRATEGY
+// 3. TIKTOK STRATEGY (Hybrid: Config + Robust)
 // ==========================================
 async function fillTikTok(data) {
-  const conf = AUTOFILL_CONFIG.tiktok.autofill;
+  const conf = AUTOFILL_CONFIG.tiktok.autofill; // Uses Drive JSON if loaded
   const defaults = {
       company: "Flosports",
       phone: "5122702356",
@@ -180,61 +139,60 @@ async function fillTikTok(data) {
 
   console.log("📧 Attempting to fill email...");
   
-  // Use candidates from config
-  if(conf.email_candidates) {
-      for(const sel of conf.email_candidates) {
-          if(sel.startsWith("#") || sel.startsWith(".")) await fillById(sel.replace("#",""), defaults.email);
-          else if(sel.includes("name=")) await fillByName("email", defaults.email); // Simplified match
-          else if(sel.includes("placeholder")) await fillByPlaceholder("email", defaults.email);
-          else await fillBySelector(sel, defaults.email);
-      }
+  // Try selectors from JSON first
+  const emailSels = conf.email_candidates || ['input[type="email"]', "#email"];
+  for (const sel of emailSels) {
+      if (sel.startsWith("#")) await fillById(sel.replace("#",""), defaults.email);
+      else await fillBySelector(sel, defaults.email);
   }
   
-  // Use Labels from config
-  if(conf.email_labels) {
-      for(const label of conf.email_labels) await fillInput(label, defaults.email);
+  // Also try Labels from JSON
+  if (conf.email_labels) {
+      for (const label of conf.email_labels) await fillInput(label, defaults.email);
   }
 
   // Next Button
-  const nextBtn = Array.from(document.querySelectorAll(conf.next_button)).find(b => b.innerText.includes(conf.next_button_text));
+  const btnText = conf.next_button_text || "Next";
+  const nextBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes(btnText));
   if (nextBtn && !nextBtn.disabled) {
-      console.log("👉 Clicking Next...");
       nextBtn.click();
-      console.log("⏳ Waiting for Main Form...");
-      await waitForSelector(conf.main_form_wait, 5000); 
+      await waitForSelector(conf.main_form_wait || '#name input', 5000); 
       await sleep(500); 
   }
 
-  // Generic Field Filler Helper
-  const fillFieldGroup = async (key, val) => {
-      const selectors = conf.inputs[key];
-      if(!selectors) return;
-      for(const s of selectors) {
-          if(s.startsWith("#")) await fillById(s.replace("#",""), val);
+  // Helper to process JSON input arrays
+  const fillFromConfig = async (key, val) => {
+      const selectors = conf.inputs[key] || [];
+      for (const s of selectors) {
+          if (s.startsWith("#")) await fillById(s.replace("#",""), val);
           else await fillInput(s, val);
       }
   };
 
-  // Contact Info
-  await fillFieldGroup("name", data.fullName);
-  await fillFieldGroup("company", defaults.company);
-  await fillFieldGroup("phone", defaults.phone);
-  await fillFieldGroup("address", defaults.address);
+  await fillFromConfig("name", data.fullName);
+  await fillFromConfig("company", defaults.company);
+  await fillFromConfig("phone", defaults.phone);
+  await fillFromConfig("address", defaults.address);
 
-  // URL List
   const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-  await fillFieldGroup("urls", urlText);
+  
+  // Handle URL placeholder from JSON
+  if (conf.inputs.urls) {
+      for(const s of conf.inputs.urls) {
+          if (s.includes("tiktok.com")) await fillByPlaceholder(s, urlText);
+          else await fillInput(s, urlText);
+      }
+  }
 
-  // Checkboxes
   const checkboxes = document.querySelectorAll('input[type="checkbox"]');
   checkboxes.forEach(cb => { if (!cb.checked) cb.click(); });
 }
 
 // ==========================================
-// 4. YOUTUBE STRATEGY
+// 4. YOUTUBE STRATEGY (Hybrid: Config + Shadow DOM)
 // ==========================================
 async function fillYouTube(data) {
-    const conf = AUTOFILL_CONFIG.youtube.autofill;
+    const conf = AUTOFILL_CONFIG.youtube.autofill; // Uses Drive JSON if loaded
     console.log("📝 Running YouTube Strategy...");
 
     async function waitForButton(selectorOrText, timeout = 5000) {
@@ -256,61 +214,59 @@ async function fillYouTube(data) {
     const infringingUrls = data.urls || [];
     
     for (const [index, badUrl] of infringingUrls.entries()) {
-        console.log(`▶️ Processing Video ${index + 1}: ${badUrl}`);
+        console.log(`▶️ Processing Video ${index + 1}`);
 
-        const addBtn = await waitForButton(conf.buttons.add_video, 5000);
-        if (addBtn) {
-            addBtn.click();
-            await sleep(1500); 
+        // Use JSON for Button Text
+        const addBtnText = conf.buttons?.add_video || "Add a video";
+        const addBtn = await waitForButton(addBtnText, 5000);
+        if (addBtn) { addBtn.click(); await sleep(1500); }
+
+        // Use JSON for Dropdowns
+        if (conf.dropdowns) {
+            await selectDropdownOption(conf.dropdowns.type_work.label, conf.dropdowns.type_work.value);
+            await selectDropdownOption(conf.dropdowns.subcategory.label, conf.dropdowns.subcategory.value);
+            await selectDropdownOption(conf.dropdowns.source.label, conf.dropdowns.source.value);
         }
-
-        // Dropdowns
-        await selectDropdownOption(conf.dropdowns.type_work.label, conf.dropdowns.type_work.value);
-        await selectDropdownOption(conf.dropdowns.subcategory.label, conf.dropdowns.subcategory.value);
-        await selectDropdownOption(conf.dropdowns.source.label, conf.dropdowns.source.value);
 
         console.log("⏳ Waiting for fields...");
         await sleep(1500);
 
-        // Inputs via Config Array
-        const fillAny = async (key, val) => {
-            const sels = conf.inputs[key];
-            if(!sels) return;
-            for(const s of sels) {
+        // Inputs from JSON
+        const tryFill = async (key, val) => {
+            const arr = conf.inputs[key] || [];
+            for(const s of arr) {
                 let el = await findDeep(s);
-                if(el) { await typeInField(el, val); break; }
+                if(el) { await typeInField(el, val); return; }
             }
         };
 
-        await fillAny("source_url", data.sourceUrl);
-        await fillAny("video_title", data.eventName || "FloSports Event");
+        await tryFill("source_url", data.sourceUrl);
+        await tryFill("video_title", data.eventName || "FloSports Event");
         
-        let badInput = await findDeep(conf.inputs.infringing_url[0]) || await findDeep(conf.inputs.infringing_url[1]);
+        // Infringing URL
+        let badInput = await findDeep(conf.inputs.infringing_url?.[0]) || await findDeep(conf.inputs.infringing_url?.[1]);
         if (badInput) {
             await typeInField(badInput, badUrl);
-            console.log("   ↳ URL Filled, waiting for 'Location' dropdown...");
             await sleep(2000); 
         }
 
         await selectDropdownOption(conf.dropdowns.location.label, conf.dropdowns.location.value);
 
-        const saveBtn = await waitForButton(conf.buttons.save, 3000);
-        if (saveBtn) {
-            saveBtn.click();
-            await sleep(2500); 
-        }
+        const saveSelector = conf.buttons?.save || "#save-button";
+        const saveBtn = await waitForButton(saveSelector, 3000);
+        if (saveBtn) { saveBtn.click(); await sleep(2500); }
     }
 
     // Contact Info
-    console.log("📝 Filling Contact Info...");
     await selectDropdownOption(conf.dropdowns.affected_party.label, conf.dropdowns.affected_party.value);
     await sleep(1500); 
 
     let nameInput = await findDeep(conf.inputs.claimant_name);
     if (nameInput) await typeInField(nameInput, "Flosports");
     
-    // Phone via XPath in Config
-    const phoneResult = document.evaluate(conf.inputs.phone, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    // Phone hardcoded XPath fallback if JSON doesn't support complex XPath strings well
+    const phoneXpath = `//ytcp-form-textarea[.//div[contains(text(), 'Phone')]]`;
+    const phoneResult = document.evaluate(phoneXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
     if (phoneResult.singleNodeValue) await typeInField(phoneResult.singleNodeValue, "5122702356");
 
     await fillDeep(conf.inputs.secondary_email, "copyright@flosports.tv");
@@ -328,17 +284,16 @@ async function fillYouTube(data) {
     await fillDeep(conf.inputs.zip, "78701");
 
     // Legal
-    console.log("📝 Filling Legal...");
-    const standardRadio = await findDeep(conf.radios.standard_timing);
-    if (standardRadio) {
-        standardRadio.scrollIntoView({block: "center"});
-        standardRadio.click();
-    }
+    const standardSelector = conf.radios?.standard_timing || 'ytcp-radio-button[name="removal-timing-option"][aria-label*="Standard"]';
+    const standardRadio = await findDeep(standardSelector);
+    if (standardRadio) { standardRadio.scrollIntoView({block: "center"}); standardRadio.click(); }
 
-    const preventCheck = await findDeep(conf.checkboxes.prevent_copies);
+    const preventSelector = conf.checkboxes?.prevent_copies || 'ytcp-checkbox-lit[aria-label*="Prevent future copies"]';
+    const preventCheck = await findDeep(preventSelector);
     if (preventCheck) preventCheck.click();
 
-    for (const key of conf.checkboxes.agreements) {
+    const agreements = conf.checkboxes?.agreements || ["good faith", "accurate", "abuse"];
+    for (const key of agreements) {
         const xpath = `//ytcp-checkbox-lit//div[contains(@aria-label, '${key}')]`;
         const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
         if (result.singleNodeValue) {
@@ -355,47 +310,37 @@ async function fillYouTube(data) {
     console.log("✅ YouTube Automation Complete");
 }
 
-// ==========================================
-// 5. OTHER PLATFORMS
-// ==========================================
 async function fillInstagram(data) {
     const conf = AUTOFILL_CONFIG.instagram.autofill;
     await fillByName(conf.name, data.fullName);
     await fillByName(conf.email, data.email);
-    
     const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-    if(Array.isArray(conf.urls)) {
-        for(const s of conf.urls) await fillBySelector(s, urlText);
-    }
     
+    for(const sel of conf.urls) await fillBySelector(sel, urlText);
     await fillByName(conf.signature, data.fullName);
 }
 
-async function fillFacebook(data) {
-    await fillInstagram(data); 
-}
+async function fillFacebook(data) { await fillInstagram(data); }
 
 async function fillTwitter(data) {
     const conf = AUTOFILL_CONFIG.twitter.autofill;
     await fillByName(conf.name, data.fullName);
     await fillByName(conf.email, data.email);
     await fillByName(conf.company, "FloSports");
-    
     const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
     await fillBySelector(conf.urls, urlText);
     await fillByName(conf.signature, data.fullName);
 }
 
 // ==========================================
-// 6. HELPERS (Standard)
+// 6. HELPERS
 // ==========================================
 
 async function fillBySelector(selector, value) {
     if (!value) return;
     const el = document.querySelector(selector);
     if (el) {
-        el.focus();
-        el.value = value;
+        el.focus(); el.value = value;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
@@ -408,8 +353,7 @@ async function fillByName(nameAttr, value) {
     if (!value) return;
     const el = document.querySelector(`input[name="${nameAttr}"], textarea[name="${nameAttr}"]`);
     if (el) {
-        el.focus();
-        el.value = value;
+        el.focus(); el.value = value;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
@@ -423,8 +367,7 @@ async function fillByPlaceholder(partialPlaceholder, value) {
     const inputs = Array.from(document.querySelectorAll('input, textarea'));
     const target = inputs.find(el => el.placeholder && el.placeholder.toLowerCase().includes(partialPlaceholder.toLowerCase()));
     if (target) {
-        target.focus();
-        target.value = value;
+        target.focus(); target.value = value;
         target.dispatchEvent(new Event('input', { bubbles: true }));
         target.dispatchEvent(new Event('change', { bubbles: true }));
         target.blur();
@@ -439,8 +382,7 @@ async function fillById(containerId, value) {
     if (container) {
         const input = container.tagName === 'INPUT' || container.tagName === 'TEXTAREA' ? container : container.querySelector('input, textarea');
         if (input) {
-            input.focus();
-            input.value = value;
+            input.focus(); input.value = value;
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
             input.blur();
@@ -470,12 +412,10 @@ async function fillInput(labelText, value, excludeTerm = null) {
       const node = snapshot.snapshotItem(i);
       const text = node.innerText || node.textContent || "";
       if (excludeTerm && text.toLowerCase().includes(excludeTerm.toLowerCase())) continue; 
-      labelEl = node;
-      break; 
+      labelEl = node; break; 
   }
   
   if (!labelEl) return;
-  
   let input = null;
   let parent = labelEl.parentElement; 
   for(let i=0; i<5; i++) {
@@ -486,8 +426,7 @@ async function fillInput(labelText, value, excludeTerm = null) {
   }
   
   if (input) {
-    input.focus();
-    input.value = value;
+    input.focus(); input.value = value;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
     input.blur();
@@ -511,10 +450,8 @@ async function findDeep(selector, root = document.body) {
 
 async function typeInField(el, value) {
     if (!el || !value) return;
-
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await sleep(200);
-
     if (el.shadowRoot) {
         const inner = el.shadowRoot.querySelector('input, textarea');
         if (inner) el = inner;
@@ -522,16 +459,11 @@ async function typeInField(el, value) {
          const inner = el.querySelector('input, textarea');
          if (inner) el = inner;
     }
-
-    el.focus();
-    el.value = value;
-    
+    el.focus(); el.value = value;
     el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
     el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-    
     el.dispatchEvent(new KeyboardEvent('keydown', { key: value[0], bubbles: true, composed: true }));
     el.dispatchEvent(new KeyboardEvent('keyup', { key: value[0], bubbles: true, composed: true }));
-    
     el.blur();
 }
 
@@ -542,7 +474,6 @@ async function fillDeep(selector, value) {
 
 async function selectDropdownOption(label, optionText) {
     console.log(`🔽 Selecting: ${label} -> ${optionText}`);
-
     const triggerXpath = `
         //*[@id="${label}"]//ytcp-dropdown-trigger |
         //ytcp-dropdown-trigger[contains(@aria-label, '${label}')] |
@@ -557,7 +488,6 @@ async function selectDropdownOption(label, optionText) {
         trigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
         trigger.click();
         await sleep(800); 
-
         const optionXpath = `
             //paper-item[contains(., '${optionText}')] | 
             //ytcp-text-menu-item[contains(., '${optionText}')] | 
@@ -565,14 +495,8 @@ async function selectDropdownOption(label, optionText) {
         `;
         const optionResult = document.evaluate(optionXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
         const option = optionResult.singleNodeValue;
-
-        if (option) {
-            option.click();
-            await sleep(1000); 
-            return true;
-        } else {
-            document.body.click(); 
-        }
+        if (option) { option.click(); await sleep(1000); return true; } 
+        else { document.body.click(); }
     }
     return false;
 }
@@ -622,33 +546,19 @@ function createUploadOverlay(data) {
 
   overlay.addEventListener('mousedown', (e) => {
       if (['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) return;
-
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      
-      const rect = overlay.getBoundingClientRect();
-      initialLeft = rect.left;
-      initialTop = rect.top;
-      
-      overlay.style.right = 'auto';
-      overlay.style.left = `${initialLeft}px`;
-      overlay.style.top = `${initialTop}px`;
-      
+      isDragging = true; startX = e.clientX; startY = e.clientY;
+      const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
+      overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
       e.preventDefault();
   });
 
   document.addEventListener('mousemove', (e) => {
       if (!isDragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      overlay.style.left = `${initialLeft + dx}px`;
-      overlay.style.top = `${initialTop + dy}px`;
+      const dx = e.clientX - startX; const dy = e.clientY - startY;
+      overlay.style.left = `${initialLeft + dx}px`; overlay.style.top = `${initialTop + dy}px`;
   });
 
-  document.addEventListener('mouseup', () => {
-      isDragging = false;
-  });
+  document.addEventListener('mouseup', () => { isDragging = false; });
 
   document.getElementById("flo-log-btn").addEventListener("click", () => {
     const status = document.getElementById("flo-log-status");
@@ -664,30 +574,18 @@ function createUploadOverlay(data) {
 
     let width = 0;
     const interval = setInterval(() => {
-        if (width >= 90) {
-            clearInterval(interval); 
-        } else {
-            width += (Math.random() * 5); 
-            progressFill.style.width = width + "%";
-        }
+        if (width >= 90) { clearInterval(interval); } else { width += (Math.random() * 5); progressFill.style.width = width + "%"; }
     }, 200);
 
     chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
       clearInterval(interval); 
-
       if (response && response.success) {
-        progressFill.style.width = "100%";
-        progressFill.style.backgroundColor = "#4CAF50"; 
-        
-        status.innerText = "✅ Logged Successfully! Closing...";
-        status.style.color = "green";
+        progressFill.style.width = "100%"; progressFill.style.backgroundColor = "#4CAF50"; 
+        status.innerText = "✅ Logged Successfully! Closing..."; status.style.color = "green";
         setTimeout(() => overlay.remove(), 2500);
       } else {
-        progressFill.style.backgroundColor = "red";
-        status.innerText = "❌ Log Failed.";
-        status.style.color = "red";
-        btn.disabled = false;
-        btn.style.background = "#ce0e2d";
+        progressFill.style.backgroundColor = "red"; status.innerText = "❌ Log Failed."; status.style.color = "red";
+        btn.disabled = false; btn.style.background = "#ce0e2d";
       }
     });
   });
