@@ -155,16 +155,22 @@ async function fillTikTok(data) {
   console.log("🎵 Running TikTok Strategy...");
 
   // --- STEP 1: HANDLE DECLARATION (WIZARD STEP) ---
-  // Uses JSON config 'wizard_terms' if available, otherwise defaults
   const declarationTerms = conf.wizard_terms || ["I am the copyright owner", "Authorized representative", "Statement"];
   
-  for (const term of declarationTerms) {
-      const clicked = await clickByText(term);
-      if (clicked) {
-          console.log(`✅ Selected declaration: "${term}"`);
-          await sleep(500);
-          break;
+  // Try to click terms multiple times in case of loading lag
+  let wizardSuccess = false;
+  for(let i=0; i<3; i++) {
+      if(wizardSuccess) break;
+      for (const term of declarationTerms) {
+          const clicked = await clickByText(term);
+          if (clicked) {
+              console.log(`✅ Selected declaration: "${term}"`);
+              wizardSuccess = true;
+              await sleep(1000); // Give UI time to expand
+              break;
+          }
       }
+      if(!wizardSuccess) await sleep(500);
   }
 
   // --- STEP 2: HANDLE NEXT BUTTON ---
@@ -179,9 +185,8 @@ async function fillTikTok(data) {
 
   // --- STEP 3: WAIT FOR MAIN FORM ---
   console.log("⏳ Waiting for form fields...");
-  // Try to wait for the configured email selector first
-  const emailSel = conf.email_candidates ? conf.email_candidates[0] : 'input[type="email"]';
-  const formReady = await waitForSelector(emailSel, 5000);
+  // Use a very generic selector to detect form load
+  const formReady = await waitForSelector('input, textarea', 5000);
   if (!formReady) console.warn("⚠️ Main form fields not detected immediately.");
 
   // --- STEP 4: FILL FIELDS ---
@@ -191,6 +196,7 @@ async function fillTikTok(data) {
   const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
   let emailFilled = false;
   for (const sel of emailSels) {
+      // fillBySelector now handles errors gracefully
       if (await fillBySelector(sel, defaults.email)) {
           emailFilled = true;
           break;
@@ -204,9 +210,13 @@ async function fillTikTok(data) {
   const fillFromConfig = async (key, val) => {
       const selectors = conf.inputs[key] || [];
       for (const s of selectors) {
-          if (s.startsWith("#") || s.startsWith(".") || s.startsWith("[")) {
-              if (await fillBySelector(s, val)) return;
-          } else {
+          // If selector looks like a name/id, we check specific logic, otherwise treat as CSS
+          // The updated fillBySelector handles the logic internally now
+          if (await fillBySelector(s, val)) return;
+          
+          // If fillBySelector failed (meaning selector wasn't found or was skipped),
+          // Try assuming it's a label text if it doesn't look like code
+          if (!/[#\[.]/.test(s)) {
               if (await fillInputByLabel(s, val)) return;
           }
       }
@@ -225,10 +235,13 @@ async function fillTikTok(data) {
       for(const s of conf.inputs.urls) {
           if (s.includes("tiktok.com")) {
              if (await fillByPlaceholder(s, urlText)) urlsFilled = true;
-          } else if (s.startsWith("#") || s.startsWith(".") || s.startsWith("[")) {
-             if (await fillBySelector(s, urlText)) urlsFilled = true;
           } else {
-             if (await fillInputByLabel(s, urlText)) urlsFilled = true;
+             // Try standard fill first
+             if (await fillBySelector(s, urlText)) urlsFilled = true;
+             // Try label fallback
+             else if (!/[#\[.]/.test(s)) {
+                 if (await fillInputByLabel(s, urlText)) urlsFilled = true;
+             }
           }
           if (urlsFilled) break;
       }
@@ -345,7 +358,12 @@ async function fillTwitter(data) {
 async function waitForSelector(selector, timeout) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
-        if (document.querySelector(selector)) return true;
+        try {
+            // Only try if selector looks valid to avoid syntax error loops
+            if (document.querySelector(selector)) return true;
+        } catch (e) {
+            // Ignore syntax errors in selector during wait
+        }
         await sleep(200);
     }
     return false;
@@ -355,12 +373,15 @@ async function waitForButton(textOrSel, timeout) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
         let el;
-        if (textOrSel.startsWith("#") || textOrSel.startsWith(".")) {
-            el = document.querySelector(textOrSel);
+        // Check if it looks like a CSS selector
+        if (/[.#\[]/.test(textOrSel)) {
+            try { el = document.querySelector(textOrSel); } catch(e){}
         } else {
             const xpath = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${textOrSel.toLowerCase()}')]`;
-            const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-            el = res.singleNodeValue;
+            try {
+                const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                el = res.singleNodeValue;
+            } catch(e){}
         }
         if (el) return el;
         await sleep(200);
@@ -370,18 +391,31 @@ async function waitForButton(textOrSel, timeout) {
 
 async function fillBySelector(selector, value) {
     if (!value) return false;
-    if (!selector.startsWith("#") && !selector.startsWith(".") && !selector.startsWith("[") && !selector.includes(" ")) {
+    
+    // HEURISTIC: Is this already a complex CSS selector?
+    // Checks for space, dot, hash, brackets, colon, or greater-than
+    const isComplexSelector = /[ .#\[:>]/.test(selector);
+
+    if (!isComplexSelector) {
+        // It's likely just a name "email" or ID "email-field"
         selector = `[name="${selector}"], #${selector}`;
     }
-    const el = document.querySelector(selector);
-    if (el) {
-        await typeInField(el, value);
-        return true;
+    
+    try {
+        const el = document.querySelector(selector);
+        if (el) {
+            await typeInField(el, value);
+            return true;
+        }
+    } catch (e) {
+        // Log the error but DO NOT crash the script
+        console.warn(`PIRATE AI: Skipping selector "${selector}" - ${e.message}`);
     }
     return false;
 }
 
 async function fillByName(nameAttr, value) {
+    // Manually constructing this is safe because we know the structure
     return fillBySelector(`[name="${nameAttr}"]`, value);
 }
 
@@ -400,48 +434,52 @@ async function fillInputByLabel(labelText, value) {
   if (!value) return false;
   const lowerLabel = labelText.toLowerCase();
   const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "${lowerLabel}")]`;
-  const snapshot = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-  
-  let targetInput = null;
-  for (let i = 0; i < snapshot.snapshotLength; i++) {
-      const node = snapshot.snapshotItem(i);
-      if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
+  try {
+      const snapshot = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      
+      let targetInput = null;
+      for (let i = 0; i < snapshot.snapshotLength; i++) {
+          const node = snapshot.snapshotItem(i);
+          if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
 
-      const forId = node.getAttribute('for');
-      if (forId) {
-          targetInput = document.getElementById(forId);
+          const forId = node.getAttribute('for');
+          if (forId) {
+              targetInput = document.getElementById(forId);
+              if (targetInput) break;
+          }
+
+          let parent = node;
+          for(let k=0; k<3; k++) { 
+              if (!parent) break;
+              const input = parent.querySelector('input:not([type="hidden"]), textarea');
+              if (input) {
+                  targetInput = input;
+                  break;
+              }
+              parent = parent.parentElement;
+          }
           if (targetInput) break;
       }
-
-      let parent = node;
-      for(let k=0; k<3; k++) { 
-          if (!parent) break;
-          const input = parent.querySelector('input:not([type="hidden"]), textarea');
-          if (input) {
-              targetInput = input;
-              break;
-          }
-          parent = parent.parentElement;
+      
+      if (targetInput) {
+          await typeInField(targetInput, value);
+          return true;
       }
-      if (targetInput) break;
-  }
-  
-  if (targetInput) {
-      await typeInField(targetInput, value);
-      return true;
-  }
+  } catch(e) { console.warn("Label xpath failed", e); }
   return false;
 }
 
 async function clickByText(text) {
     const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
-    const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-    const el = res.singleNodeValue;
-    if (el) {
-        el.scrollIntoView({block: "center"});
-        el.click();
-        return true;
-    }
+    try {
+        const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        const el = res.singleNodeValue;
+        if (el) {
+            el.scrollIntoView({block: "center"});
+            el.click();
+            return true;
+        }
+    } catch(e){}
     return false;
 }
 
