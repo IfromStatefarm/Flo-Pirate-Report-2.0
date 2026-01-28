@@ -1,11 +1,12 @@
 // content_autofill.js
 
 // 1. DEFAULT CONFIGURATION (Fallback if Google Drive fails)
-// This matches the structure of your events_config.json
 if (typeof AUTOFILL_CONFIG === 'undefined') {
   var AUTOFILL_CONFIG = {
     tiktok: {
       autofill: {
+        // These can be overridden by your events_config.json
+        wizard_terms: ["I am the copyright owner", "Authorized representative", "Statement", "Report an infringement"],
         email_candidates: ['input[type="email"]', "#email", "#contact_email", "[name='email']"],
         inputs: {
           name: ["#name", "Signature", "Sign your name"],
@@ -49,7 +50,6 @@ if (typeof AUTOFILL_CONFIG === 'undefined') {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // --- LOAD REMOTE CONFIG ---
-// This ensures your Google Drive JSON is actually used
 (async function initConfig() {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
@@ -57,11 +57,19 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       console.log("✅ Remote Config Loaded (Background)");
       const remote = response.config.platform_selectors;
       
-      // Merge remote config into global object
-      if (remote.tiktok?.autofill) AUTOFILL_CONFIG.tiktok.autofill = { ...AUTOFILL_CONFIG.tiktok.autofill, ...remote.tiktok.autofill };
-      if (remote.youtube?.autofill) AUTOFILL_CONFIG.youtube.autofill = { ...AUTOFILL_CONFIG.youtube.autofill, ...remote.youtube.autofill };
-      if (remote.instagram?.autofill) AUTOFILL_CONFIG.instagram.autofill = { ...AUTOFILL_CONFIG.instagram.autofill, ...remote.instagram.autofill };
-      if (remote.twitter?.autofill) AUTOFILL_CONFIG.twitter.autofill = { ...AUTOFILL_CONFIG.twitter.autofill, ...remote.twitter.autofill };
+      // Deep merge helpers for key platforms
+      if (remote.tiktok?.autofill) {
+          AUTOFILL_CONFIG.tiktok.autofill = { ...AUTOFILL_CONFIG.tiktok.autofill, ...remote.tiktok.autofill };
+      }
+      if (remote.youtube?.autofill) {
+          AUTOFILL_CONFIG.youtube.autofill = { ...AUTOFILL_CONFIG.youtube.autofill, ...remote.youtube.autofill };
+      }
+      if (remote.instagram?.autofill) {
+          AUTOFILL_CONFIG.instagram.autofill = { ...AUTOFILL_CONFIG.instagram.autofill, ...remote.instagram.autofill };
+      }
+      if (remote.twitter?.autofill) {
+          AUTOFILL_CONFIG.twitter.autofill = { ...AUTOFILL_CONFIG.twitter.autofill, ...remote.twitter.autofill };
+      }
     }
   } catch(e) { console.warn("Using default local strategies.", e); }
 })();
@@ -86,6 +94,11 @@ if (!window.hasFloAutofillListener) {
     if (window.floAutofillRunning) return;
     window.floAutofillRunning = true;
 
+    // Wait for DOM to be reasonably ready
+    if (document.readyState === 'loading') {
+        await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+    }
+
     const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
     const cart = res.piracy_cart || [];
     const info = res.reporterInfo;
@@ -95,6 +108,7 @@ if (!window.hasFloAutofillListener) {
     const host = window.location.hostname;
     const platform = cart[0].platform || "TikTok";
 
+    // Basic Host Checks
     if (platform === "TikTok" && !host.includes("tiktok")) return;
     if (platform === "YouTube" && !host.includes("youtube")) return;
     if (platform === "Instagram" && !host.includes("instagram") && !host.includes("facebook")) return;
@@ -110,8 +124,8 @@ if (!window.hasFloAutofillListener) {
         sourceUrl: info.sourceUrl
     };
 
-    // Wait briefly for config to load
-    await sleep(500); 
+    console.log("🚀 Starting Flo Autofill for:", platform);
+    await sleep(800); 
     routeAutofill(data);
 })();
 
@@ -122,50 +136,79 @@ async function routeAutofill(data) {
     else if (host.includes('instagram')) await fillInstagram(data);
     else if (host.includes('facebook')) await fillFacebook(data);
     else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
+    
     createUploadOverlay(data);
 }
 
 // ==========================================
-// 3. TIKTOK STRATEGY (Hybrid: Config + Robust)
+// 3. TIKTOK STRATEGY (CONFIG-DRIVEN WIZARD)
 // ==========================================
 async function fillTikTok(data) {
-  const conf = AUTOFILL_CONFIG.tiktok.autofill; // Uses Drive JSON if loaded
+  const conf = AUTOFILL_CONFIG.tiktok.autofill;
   const defaults = {
-      company: "Flosports",
+      company: "FloSports",
       phone: "5122702356",
       address: "301 Congress ave #1500 Austin Tx 78701",
       email: data.email || "copyright@flosports.tv"
   };
 
-  console.log("📧 Attempting to fill email...");
+  console.log("🎵 Running TikTok Strategy...");
+
+  // --- STEP 1: HANDLE DECLARATION (WIZARD STEP) ---
+  // Uses JSON config 'wizard_terms' if available, otherwise defaults
+  const declarationTerms = conf.wizard_terms || ["I am the copyright owner", "Authorized representative", "Statement"];
   
-  // Try selectors from JSON first
-  const emailSels = conf.email_candidates || ['input[type="email"]', "#email"];
-  for (const sel of emailSels) {
-      if (sel.startsWith("#")) await fillById(sel.replace("#",""), defaults.email);
-      else await fillBySelector(sel, defaults.email);
-  }
-  
-  // Also try Labels from JSON
-  if (conf.email_labels) {
-      for (const label of conf.email_labels) await fillInput(label, defaults.email);
+  for (const term of declarationTerms) {
+      const clicked = await clickByText(term);
+      if (clicked) {
+          console.log(`✅ Selected declaration: "${term}"`);
+          await sleep(500);
+          break;
+      }
   }
 
-  // Next Button
+  // --- STEP 2: HANDLE NEXT BUTTON ---
   const btnText = conf.next_button_text || "Next";
-  const nextBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes(btnText));
-  if (nextBtn && !nextBtn.disabled) {
+  const nextBtn = await waitForButton(btnText, 2000);
+  if (nextBtn && !nextBtn.disabled && nextBtn.offsetParent !== null) {
+      console.log("➡️ Clicking Next...");
+      nextBtn.scrollIntoView({block: "center"});
       nextBtn.click();
-      await waitForSelector(conf.main_form_wait || '#name input', 5000); 
-      await sleep(500); 
+      await sleep(1000);
   }
 
-  // Helper to process JSON input arrays
+  // --- STEP 3: WAIT FOR MAIN FORM ---
+  console.log("⏳ Waiting for form fields...");
+  // Try to wait for the configured email selector first
+  const emailSel = conf.email_candidates ? conf.email_candidates[0] : 'input[type="email"]';
+  const formReady = await waitForSelector(emailSel, 5000);
+  if (!formReady) console.warn("⚠️ Main form fields not detected immediately.");
+
+  // --- STEP 4: FILL FIELDS ---
+  
+  // A. EMAIL
+  console.log("📧 Filling Email...");
+  const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
+  let emailFilled = false;
+  for (const sel of emailSels) {
+      if (await fillBySelector(sel, defaults.email)) {
+          emailFilled = true;
+          break;
+      }
+  }
+  if (!emailFilled && conf.email_labels) {
+      for (const label of conf.email_labels) await fillInputByLabel(label, defaults.email);
+  }
+
+  // B. OTHER FIELDS
   const fillFromConfig = async (key, val) => {
       const selectors = conf.inputs[key] || [];
       for (const s of selectors) {
-          if (s.startsWith("#")) await fillById(s.replace("#",""), val);
-          else await fillInput(s, val);
+          if (s.startsWith("#") || s.startsWith(".") || s.startsWith("[")) {
+              if (await fillBySelector(s, val)) return;
+          } else {
+              if (await fillInputByLabel(s, val)) return;
+          }
       }
   };
 
@@ -174,154 +217,117 @@ async function fillTikTok(data) {
   await fillFromConfig("phone", defaults.phone);
   await fillFromConfig("address", defaults.address);
 
+  // C. URLS
   const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
+  let urlsFilled = false;
   
-  // Handle URL placeholder from JSON
   if (conf.inputs.urls) {
       for(const s of conf.inputs.urls) {
-          if (s.includes("tiktok.com")) await fillByPlaceholder(s, urlText);
-          else await fillInput(s, urlText);
+          if (s.includes("tiktok.com")) {
+             if (await fillByPlaceholder(s, urlText)) urlsFilled = true;
+          } else if (s.startsWith("#") || s.startsWith(".") || s.startsWith("[")) {
+             if (await fillBySelector(s, urlText)) urlsFilled = true;
+          } else {
+             if (await fillInputByLabel(s, urlText)) urlsFilled = true;
+          }
+          if (urlsFilled) break;
       }
   }
 
+  // D. CHECKBOXES
+  console.log("☑️ Clicking Checkboxes...");
   const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-  checkboxes.forEach(cb => { if (!cb.checked) cb.click(); });
+  checkboxes.forEach(cb => { 
+      if (!cb.checked && cb.offsetParent !== null) cb.click(); 
+  });
+  
+  const agreementTerms = ["I declare", "good faith", "perjury", "accurate"];
+  for (const term of agreementTerms) {
+      await clickByText(term); 
+  }
+
+  console.log("✅ TikTok Automation Finished.");
 }
 
 // ==========================================
-// 4. YOUTUBE STRATEGY (Hybrid: Config + Shadow DOM)
+// 4. YOUTUBE STRATEGY
 // ==========================================
 async function fillYouTube(data) {
-    const conf = AUTOFILL_CONFIG.youtube.autofill; // Uses Drive JSON if loaded
+    const conf = AUTOFILL_CONFIG.youtube.autofill; 
     console.log("📝 Running YouTube Strategy...");
 
-    async function waitForButton(selectorOrText, timeout = 5000) {
-        const start = Date.now();
-        while (Date.now() - start < timeout) {
-            if (selectorOrText.startsWith('#')) {
-                const el = await findDeep(selectorOrText);
-                if (el) return el;
-            } else {
-                const xpath = `//ytcp-button[.//div[contains(text(), '${selectorOrText}')]] | //button[contains(text(), '${selectorOrText}')]`;
-                const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                if (result.singleNodeValue) return result.singleNodeValue;
-            }
-            await sleep(500);
-        }
-        return null;
+    async function waitAndClick(textOrSel, time=3000) {
+       const btn = await waitForButton(textOrSel, time);
+       if (btn) { btn.click(); return true; }
+       return false;
     }
 
     const infringingUrls = data.urls || [];
     
+    // 1. Add Videos
     for (const [index, badUrl] of infringingUrls.entries()) {
-        console.log(`▶️ Processing Video ${index + 1}`);
-
-        // Use JSON for Button Text
         const addBtnText = conf.buttons?.add_video || "Add a video";
-        const addBtn = await waitForButton(addBtnText, 5000);
-        if (addBtn) { addBtn.click(); await sleep(1500); }
+        await waitAndClick(addBtnText, 5000);
+        await sleep(1000);
 
-        // Use JSON for Dropdowns
         if (conf.dropdowns) {
             await selectDropdownOption(conf.dropdowns.type_work.label, conf.dropdowns.type_work.value);
             await selectDropdownOption(conf.dropdowns.subcategory.label, conf.dropdowns.subcategory.value);
             await selectDropdownOption(conf.dropdowns.source.label, conf.dropdowns.source.value);
         }
 
-        console.log("⏳ Waiting for fields...");
-        await sleep(1500);
-
-        // Inputs from JSON
-        const tryFill = async (key, val) => {
-            const arr = conf.inputs[key] || [];
-            for(const s of arr) {
-                let el = await findDeep(s);
-                if(el) { await typeInField(el, val); return; }
-            }
-        };
-
-        await tryFill("source_url", data.sourceUrl);
-        await tryFill("video_title", data.eventName || "FloSports Event");
+        await fillDeep(conf.inputs.source_url?.[0], data.sourceUrl);
+        await fillDeep(conf.inputs.video_title?.[0], data.eventName || "FloSports Event");
         
-        // Infringing URL
-        let badInput = await findDeep(conf.inputs.infringing_url?.[0]) || await findDeep(conf.inputs.infringing_url?.[1]);
-        if (badInput) {
-            await typeInField(badInput, badUrl);
-            await sleep(2000); 
-        }
-
+        const badInputSel = conf.inputs.infringing_url?.[0] || conf.inputs.infringing_url?.[1];
+        await fillDeep(badInputSel, badUrl);
+        
         await selectDropdownOption(conf.dropdowns.location.label, conf.dropdowns.location.value);
-
-        const saveSelector = conf.buttons?.save || "#save-button";
-        const saveBtn = await waitForButton(saveSelector, 3000);
-        if (saveBtn) { saveBtn.click(); await sleep(2500); }
+        await waitAndClick(conf.buttons?.save || "#save-button", 3000);
+        await sleep(2000);
     }
 
-    // Contact Info
+    // 2. Personal Info
     await selectDropdownOption(conf.dropdowns.affected_party.label, conf.dropdowns.affected_party.value);
-    await sleep(1500); 
-
-    let nameInput = await findDeep(conf.inputs.claimant_name);
-    if (nameInput) await typeInField(nameInput, "Flosports");
+    await fillDeep(conf.inputs.claimant_name, "Flosports");
     
-    // Phone hardcoded XPath fallback if JSON doesn't support complex XPath strings well
-    const phoneXpath = `//ytcp-form-textarea[.//div[contains(text(), 'Phone')]]`;
-    const phoneResult = document.evaluate(phoneXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-    if (phoneResult.singleNodeValue) await typeInField(phoneResult.singleNodeValue, "5122702356");
+    const phoneEl = await findElementByText("Phone", "ytcp-form-textarea"); 
+    if (phoneEl) await typeInField(phoneEl, "5122702356");
 
     await fillDeep(conf.inputs.secondary_email, "copyright@flosports.tv");
-    
-    let relInput = await findDeep(conf.inputs.authority);
-    if (relInput) await typeInField(relInput, "Authorized Representative");
-
+    await fillDeep(conf.inputs.authority, "Authorized Representative");
     await selectDropdownOption(conf.dropdowns.country.label, conf.dropdowns.country.value);
     await fillDeep(conf.inputs.street, "301 Congress ave #1500");
     await fillDeep(conf.inputs.city, "Austin");
-    
-    let stateInput = await findDeep(conf.inputs.state);
-    if (stateInput) await typeInField(stateInput, "Texas");
-
+    await fillDeep(conf.inputs.state, "Texas");
     await fillDeep(conf.inputs.zip, "78701");
 
-    // Legal
-    const standardSelector = conf.radios?.standard_timing || 'ytcp-radio-button[name="removal-timing-option"][aria-label*="Standard"]';
-    const standardRadio = await findDeep(standardSelector);
-    if (standardRadio) { standardRadio.scrollIntoView({block: "center"}); standardRadio.click(); }
+    // 3. Agreements
+    const stdRadio = await findDeep('ytcp-radio-button[name="removal-timing-option"][aria-label*="Standard"]');
+    if (stdRadio) stdRadio.click();
 
-    const preventSelector = conf.checkboxes?.prevent_copies || 'ytcp-checkbox-lit[aria-label*="Prevent future copies"]';
-    const preventCheck = await findDeep(preventSelector);
-    if (preventCheck) preventCheck.click();
+    const prevent = await findDeep('ytcp-checkbox-lit[aria-label*="Prevent future copies"]');
+    if (prevent) prevent.click();
 
-    const agreements = conf.checkboxes?.agreements || ["good faith", "accurate", "abuse"];
-    for (const key of agreements) {
-        const xpath = `//ytcp-checkbox-lit//div[contains(@aria-label, '${key}')]`;
-        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        if (result.singleNodeValue) {
-            const wrapper = result.singleNodeValue.closest('ytcp-checkbox-lit');
-            if (wrapper && wrapper.getAttribute('aria-checked') === 'false') {
-                 wrapper.scrollIntoView({block: "center"});
-                 wrapper.click();
-                 await sleep(300);
-            }
-        }
+    const agreements = ["good faith", "accurate", "abuse"];
+    for (const txt of agreements) {
+        const cb = await findElementByText(txt, "ytcp-checkbox-lit");
+        if (cb && cb.getAttribute('aria-checked') === 'false') cb.click();
     }
     
     await fillDeep(conf.inputs.signature, data.fullName);
-    console.log("✅ YouTube Automation Complete");
 }
 
+// ... (Instagram/Twitter logic preserved) ...
 async function fillInstagram(data) {
     const conf = AUTOFILL_CONFIG.instagram.autofill;
     await fillByName(conf.name, data.fullName);
     await fillByName(conf.email, data.email);
     const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-    
     for(const sel of conf.urls) await fillBySelector(sel, urlText);
     await fillByName(conf.signature, data.fullName);
 }
-
 async function fillFacebook(data) { await fillInstagram(data); }
-
 async function fillTwitter(data) {
     const conf = AUTOFILL_CONFIG.twitter.autofill;
     await fillByName(conf.name, data.fullName);
@@ -333,64 +339,8 @@ async function fillTwitter(data) {
 }
 
 // ==========================================
-// 6. HELPERS
+// 6. ROBUST HELPERS
 // ==========================================
-
-async function fillBySelector(selector, value) {
-    if (!value) return;
-    const el = document.querySelector(selector);
-    if (el) {
-        el.focus(); el.value = value;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.blur();
-        return true;
-    }
-    return false;
-}
-
-async function fillByName(nameAttr, value) {
-    if (!value) return;
-    const el = document.querySelector(`input[name="${nameAttr}"], textarea[name="${nameAttr}"]`);
-    if (el) {
-        el.focus(); el.value = value;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.blur();
-        return true;
-    }
-    return false;
-}
-
-async function fillByPlaceholder(partialPlaceholder, value) {
-    if (!value) return;
-    const inputs = Array.from(document.querySelectorAll('input, textarea'));
-    const target = inputs.find(el => el.placeholder && el.placeholder.toLowerCase().includes(partialPlaceholder.toLowerCase()));
-    if (target) {
-        target.focus(); target.value = value;
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-        target.dispatchEvent(new Event('change', { bubbles: true }));
-        target.blur();
-        return true;
-    }
-    return false;
-}
-
-async function fillById(containerId, value) {
-    if (!value) return;
-    const container = document.getElementById(containerId);
-    if (container) {
-        const input = container.tagName === 'INPUT' || container.tagName === 'TEXTAREA' ? container : container.querySelector('input, textarea');
-        if (input) {
-            input.focus(); input.value = value;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-            input.blur();
-            return true;
-        }
-    }
-    return false;
-}
 
 async function waitForSelector(selector, timeout) {
     const start = Date.now();
@@ -401,39 +351,109 @@ async function waitForSelector(selector, timeout) {
     return false;
 }
 
-async function fillInput(labelText, value, excludeTerm = null) {
-  if (!value) return;
+async function waitForButton(textOrSel, timeout) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+        let el;
+        if (textOrSel.startsWith("#") || textOrSel.startsWith(".")) {
+            el = document.querySelector(textOrSel);
+        } else {
+            const xpath = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${textOrSel.toLowerCase()}')]`;
+            const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            el = res.singleNodeValue;
+        }
+        if (el) return el;
+        await sleep(200);
+    }
+    return null;
+}
+
+async function fillBySelector(selector, value) {
+    if (!value) return false;
+    if (!selector.startsWith("#") && !selector.startsWith(".") && !selector.startsWith("[") && !selector.includes(" ")) {
+        selector = `[name="${selector}"], #${selector}`;
+    }
+    const el = document.querySelector(selector);
+    if (el) {
+        await typeInField(el, value);
+        return true;
+    }
+    return false;
+}
+
+async function fillByName(nameAttr, value) {
+    return fillBySelector(`[name="${nameAttr}"]`, value);
+}
+
+async function fillByPlaceholder(partialPlaceholder, value) {
+    if (!value) return false;
+    const inputs = Array.from(document.querySelectorAll('input, textarea'));
+    const target = inputs.find(el => el.placeholder && el.placeholder.toLowerCase().includes(partialPlaceholder.toLowerCase()));
+    if (target) {
+        await typeInField(target, value);
+        return true;
+    }
+    return false;
+}
+
+async function fillInputByLabel(labelText, value) {
+  if (!value) return false;
   const lowerLabel = labelText.toLowerCase();
   const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "${lowerLabel}")]`;
   const snapshot = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-  let labelEl = null;
-
+  
+  let targetInput = null;
   for (let i = 0; i < snapshot.snapshotLength; i++) {
       const node = snapshot.snapshotItem(i);
-      const text = node.innerText || node.textContent || "";
-      if (excludeTerm && text.toLowerCase().includes(excludeTerm.toLowerCase())) continue; 
-      labelEl = node; break; 
+      if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
+
+      const forId = node.getAttribute('for');
+      if (forId) {
+          targetInput = document.getElementById(forId);
+          if (targetInput) break;
+      }
+
+      let parent = node;
+      for(let k=0; k<3; k++) { 
+          if (!parent) break;
+          const input = parent.querySelector('input:not([type="hidden"]), textarea');
+          if (input) {
+              targetInput = input;
+              break;
+          }
+          parent = parent.parentElement;
+      }
+      if (targetInput) break;
   }
   
-  if (!labelEl) return;
-  let input = null;
-  let parent = labelEl.parentElement; 
-  for(let i=0; i<5; i++) {
-    if(!parent) break;
-    input = parent.querySelector('input:not([type="hidden"]), textarea');
-    if(input) break;
-    parent = parent.parentElement;
+  if (targetInput) {
+      await typeInField(targetInput, value);
+      return true;
   }
-  
-  if (input) {
-    input.focus(); input.value = value;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    input.blur();
-  }
+  return false;
 }
 
-// --- SHADOW DOM HELPERS ---
+async function clickByText(text) {
+    const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+    const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    const el = res.singleNodeValue;
+    if (el) {
+        el.scrollIntoView({block: "center"});
+        el.click();
+        return true;
+    }
+    return false;
+}
+
+async function typeInField(el, value) {
+    if (!el || !value) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.focus();
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    el.blur();
+}
 
 async function findDeep(selector, root = document.body) {
     let el = root.querySelector(selector);
@@ -448,57 +468,42 @@ async function findDeep(selector, root = document.body) {
     return null;
 }
 
-async function typeInField(el, value) {
-    if (!el || !value) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sleep(200);
-    if (el.shadowRoot) {
-        const inner = el.shadowRoot.querySelector('input, textarea');
-        if (inner) el = inner;
-    } else if (el.tagName.includes('-')) {
-         const inner = el.querySelector('input, textarea');
-         if (inner) el = inner;
-    }
-    el.focus(); el.value = value;
-    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-    el.dispatchEvent(new KeyboardEvent('keydown', { key: value[0], bubbles: true, composed: true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { key: value[0], bubbles: true, composed: true }));
-    el.blur();
-}
-
 async function fillDeep(selector, value) {
     const el = await findDeep(selector);
-    if(el) await typeInField(el, value);
+    if (el) await typeInField(el, value);
+}
+
+async function findElementByText(text, tagName = "*", root = document.body) {
+    const xpath = `//${tagName}[contains(text(), '${text}')]`;
+    if (root === document.body || root.nodeType === Node.DOCUMENT_NODE) {
+         const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+         if (res.singleNodeValue) return res.singleNodeValue;
+    }
+    const elements = root.querySelectorAll('*');
+    for (const el of elements) {
+        if (el.shadowRoot) {
+            if (el.shadowRoot.textContent.includes(text)) {
+                 const candidates = el.shadowRoot.querySelectorAll(tagName);
+                 for (const cand of candidates) {
+                     if (cand.textContent.includes(text)) return cand;
+                 }
+            }
+            const found = await findElementByText(text, tagName, el.shadowRoot);
+            if (found) return found;
+        }
+    }
+    return null;
 }
 
 async function selectDropdownOption(label, optionText) {
-    console.log(`🔽 Selecting: ${label} -> ${optionText}`);
-    const triggerXpath = `
-        //*[@id="${label}"]//ytcp-dropdown-trigger |
-        //ytcp-dropdown-trigger[contains(@aria-label, '${label}')] |
-        //ytcp-form-select[contains(@aria-label, '${label}')]//ytcp-dropdown-trigger |
-        //ytcp-dropdown-trigger[.//div[contains(text(), '${label}')]] |
-        //ytcp-text-dropdown-trigger[.//div[contains(text(), '${label}')]] 
-    `;
-    const triggerResult = document.evaluate(triggerXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-    const trigger = triggerResult.singleNodeValue;
-
+    const trigger = await findElementByText(label, "ytcp-dropdown-trigger");
     if (trigger) {
-        trigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
         trigger.click();
-        await sleep(800); 
-        const optionXpath = `
-            //paper-item[contains(., '${optionText}')] | 
-            //ytcp-text-menu-item[contains(., '${optionText}')] | 
-            //tp-yt-paper-item[contains(., '${optionText}')]
-        `;
-        const optionResult = document.evaluate(optionXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        const option = optionResult.singleNodeValue;
-        if (option) { option.click(); await sleep(1000); return true; } 
-        else { document.body.click(); }
+        await sleep(500);
+        const option = await findElementByText(optionText, "paper-item");
+        if (option) option.click();
+        else document.body.click(); 
     }
-    return false;
 }
 
 // ==========================================
@@ -520,7 +525,7 @@ function createUploadOverlay(data) {
     <h3 id="flo-overlay-header" style="margin-top:0; color:#ce0e2d; cursor: move;">FloSports Helper ✥</h3>
     <div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
       <strong>Platform:</strong> ${data.platform || "TikTok"}<br>
-      <strong>Status:</strong> Form Filled.<br>
+      <strong>Status:</strong> Form Attempted.<br>
       <small style="color:#666;">Double check all fields.</small>
     </div>
     <div style="margin-bottom: 15px;">
