@@ -32,6 +32,7 @@ if (!window.hasFloAutofillListener) {
   window.hasFloAutofillListener = true;
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "startFullAutomation") {
+        // Force wait for config on manual trigger
         (async () => {
             if (!configLoaded) await loadConfig();
             await routeAutofill(request.data);
@@ -44,6 +45,8 @@ if (!window.hasFloAutofillListener) {
 
 (async function init() {
     console.log("🔄 Flo Autofill Script Injected/Re-loaded");
+    
+    // Always reset running flag on new injection/page load
     window.floAutofillRunning = true;
 
     if (document.readyState === 'loading') {
@@ -152,35 +155,52 @@ async function fillTikTok(data) {
     };
 
     // --- HELPER: SIMULATE HUMAN TYPING ---
-    // This is the solution to your question. It uses the browser's native text insertion
-    // capabilities rather than just setting the value property.
     const simulateTyping = (el, val) => {
         if (!el) return false;
 
-        // 1. Focus the element (like clicking inside the box)
         el.focus();
         el.click();
 
-        // 2. Clear existing text (simulating Select All + Delete)
-        // We set value to empty string first to ensure a clean state
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        nativeInputValueSetter.call(el, "");
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+        // Standard React Setter Hack
+        // Wrapped in try/catch to handle "Illegal invocation" robustly
+        try {
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            
+            // 1. Clear first (using native setter)
+            if (nativeInputValueSetter) {
+                nativeInputValueSetter.call(el, "");
+            } else {
+                el.value = "";
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
 
-        // 3. "Type" the new value using execCommand
-        // This is deprecated but essentially the only way to perfectly mimic a user paste/type
-        // across all modern frameworks (React, Vue, Angular) without complex event chains.
-        const success = document.execCommand('insertText', false, val);
+            // 2. Try execCommand (Human Simulation)
+            let success = false;
+            try {
+                success = document.execCommand('insertText', false, val);
+            } catch (err) {
+                // Ignore execCommand errors
+            }
 
-        // 4. Fallback if execCommand fails (rare, but possible in some contexts)
-        if (!success) {
-            nativeInputValueSetter.call(el, val);
+            // 3. Fallback if execCommand failed
+            if (!success) {
+                if (nativeInputValueSetter) {
+                    nativeInputValueSetter.call(el, val);
+                } else {
+                    el.value = val;
+                }
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        } catch (e) {
+            console.warn("React setter hack failed, using standard value assignment:", e);
+            // Absolute last resort: Standard DOM value setting
+            el.value = val;
             el.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // 5. Finalize events
+        // Finalize events
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true })); // Click away
+        el.dispatchEvent(new Event('blur', { bubbles: true })); 
 
         return true;
     };
@@ -188,7 +208,6 @@ async function fillTikTok(data) {
     const typeValue = (el, val) => {
         if (!el) return false;
         
-        // Handle Div containers -> find inner input
         if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') {
             const inner = el.querySelector('input, textarea');
             if (inner) el = inner;
@@ -197,8 +216,6 @@ async function fillTikTok(data) {
         if (!el) return false;
 
         el.scrollIntoView({block: "center", behavior: "smooth"});
-        
-        // Use the Human Simulation helper
         return simulateTyping(el, val);
     };
 
@@ -265,7 +282,8 @@ async function fillTikTok(data) {
     // --- STEP 2: FULL FORM FILL ---
     console.log("📝 Filling Main Report Form...");
     
-    const fieldOrder = ['name', 'company', 'phone', 'address', 'urls'];
+    // 1. Text Fields
+    const fieldOrder = ['name', 'company', 'phone', 'address', 'urls', 'signature'];
     
     for (const key of fieldOrder) {
         const strategies = conf.field_strategies?.[key];
@@ -273,6 +291,8 @@ async function fillTikTok(data) {
         
         if (key === 'urls') {
             value = Array.isArray(data.urls) ? data.urls.join('\n') : (data.urls || '');
+        } else if (key === 'signature') {
+            value = defaults.name; // Use reporter name for signature
         }
 
         if (strategies) {
@@ -280,13 +300,49 @@ async function fillTikTok(data) {
         }
     }
 
-    // Checkboxes
-    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(cb => { try { if (!cb.checked) cb.click(); } catch(e){} });
+    // 2. Radio Buttons
+    if (conf.radios) {
+        // Type of Work
+        if (conf.radios.typeCopyRight) {
+            const el = document.querySelector(conf.radios.typeCopyRight.selector);
+            if (el && !el.checked) {
+                console.log("🔘 Clicking 'Type of Copyrighted Work'...");
+                el.click();
+            }
+        }
+        // Source
+        if (conf.radios.copyrightedWorkSource) {
+            const el = document.querySelector(conf.radios.copyrightedWorkSource.selector);
+            if (el && !el.checked) {
+                console.log("🔘 Clicking 'Source of Copyrighted Work'...");
+                el.click();
+            }
+        }
+    }
 
-    // Agreements
-    const terms = conf.agreement_terms || [];
-    for (const term of terms) { await clickByText(term); }
+    // 3. Toggles
+    if (conf.toggles && conf.toggles.needAddSeed) {
+        const toggle = document.querySelector(conf.toggles.needAddSeed);
+        if (toggle && !toggle.checked) { // Check logic may vary for toggles, assuming checkbox-like
+             console.log("🎚️ Toggling 'Prevent Future Copies'...");
+             toggle.click();
+        }
+    }
+
+    // 4. Checkboxes (Statements)
+    if (conf.checkboxes && conf.checkboxes.agreement) {
+        const agreementBoxes = document.querySelectorAll(conf.checkboxes.agreement);
+        agreementBoxes.forEach(cb => {
+            if (!cb.checked) {
+                console.log("☑️ Checking Agreement Box...");
+                cb.click();
+            }
+        });
+    }
+
+    // Fallback Checkboxes
+    const allCheckboxes = document.querySelectorAll('input[type="checkbox"]');
+    allCheckboxes.forEach(cb => { try { if (!cb.checked) cb.click(); } catch(e){} });
 
     // Highlight Send Button
     const sendVariants = conf.buttons?.send || ['Send', 'Submit'];
@@ -357,19 +413,23 @@ async function waitForButton(variants, timeout) {
         for (const v of variants) {
             let el;
             if (v.startsWith('//')) {
+                // XPath
                 try {
                     const res = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                     el = res.singleNodeValue;
                 } catch(e){}
             } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
+                // CSS
                 try { el = document.querySelector(v); } catch(e){}
             } else {
+                // Text Match
                 const xpath = `//button[contains(text(), '${v}')]`;
                 try {
                     const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                     el = res.singleNodeValue;
                 } catch(e){}
             }
+
             if (el && el.offsetParent !== null && !el.disabled) return el;
         }
         await sleep(200);
@@ -377,6 +437,7 @@ async function waitForButton(variants, timeout) {
     return null;
 }
 
+// Overlay Logic
 function createUploadOverlay(data) {
   const existing = document.getElementById("flo-upload-overlay");
   if (existing) existing.remove();
