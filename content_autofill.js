@@ -118,12 +118,19 @@ if (!window.hasFloAutofillListener) {
     if (cart.length === 0 || !info) return;
 
     const host = window.location.hostname;
+    const path = window.location.pathname;
     const platform = cart[0].platform || "TikTok";
 
     // Basic Host Checks to prevent running on wrong sites
     if (platform === "TikTok" && !host.includes("tiktok")) return;
     if (platform === "YouTube" && !host.includes("youtube")) return;
     
+    // Warning for TikTok Page Location
+    if (platform === "TikTok" && !path.includes("/legal/report")) {
+        console.warn("⚠️ PIRATE AI: You seem to be on a general TikTok page, not the reporting form. Automation may fail.");
+        console.warn("ℹ️ Try navigating to: https://www.tiktok.com/legal/report/Copyright");
+    }
+
     // C. LOAD CONFIG BEFORE PROCEEDING (The Fix)
     await loadRemoteConfig();
 
@@ -170,51 +177,72 @@ async function fillTikTok(data) {
       email: data.email || "copyright@flosports.tv"
   };
 
-  console.log("🎵 Running TikTok Strategy with Config:", conf);
+  console.log("🎵 Running TikTok Strategy...");
 
-  // --- STEP 1: HANDLE DECLARATION (WIZARD STEP) ---
-  // Note: If you updated events_config.json, 'wizard_terms' should be there.
-  // If not, it falls back to the array below.
+  // --- STRATEGY 0: URL PARAMETER BYPASS (The Fix) ---
+  // If we are on the base page without issueType, we redirect to force the form.
+  const currentUrl = new URL(window.location.href);
+  if (currentUrl.pathname.includes('/legal/report/Copyright') && !currentUrl.searchParams.has('issueType')) {
+      console.log("⚡ PIRATE AI: Upgrading URL with wizard parameters...");
+      
+      // issueType=1 -> Copyright Infringement
+      currentUrl.searchParams.set('issueType', '1'); 
+      
+      // affected=1 -> I am the copyright owner (Standard value)
+      currentUrl.searchParams.set('affected', '1');  
+      
+      // Pre-fill email if available
+      if (defaults.email) {
+          currentUrl.searchParams.set('email', defaults.email);
+      }
+      
+      console.log("🔄 Redirecting to:", currentUrl.toString());
+      window.location.replace(currentUrl.toString());
+      return; // Stop execution, page will reload immediately
+  }
+
+  // --- STEP 1: FALLBACK WIZARD LOGIC ---
+  // Only runs if the redirect didn't happen or we are already on the form
   const declarationTerms = conf.wizard_terms || ["I am the copyright owner", "Authorized representative", "Statement", "Report an infringement"];
   
-  console.log("Looking for terms:", declarationTerms);
-
-  let wizardSuccess = false;
-  for(let i=0; i<5; i++) { // Increased retries
-      if(wizardSuccess) break;
-      for (const term of declarationTerms) {
-          const clicked = await clickByText(term);
-          if (clicked) {
-              console.log(`✅ Selected declaration: "${term}"`);
-              wizardSuccess = true;
-              await sleep(1000); 
-              break;
-          }
-      }
-      if(!wizardSuccess) {
-          console.log("...waiting for wizard options...");
-          await sleep(800);
-      }
-  }
-
-  // --- STEP 2: HANDLE NEXT BUTTON ---
-  const btnText = conf.next_button_text || "Next";
-  const nextBtn = await waitForButton(btnText, 2000);
-  if (nextBtn && !nextBtn.disabled && nextBtn.offsetParent !== null) {
-      console.log("➡️ Clicking Next...");
-      nextBtn.scrollIntoView({block: "center"});
-      nextBtn.click();
-      await sleep(1000);
-  }
-
-  // --- STEP 3: WAIT FOR MAIN FORM ---
-  console.log("⏳ Waiting for form fields...");
-  // Use a very generic selector to detect form load
-  const formReady = await waitForSelector('input, textarea', 5000);
-  if (!formReady) console.warn("⚠️ Main form fields not detected immediately. Checking manual labels...");
-
-  // --- STEP 4: FILL FIELDS ---
+  // OPTIMIZATION: Check if main form is already visible to skip wizard clicking
+  // If params worked, this selector should be visible immediately.
+  const mainFormPresent = await waitForSelector('input[name="email"], #email, input[name="name"]', 1000);
   
+  if (!mainFormPresent) {
+      console.log("🔍 Main form not detected yet. Checking for Wizard buttons...");
+      let wizardSuccess = false;
+      for(let i=0; i<3; i++) { 
+          if(wizardSuccess) break;
+          for (const term of declarationTerms) {
+              const clicked = await clickByText(term);
+              if (clicked) {
+                  console.log(`✅ Selected declaration: "${term}"`);
+                  wizardSuccess = true;
+                  await sleep(1000); 
+                  break;
+              }
+          }
+          if(!wizardSuccess) await sleep(500);
+      }
+
+      const btnText = conf.next_button_text || "Next";
+      const nextBtn = await waitForButton(btnText, 2000);
+      if (nextBtn && !nextBtn.disabled && nextBtn.offsetParent !== null) {
+          console.log("➡️ Clicking Next...");
+          nextBtn.scrollIntoView({block: "center"});
+          nextBtn.click();
+          await sleep(1000);
+      }
+  } else {
+      console.log("⏩ Main form already active (URL Params worked!). Skipping wizard.");
+  }
+
+  // --- STEP 3: FILL FORM FIELDS ---
+  console.log("⏳ Waiting for form inputs...");
+  const formReady = await waitForSelector('input, textarea', 5000);
+  if (!formReady) console.warn("⚠️ Form load slow. Will attempt field searching anyway.");
+
   // A. EMAIL
   console.log("📧 Filling Email...");
   const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
@@ -234,16 +262,18 @@ async function fillTikTok(data) {
       }
   }
 
-  // B. OTHER FIELDS
+  // B. OTHER FIELDS (Smart Selector vs Label check)
   const fillFromConfig = async (key, val) => {
       const selectors = conf.inputs[key] || [];
       for (const s of selectors) {
-          // 1. Try CSS Selector
-          if (await fillBySelector(s, val)) return;
-          
-          // 2. If it's plain text, try as a Label
-          if (!/[#\[.]/.test(s)) {
+          // Heuristic: If string has spaces or no special CSS chars, try as Label FIRST
+          // This prevents the "not a valid selector" error in console
+          const looksLikeLabel = !/[#\[.]/.test(s) || s.includes(' ');
+
+          if (looksLikeLabel) {
               if (await fillInputByLabel(s, val)) return;
+          } else {
+              if (await fillBySelector(s, val)) return;
           }
       }
   };
@@ -259,13 +289,14 @@ async function fillTikTok(data) {
   
   if (conf.inputs.urls) {
       for(const s of conf.inputs.urls) {
+          const looksLikeLabel = !/[#\[.]/.test(s) || s.includes(' ');
+
           if (s.includes("tiktok.com")) {
              if (await fillByPlaceholder(s, urlText)) urlsFilled = true;
+          } else if (looksLikeLabel) {
+             if (await fillInputByLabel(s, urlText)) urlsFilled = true;
           } else {
              if (await fillBySelector(s, urlText)) urlsFilled = true;
-             else if (!/[#\[.]/.test(s)) {
-                 if (await fillInputByLabel(s, urlText)) urlsFilled = true;
-             }
           }
           if (urlsFilled) break;
       }
@@ -417,19 +448,24 @@ async function fillBySelector(selector, value) {
     // Checks for space, dot, hash, brackets, colon, or greater-than
     const isComplexSelector = /[ .#\[:>]/.test(selector);
 
+    let finalSelector = selector;
+
     if (!isComplexSelector) {
         // It's likely just a name "email" or ID "email-field"
-        selector = `[name="${selector}"], #${selector}`;
+        finalSelector = `[name="${selector}"], #${selector}`;
     }
     
     try {
-        const el = document.querySelector(selector);
+        const el = document.querySelector(finalSelector);
         if (el) {
             await typeInField(el, value);
             return true;
         }
     } catch (e) {
-        console.warn(`PIRATE AI: Skipping selector "${selector}" - ${e.message}`);
+        // Only warn if it's NOT a syntax error (which happens when text is passed as selector)
+        if (e.name !== 'SyntaxError') {
+            console.warn(`PIRATE AI: Skipping selector "${selector}" - ${e.message}`);
+        }
     }
     return false;
 }
