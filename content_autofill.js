@@ -201,16 +201,16 @@ async function fillTikTok(data) {
       return; // Stop execution, page will reload immediately
   }
 
-  // --- STEP 1: FALLBACK WIZARD LOGIC ---
-  // Only runs if the redirect didn't happen or we are already on the form
-  const declarationTerms = conf.wizard_terms || ["I am the copyright owner", "Authorized representative", "Statement", "Report an infringement"];
+  // --- STEP 1 & 2: HANDLE INTERMEDIATE STEPS (Wizard/Email Verification) ---
+  // We check for elements unique to the FINAL form (Address, Phone, URLs) to see if we are already there.
+  // If NOT, we assume we are on the intermediate step (Email confirmation) or the Wizard.
+  const fullFormPresent = await waitForSelector('input[name="address"], #address, input[name="phoneNumber"], textarea', 1500);
   
-  // OPTIMIZATION: Check if main form is already visible to skip wizard clicking
-  // If params worked, this selector should be visible immediately.
-  const mainFormPresent = await waitForSelector('input[name="email"], #email, input[name="name"]', 1000);
-  
-  if (!mainFormPresent) {
-      console.log("🔍 Main form not detected yet. Checking for Wizard buttons...");
+  if (!fullFormPresent) {
+      console.log("🔍 Full form not detected yet. Running Intermediate/Wizard steps...");
+      
+      // A. Try Legacy Wizard Buttons (in case URL params failed)
+      const declarationTerms = conf.wizard_terms || ["I am the copyright owner", "Authorized representative", "Statement", "Report an infringement"];
       let wizardSuccess = false;
       for(let i=0; i<3; i++) { 
           if(wizardSuccess) break;
@@ -223,28 +223,45 @@ async function fillTikTok(data) {
                   break;
               }
           }
-          if(!wizardSuccess) await sleep(500);
+          if(!wizardSuccess) await sleep(200);
       }
 
+      // B. Handle Intermediate Email Field
+      // Even with URL params, TikTok often asks to confirm the email field before showing the full form.
+      const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
+      for (const sel of emailSels) {
+          // If we find the email input but NO address input, we are likely on the intermediate step
+          const el = document.querySelector(sel);
+          if (el) {
+              console.log("📧 Found Intermediate Email Field. Filling to proceed...");
+              await fillBySelector(sel, defaults.email);
+              await sleep(500);
+              break; 
+          }
+      }
+
+      // C. Click Next / Confirm
       const btnText = conf.next_button_text || "Next";
       const nextBtn = await waitForButton(btnText, 2000);
       if (nextBtn && !nextBtn.disabled && nextBtn.offsetParent !== null) {
-          console.log("➡️ Clicking Next...");
+          console.log("➡️ Clicking Next to reach Full Form...");
           nextBtn.scrollIntoView({block: "center"});
           nextBtn.click();
-          await sleep(1000);
+          // Wait significantly for the "refresh" the user mentioned
+          await sleep(3000);
       }
   } else {
-      console.log("⏩ Main form already active (URL Params worked!). Skipping wizard.");
+      console.log("⏩ Full form already active (Skipping intermediate steps).");
   }
 
-  // --- STEP 3: FILL FORM FIELDS ---
-  console.log("⏳ Waiting for form inputs...");
-  const formReady = await waitForSelector('input, textarea', 5000);
-  if (!formReady) console.warn("⚠️ Form load slow. Will attempt field searching anyway.");
+  // --- STEP 3: FILL FORM FIELDS (FINAL PAGE) ---
+  console.log("⏳ Waiting for full form inputs...");
+  // Wait specifically for the address/phone fields which indicate the final page
+  const formReady = await waitForSelector('input[name="address"], #address, textarea', 8000);
+  if (!formReady) console.warn("⚠️ Full form fields not detected. Attempting to fill anyway...");
 
-  // A. EMAIL
-  console.log("📧 Filling Email...");
+  // A. EMAIL (Fill again just in case)
+  console.log("📧 Filling Email (Final Form)...");
   const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
   let emailFilled = false;
   for (const sel of emailSels) {
@@ -262,18 +279,16 @@ async function fillTikTok(data) {
       }
   }
 
-  // B. OTHER FIELDS (Smart Selector vs Label check)
+  // B. OTHER FIELDS
   const fillFromConfig = async (key, val) => {
       const selectors = conf.inputs[key] || [];
       for (const s of selectors) {
-          // Heuristic: If string has spaces or no special CSS chars, try as Label FIRST
-          // This prevents the "not a valid selector" error in console
-          const looksLikeLabel = !/[#\[.]/.test(s) || s.includes(' ');
-
-          if (looksLikeLabel) {
+          // 1. Try CSS Selector (Safe Check)
+          if (await fillBySelector(s, val)) return;
+          
+          // 2. If it's plain text, try as a Label
+          if (!/[#\[.]/.test(s)) {
               if (await fillInputByLabel(s, val)) return;
-          } else {
-              if (await fillBySelector(s, val)) return;
           }
       }
   };
