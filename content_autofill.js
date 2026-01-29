@@ -131,7 +131,7 @@ if (!window.hasFloAutofillListener) {
         console.warn("ℹ️ Try navigating to: https://www.tiktok.com/legal/report/Copyright");
     }
 
-    // C. LOAD CONFIG BEFORE PROCEEDING (The Fix)
+    // C. LOAD CONFIG BEFORE PROCEEDING
     await loadRemoteConfig();
 
     const data = {
@@ -179,89 +179,64 @@ async function fillTikTok(data) {
 
   console.log("🎵 Running TikTok Strategy...");
 
-  // --- STRATEGY 0: URL PARAMETER BYPASS (The Fix) ---
-  // If we are on the base page without issueType, we redirect to force the form.
+  // --- STRATEGY: URL PARAMETER BYPASS ---
   const currentUrl = new URL(window.location.href);
-  if (currentUrl.pathname.includes('/legal/report/Copyright') && !currentUrl.searchParams.has('issueType')) {
-      console.log("⚡ PIRATE AI: Upgrading URL with wizard parameters...");
+  const hasParams = currentUrl.searchParams.has('issueType');
+  // We check for "Address" or "Phone" because they only appear on the FINAL form
+  const isFullForm = await waitForSelector('input[name="address"], #address, input[name="phoneNumber"]', 1000);
+
+  // 1. IF GENERIC PAGE (No Params): Redirect to Magic URL
+  if (currentUrl.pathname.includes('/legal/report/Copyright') && !hasParams) {
+      console.log("⚡ PIRATE AI: Generic page detected. Upgrading URL to skip wizard...");
       
-      // issueType=1 -> Copyright Infringement
-      currentUrl.searchParams.set('issueType', '1'); 
-      
-      // affected=1 -> I am the copyright owner (Standard value)
-      currentUrl.searchParams.set('affected', '1');  
-      
-      // Pre-fill email if available
-      if (defaults.email) {
-          currentUrl.searchParams.set('email', defaults.email);
-      }
+      currentUrl.searchParams.set('issueType', '1'); // Copyright
+      currentUrl.searchParams.set('affected', '1');  // I am owner
+      if (defaults.email) currentUrl.searchParams.set('email', defaults.email);
       
       console.log("🔄 Redirecting to:", currentUrl.toString());
       window.location.replace(currentUrl.toString());
-      return; // Stop execution, page will reload immediately
+      return; 
   }
 
-  // --- STEP 1 & 2: HANDLE INTERMEDIATE STEPS (Wizard/Email Verification) ---
-  // We check for elements unique to the FINAL form (Address, Phone, URLs) to see if we are already there.
-  // If NOT, we assume we are on the intermediate step (Email confirmation) or the Wizard.
-  const fullFormPresent = await waitForSelector('input[name="address"], #address, input[name="phoneNumber"], textarea', 1500);
-  
-  if (!fullFormPresent) {
-      console.log("🔍 Full form not detected yet. Running Intermediate/Wizard steps...");
+  // 2. IF INTERMEDIATE PAGE (Has Params but NO Full Form): Handle Email & Click Next
+  if (hasParams && !isFullForm) {
+      console.log("🔹 INTERMEDIATE STEP: Email Verification detected.");
       
-      // A. Try Legacy Wizard Buttons (in case URL params failed)
-      const declarationTerms = conf.wizard_terms || ["I am the copyright owner", "Authorized representative", "Statement", "Report an infringement"];
-      let wizardSuccess = false;
-      for(let i=0; i<3; i++) { 
-          if(wizardSuccess) break;
-          for (const term of declarationTerms) {
-              const clicked = await clickByText(term);
-              if (clicked) {
-                  console.log(`✅ Selected declaration: "${term}"`);
-                  wizardSuccess = true;
-                  await sleep(1000); 
-                  break;
-              }
-          }
-          if(!wizardSuccess) await sleep(200);
-      }
-
-      // B. Handle Intermediate Email Field
-      // Even with URL params, TikTok often asks to confirm the email field before showing the full form.
+      // A. Fill Email if needed
       const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
+      let emailFound = false;
       for (const sel of emailSels) {
-          // If we find the email input but NO address input, we are likely on the intermediate step
-          const el = document.querySelector(sel);
-          if (el) {
-              console.log("📧 Found Intermediate Email Field. Filling to proceed...");
-              await fillBySelector(sel, defaults.email);
-              await sleep(500);
+          if (await fillBySelector(sel, defaults.email)) {
+              console.log("📧 Filled intermediate email field.");
+              emailFound = true;
               break; 
           }
       }
 
-      // C. Click Next / Confirm
+      // B. Click Next to force page refresh
       const btnText = conf.next_button_text || "Next";
       const nextBtn = await waitForButton(btnText, 2000);
-      if (nextBtn && !nextBtn.disabled && nextBtn.offsetParent !== null) {
-          console.log("➡️ Clicking Next to reach Full Form...");
+      if (nextBtn && !nextBtn.disabled) {
+          console.log("➡️ Clicking 'Next' to load Full Form...");
           nextBtn.scrollIntoView({block: "center"});
           nextBtn.click();
-          // Wait significantly for the "refresh" the user mentioned
-          await sleep(3000);
+          
+          // CRITICAL: Wait for the refresh/transition logic
+          console.log("⏳ Waiting for page transition...");
+          await sleep(2000); 
+          // Re-check form existence
+          await waitForSelector('input[name="address"], #address, textarea', 8000);
+      } else {
+          console.warn("⚠️ Could not find 'Next' button on intermediate page.");
       }
   } else {
-      console.log("⏩ Full form already active (Skipping intermediate steps).");
+      console.log("⏩ Full form already active.");
   }
 
-  // --- STEP 3: FILL FORM FIELDS (FINAL PAGE) ---
-  console.log("⏳ Waiting for full form inputs...");
-  // Wait specifically for the address/phone fields which indicate the final page
-  const formReady = await waitForSelector('input[name="address"], #address, textarea', 8000);
-  if (!formReady) console.warn("⚠️ Full form fields not detected. Attempting to fill anyway...");
-
-  // A. EMAIL (Fill again just in case)
-  console.log("📧 Filling Email (Final Form)...");
+  // --- STEP 3: FILL FULL FORM ---
+  console.log("📝 Filling Full Form...");
+  
+  // A. EMAIL (Again, just in case)
   const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
   let emailFilled = false;
   for (const sel of emailSels) {
@@ -283,12 +258,11 @@ async function fillTikTok(data) {
   const fillFromConfig = async (key, val) => {
       const selectors = conf.inputs[key] || [];
       for (const s of selectors) {
-          // 1. Try CSS Selector (Safe Check)
-          if (await fillBySelector(s, val)) return;
-          
-          // 2. If it's plain text, try as a Label
-          if (!/[#\[.]/.test(s)) {
+          const looksLikeLabel = !/[#\[.]/.test(s) || s.includes(' ');
+          if (looksLikeLabel) {
               if (await fillInputByLabel(s, val)) return;
+          } else {
+              if (await fillBySelector(s, val)) return;
           }
       }
   };
