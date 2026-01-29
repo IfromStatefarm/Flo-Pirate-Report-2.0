@@ -205,12 +205,18 @@ async function fillTikTok(data) {
   if (hasParams && !isFullForm) {
       console.log("🔹 INTERMEDIATE STEP: Email Verification detected.");
       
+      // Wait for the email field specifically to ensure it's rendered
+      await waitForSelector('input[name="email"], input[type="email"], #email', 3000);
+
       // A. Fill Email if needed
-      const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
+      // Prioritize the user's specific selectors: [name="email"], input[type="email"], #email
+      const specificEmailSelectors = ['[name="email"]', 'input[type="email"]', '#email'];
+      const emailSels = specificEmailSelectors.concat(conf.email_candidates || []);
+      
       let emailFound = false;
       for (const sel of emailSels) {
           if (await fillBySelector(sel, defaults.email)) {
-              console.log("📧 Filled intermediate email field.");
+              console.log(`📧 Filled intermediate email field using selector: ${sel}`);
               emailFound = true;
               break; 
           }
