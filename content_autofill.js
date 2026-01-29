@@ -1,4 +1,4 @@
-// content_autofill.js
+/ content_autofill.js
 
 // 1. DEFAULT CONFIGURATION (Robust Fallback)
 if (typeof AUTOFILL_CONFIG === 'undefined') {
@@ -44,7 +44,15 @@ if (!window.hasFloAutofillListener) {
 }
 
 (async function init() {
-    if (window.floAutofillRunning) return;
+    // ALWAYS LOG START to confirm script injection
+    console.log("🔄 Flo Autofill Script Injected/Re-loaded");
+
+    if (window.floAutofillRunning) {
+        console.log("⚠️ Autofill already marked as running. resetting...");
+        // If it was stuck, we might need to let it run again on a new page load
+        // But usually, a page reload clears this window variable. 
+        // If this is a SPA transition, we might need to be careful.
+    }
     window.floAutofillRunning = true;
 
     if (document.readyState === 'loading') {
@@ -55,7 +63,10 @@ if (!window.hasFloAutofillListener) {
     const cart = res.piracy_cart || [];
     const info = res.reporterInfo;
 
-    if (cart.length === 0 || !info) return;
+    if (cart.length === 0 || !info) {
+        console.log("ℹ️ No active report data found in storage.");
+        return;
+    }
 
     const host = window.location.hostname;
     const platform = cart[0].platform || "TikTok";
@@ -212,11 +223,22 @@ async function fillTikTok(data) {
     // We check for the 'Name' field (main form). If missing, we are likely on the Email step.
     const nameInput = findElement(conf.field_strategies?.name?.[0]);
     
-    if (!nameInput) {
+    // Explicitly check for the "Verify your email" header or the intermediate URL pattern
+    const isIntermediatePage = !nameInput && (
+        document.body.innerText.includes("Verify your email") || 
+        currentUrl.searchParams.has("email")
+    );
+    
+    if (isIntermediatePage) {
         console.log("🔹 Intermediate Step Detected (Email Verification)...");
         
         // Strategy list for the intermediate email field
-        const emailStrat = conf.field_strategies?.email;
+        // We add specific fallbacks here in code to be extra safe
+        const emailStrat = [
+            ...(conf.field_strategies?.email || []),
+            "input[type='text']", // Fallback for specific intermediate page where only one input exists
+            "//input[@type='text']"
+        ];
         
         // Attempt to fill
         await applyFieldStrategy(emailStrat, defaults.email);
