@@ -121,11 +121,11 @@ async function fillTikTok(data) {
     console.log("🎵 Running Bullet-Proof TikTok Strategy...");
 
     // --- STEP 0: BYPASS WIZARD VIA URL ---
+    // If we are on the base page, redirect to the pre-filled URL to save clicks
     const currentUrl = new URL(window.location.href);
     const hasIssueType = currentUrl.searchParams.get("issueType");
     const hasAffected = currentUrl.searchParams.get("affected");
 
-    // Only redirect if we are on the base page
     if ((!hasIssueType || !hasAffected) && conf.prefill_params) {
         console.log("⚡ Redirecting to pre-filled URL to skip wizard...");
         const newUrl = new URL(currentUrl.origin + currentUrl.pathname);
@@ -150,7 +150,8 @@ async function fillTikTok(data) {
         } catch (e) { return null; }
     };
 
-    // React Force Trigger if standard fails
+    // --- HELPER: REACT VALUE SETTER ---
+    // This is the critical function that hacks React's internal state handling
     const triggerReactChange = (el, val) => {
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
         if (nativeInputValueSetter) {
@@ -160,6 +161,7 @@ async function fillTikTok(data) {
         }
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
     };
 
     const typeValue = (el, val) => {
@@ -171,18 +173,18 @@ async function fillTikTok(data) {
             if (inner) el = inner;
         }
 
+        if (!el) return false;
+
         el.scrollIntoView({block: "center", behavior: "smooth"});
         el.focus();
         
-        // Standard Fill
-        el.value = val;
+        // 1. Force Clear first to wake up the field
+        el.value = "";
         el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
         
-        // React Force Trigger (crucial for TikTok)
+        // 2. Use React Trigger logic
         triggerReactChange(el, val);
         
-        el.blur();
         return true;
     };
 
@@ -206,52 +208,43 @@ async function fillTikTok(data) {
     };
 
     // --- STEP 1: VERIFY EMAIL STEP ---
-    // If we are on the verification page, the main form fields (like Name) won't be visible yet.
-    // The email input has ID #tux-..., but the container is #email.
+    // Check if we are stuck on the intermediate page (where only email is shown)
+    // We check for the 'Name' field (main form). If missing, we are likely on the Email step.
     const nameInput = findElement(conf.field_strategies?.name?.[0]);
     
     if (!nameInput) {
         console.log("🔹 Intermediate Step Detected (Email Verification)...");
         
-        // Aggressive Email Strategy for the intermediate page
-        // 1. Try finding input inside the #email container (screenshot structure)
-        // 2. Try by placeholder text "Enter your email address"
-        // 3. Try standard config strategies
-        const intermediateEmailStrategies = [
-            "#email input", 
-            "//div[@id='email']//input",
-            "input[placeholder*='Enter your email']",
-            ...(conf.field_strategies?.email || [])
-        ];
-
-        const emailFilled = await applyFieldStrategy(intermediateEmailStrategies, defaults.email);
+        // Strategy list for the intermediate email field
+        const emailStrat = conf.field_strategies?.email;
         
-        if (emailFilled) {
-             const nextVariants = conf.buttons?.next || ['Next'];
-             const btn = await waitForButton(nextVariants, 2000);
-             
-             if (btn) {
-                 if (btn.disabled) {
-                     console.log("⚠️ Next button disabled. Retrying input trigger...");
-                     // Retry filling with a slight delay or modification to wake up React
-                     await applyFieldStrategy(intermediateEmailStrategies, defaults.email + " "); // Add space
-                     await sleep(100);
-                     await applyFieldStrategy(intermediateEmailStrategies, defaults.email); // Remove space
-                 }
-                 
-                 // Re-check button state after retry
-                 if (!btn.disabled) {
-                     console.log("➡️ Clicking Next...");
-                     btn.click();
-                     await sleep(3000); 
-                 } else {
-                     console.warn("❌ Next button still disabled after retry.");
-                 }
-             } else {
-                 console.warn("⚠️ 'Next' button not found.");
+        // Attempt to fill
+        await applyFieldStrategy(emailStrat, defaults.email);
+        
+        // Wait a moment for validation
+        await sleep(500);
+
+        // Check for Next button
+        const nextVariants = conf.buttons?.next || ['Next'];
+        const btn = await waitForButton(nextVariants, 2000);
+        
+        if (btn) {
+             // If disabled, try "waking up" the input again
+             if (btn.disabled) {
+                 console.log("⚠️ Next button disabled. Retrying input trigger...");
+                 await applyFieldStrategy(emailStrat, defaults.email + " "); // Add space
+                 await sleep(200);
+                 await applyFieldStrategy(emailStrat, defaults.email); // Remove space
              }
-        } else {
-            console.warn("⚠️ Could not find Email field on intermediate page.");
+             
+             // Click if enabled
+             if (!btn.disabled) {
+                 console.log("➡️ Clicking Next...");
+                 btn.click();
+                 await sleep(3000); // Wait for page transition
+             } else {
+                 console.warn("❌ Next button still disabled after retry.");
+             }
         }
     }
 
@@ -277,7 +270,7 @@ async function fillTikTok(data) {
     const checkboxes = document.querySelectorAll('input[type="checkbox"]');
     checkboxes.forEach(cb => { try { if (!cb.checked) cb.click(); } catch(e){} });
 
-    // Agreements
+    // Agreements (Text Click Fallback)
     const terms = conf.agreement_terms || [];
     for (const term of terms) { await clickByText(term); }
 
@@ -354,19 +347,23 @@ async function waitForButton(variants, timeout) {
         for (const v of variants) {
             let el;
             if (v.startsWith('//')) {
+                // XPath
                 try {
                     const res = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                     el = res.singleNodeValue;
                 } catch(e){}
             } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
+                // CSS
                 try { el = document.querySelector(v); } catch(e){}
             } else {
+                // Text Match
                 const xpath = `//button[contains(text(), '${v}')]`;
                 try {
                     const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                     el = res.singleNodeValue;
                 } catch(e){}
             }
+
             if (el && el.offsetParent !== null && !el.disabled) return el;
         }
         await sleep(200);
@@ -399,6 +396,7 @@ function createUploadOverlay(data) {
 
   document.body.appendChild(overlay);
 
+  // Drag logic
   let isDragging = false, startX, startY, initialLeft, initialTop;
   overlay.addEventListener('mousedown', (e) => {
       if (['BUTTON'].includes(e.target.tagName)) return;
