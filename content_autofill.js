@@ -1,4 +1,4 @@
-// content_autofill.js
+/// content_autofill.js
 
 // 1. DEFAULT CONFIGURATION (Robust Fallback)
 // This acts as a safety net if the remote config fails to load.
@@ -8,19 +8,21 @@ if (typeof AUTOFILL_CONFIG === 'undefined') {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// --- LOAD REMOTE CONFIG ---
-// Immediately attempts to fetch the latest selectors from background.js
-(async function initConfig() {
+// --- LOAD REMOTE CONFIG HELPER ---
+// Returns a promise so we can await it in the main init flow
+async function loadConfig() {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
     if (response && response.success && response.config && response.config.platform_selectors) {
       console.log("✅ Remote Config Loaded");
       AUTOFILL_CONFIG = response.config.platform_selectors;
+    } else {
+      console.warn("⚠️ Remote Config empty or invalid.");
     }
   } catch(e) { 
-      console.warn("⚠️ Using default local strategies.", e); 
+      console.warn("⚠️ Using default local strategies (Config load failed).", e); 
   }
-})();
+}
 
 // ==========================================
 // 2. LISTENERS & AUTO-RUN
@@ -31,9 +33,12 @@ if (!window.hasFloAutofillListener) {
   window.hasFloAutofillListener = true;
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "startFullAutomation") {
-        routeAutofill(request.data)
-          .then(() => sendResponse({ success: true }))
-          .catch(err => sendResponse({ success: false, error: err.message }));
+        // Ensure config is loaded before starting manual trigger
+        loadConfig().then(() => {
+            routeAutofill(request.data)
+              .then(() => sendResponse({ success: true }))
+              .catch(err => sendResponse({ success: false, error: err.message }));
+        });
         return true; // Keep channel open for async response
     }
   });
@@ -76,6 +81,10 @@ if (!window.hasFloAutofillListener) {
     };
 
     console.log("🚀 Starting Flo Autofill for:", platform);
+    
+    // CRITICAL FIX: Await the config load BEFORE running logic
+    await loadConfig(); 
+
     await sleep(800); 
     routeAutofill(data);
 })();
@@ -119,8 +128,10 @@ async function fillTikTok(data) {
         
         const newUrl = new URL(currentUrl.origin + currentUrl.pathname);
         // Add config params (issueType=1, affected=1) from JSON
-        for (const [key, val] of Object.entries(conf.prefill_params)) {
-            newUrl.searchParams.set(key, val);
+        if (conf.prefill_params) {
+            for (const [key, val] of Object.entries(conf.prefill_params)) {
+                newUrl.searchParams.set(key, val);
+            }
         }
         // Add email param to pre-verify
         newUrl.searchParams.set("email", defaults.email);
@@ -221,6 +232,8 @@ async function fillTikTok(data) {
             const success = await applyFieldStrategy(strategies, value);
             if (success) console.log(`✅ Filled ${key}`);
             else console.warn(`⚠️ Failed to fill ${key} (checked ${strategies.length} strategies)`);
+        } else {
+            console.log(`ℹ️ No strategy found for ${key} in config.`);
         }
     }
 
