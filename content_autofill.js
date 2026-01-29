@@ -1,3 +1,5 @@
+/ content_autofill.js
+
 // 1. DEFAULT CONFIGURATION (Robust Fallback)
 if (typeof AUTOFILL_CONFIG === 'undefined') {
   var AUTOFILL_CONFIG = {}; 
@@ -58,8 +60,11 @@ if (!window.hasFloAutofillListener) {
     const host = window.location.hostname;
     const platform = cart[0].platform || "TikTok";
 
+    // Basic Host Safety Checks
     if (platform === "TikTok" && !host.includes("tiktok")) return;
     if (platform === "YouTube" && !host.includes("youtube")) return;
+    if (platform === "Instagram" && !host.includes("instagram")) return;
+    if (platform === "Twitter" && !host.includes("x.com") && !host.includes("twitter")) return;
 
     const data = {
         fullName: info.name,
@@ -78,7 +83,7 @@ if (!window.hasFloAutofillListener) {
 
     // STRICT WAIT LOOP: Don't proceed until config is ready
     let retries = 0;
-    while (!configLoaded && retries < 50) { // Wait up to 5 seconds
+    while (!configLoaded && retries < 50) { 
         if (retries % 10 === 0) console.log("⏳ Waiting for config...");
         await sleep(100);
         retries++;
@@ -114,7 +119,6 @@ async function fillTikTok(data) {
     };
 
     console.log("🎵 Running Bullet-Proof TikTok Strategy...");
-    console.log("🔍 Active Strategies:", conf.field_strategies ? Object.keys(conf.field_strategies) : "NONE (Config Error)");
 
     // --- STEP 0: BYPASS WIZARD VIA URL ---
     const currentUrl = new URL(window.location.href);
@@ -146,13 +150,38 @@ async function fillTikTok(data) {
         } catch (e) { return null; }
     };
 
+    // React Force Trigger if standard fails
+    const triggerReactChange = (el, val) => {
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        if (nativeInputValueSetter) {
+            nativeInputValueSetter.call(el, val);
+        } else {
+            el.value = val;
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
     const typeValue = (el, val) => {
         if (!el) return false;
+        
+        // Handle Div containers -> find inner input
+        if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') {
+            const inner = el.querySelector('input, textarea');
+            if (inner) el = inner;
+        }
+
         el.scrollIntoView({block: "center", behavior: "smooth"});
         el.focus();
+        
+        // Standard Fill
         el.value = val;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // React Force Trigger (crucial for TikTok)
+        triggerReactChange(el, val);
+        
         el.blur();
         return true;
     };
@@ -176,29 +205,38 @@ async function fillTikTok(data) {
         return false;
     };
 
-    // --- STEP 1: VERIFY EMAIL STEP (If URL trick didn't autoskip it completely) ---
-    // The "Name" field (#name) ONLY exists on the main form.
-    // If we can't find it, we assume we are stuck on the intermediate Email step.
+    // --- STEP 1: VERIFY EMAIL STEP ---
+    // If we are on the verification page, the main form fields (like Name) won't be visible yet.
+    // The email input has ID #tux-..., but the container is #email.
     const nameInput = findElement(conf.field_strategies?.name?.[0]);
     
     if (!nameInput) {
-        console.log("🔹 Main form not detected. Checking for intermediate Email step...");
+        console.log("🔹 Intermediate Step Detected (Email Verification)...");
         
         const emailStrat = conf.field_strategies?.email;
+        // Even if prefilled by URL, we must "touch" it to enable the button sometimes
         const emailFilled = await applyFieldStrategy(emailStrat, defaults.email);
         
-        if (emailFilled) {
-             const nextVariants = conf.buttons?.next || ['Next'];
-             const btn = await waitForButton(nextVariants, 2000);
-             if (btn) {
-                 console.log("➡️ Clicking Next to enter main form...");
-                 btn.click();
-                 await sleep(3000); // Give TikTok time to load the big form
-             } else {
-                 console.warn("⚠️ Email filled, but 'Next' button not found.");
+        // Try to click Next
+        const nextVariants = conf.buttons?.next || ['Next'];
+        const btn = await waitForButton(nextVariants, 2000);
+        
+        if (btn) {
+             if (btn.disabled) {
+                 console.log("⚠️ Next button disabled. Retrying input trigger...");
+                 // Retry filling with a slight delay or modification to wake up React
+                 await applyFieldStrategy(emailStrat, defaults.email + " "); // Add space
+                 await sleep(100);
+                 await applyFieldStrategy(emailStrat, defaults.email); // Remove space
              }
-        } else {
-            console.warn("⚠️ Could not find Email field on intermediate page.");
+             
+             if (!btn.disabled) {
+                 console.log("➡️ Clicking Next...");
+                 btn.click();
+                 await sleep(3000); 
+             } else {
+                 console.warn("❌ Next button still disabled after retry.");
+             }
         }
     }
 
@@ -216,30 +254,23 @@ async function fillTikTok(data) {
         }
 
         if (strategies) {
-            const success = await applyFieldStrategy(strategies, value);
-            if (success) console.log(`✅ Filled ${key}`);
-            else console.warn(`⚠️ Failed to fill ${key} (checked ${strategies.length} strategies)`);
+            await applyFieldStrategy(strategies, value);
         }
     }
 
     // Checkboxes
     const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(cb => {
-        try { if (!cb.checked) cb.click(); } catch(e){}
-    });
+    checkboxes.forEach(cb => { try { if (!cb.checked) cb.click(); } catch(e){} });
 
     // Agreements
     const terms = conf.agreement_terms || [];
-    for (const term of terms) {
-        await clickByText(term);
-    }
+    for (const term of terms) { await clickByText(term); }
 
     // Highlight Send Button
     const sendVariants = conf.buttons?.send || ['Send', 'Submit'];
     const sendBtn = await waitForButton(sendVariants, 2000);
     if (sendBtn) {
         sendBtn.scrollIntoView({block: 'center'});
-        console.log("✅ Ready. Please review and submit.");
         sendBtn.style.border = "4px solid #ce0e2d"; 
     }
 }
@@ -328,6 +359,7 @@ async function waitForButton(variants, timeout) {
     return null;
 }
 
+// Overlay Logic
 function createUploadOverlay(data) {
   const existing = document.getElementById("flo-upload-overlay");
   if (existing) existing.remove();
