@@ -211,8 +211,10 @@ async function fillTikTok(data) {
 
       // A. Fill Email if needed
       // UPDATED: Prioritize valid inputs found within the DOM structure
+      // Targeted selector: #email input (input inside the div with id email)
       const specificEmailSelectors = [
           '#email input', // Targets input inside <div id="email">
+          'div[id="email"] input',
           '[placeholder*="Enter your email"]', // Partial match for "Enter your email address"
           '[name="email"]', 
           'input[type="email"]'
