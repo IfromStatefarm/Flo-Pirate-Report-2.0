@@ -1,21 +1,19 @@
-/// content_autofill.js
-
 // 1. DEFAULT CONFIGURATION (Robust Fallback)
-// This acts as a safety net if the remote config fails to load.
 if (typeof AUTOFILL_CONFIG === 'undefined') {
   var AUTOFILL_CONFIG = {}; 
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+let configLoaded = false;
 
 // --- LOAD REMOTE CONFIG HELPER ---
-// Returns a promise so we can await it in the main init flow
 async function loadConfig() {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
     if (response && response.success && response.config && response.config.platform_selectors) {
       console.log("✅ Remote Config Loaded");
       AUTOFILL_CONFIG = response.config.platform_selectors;
+      configLoaded = true;
     } else {
       console.warn("⚠️ Remote Config empty or invalid.");
     }
@@ -28,33 +26,29 @@ async function loadConfig() {
 // 2. LISTENERS & AUTO-RUN
 // ==========================================
 
-// Prevents duplicate listeners if the script is injected multiple times
 if (!window.hasFloAutofillListener) {
   window.hasFloAutofillListener = true;
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "startFullAutomation") {
-        // Ensure config is loaded before starting manual trigger
-        loadConfig().then(() => {
-            routeAutofill(request.data)
-              .then(() => sendResponse({ success: true }))
-              .catch(err => sendResponse({ success: false, error: err.message }));
-        });
-        return true; // Keep channel open for async response
+        // Force wait for config on manual trigger
+        (async () => {
+            if (!configLoaded) await loadConfig();
+            await routeAutofill(request.data);
+            sendResponse({ success: true });
+        })();
+        return true; 
     }
   });
 }
 
-// Auto-run logic: Checks storage to see if we should run automatically on this page load
 (async function init() {
     if (window.floAutofillRunning) return;
     window.floAutofillRunning = true;
 
-    // Wait for DOM to be ready
     if (document.readyState === 'loading') {
         await new Promise(r => document.addEventListener('DOMContentLoaded', r));
     }
 
-    // Retrieve context from storage
     const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
     const cart = res.piracy_cart || [];
     const info = res.reporterInfo;
@@ -64,11 +58,8 @@ if (!window.hasFloAutofillListener) {
     const host = window.location.hostname;
     const platform = cart[0].platform || "TikTok";
 
-    // Basic Host Safety Checks
     if (platform === "TikTok" && !host.includes("tiktok")) return;
     if (platform === "YouTube" && !host.includes("youtube")) return;
-    if (platform === "Instagram" && !host.includes("instagram")) return;
-    if (platform === "Twitter" && !host.includes("x.com") && !host.includes("twitter")) return;
 
     const data = {
         fullName: info.name,
@@ -82,14 +73,23 @@ if (!window.hasFloAutofillListener) {
 
     console.log("🚀 Starting Flo Autofill for:", platform);
     
-    // CRITICAL FIX: Await the config load BEFORE running logic
-    await loadConfig(); 
+    // START CONFIG LOAD
+    loadConfig();
 
-    await sleep(800); 
+    // STRICT WAIT LOOP: Don't proceed until config is ready
+    let retries = 0;
+    while (!configLoaded && retries < 50) { // Wait up to 5 seconds
+        if (retries % 10 === 0) console.log("⏳ Waiting for config...");
+        await sleep(100);
+        retries++;
+    }
+
+    if (!configLoaded) console.warn("⚠️ Timed out waiting for config. Strategies may fail.");
+
+    await sleep(500); 
     routeAutofill(data);
 })();
 
-// Routes execution to the correct platform handler
 async function routeAutofill(data) {
     const host = window.location.hostname;
     if (host.includes('tiktok')) await fillTikTok(data);
@@ -97,7 +97,6 @@ async function routeAutofill(data) {
     else if (host.includes('instagram')) await fillInstagram(data);
     else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
     
-    // Always show the upload overlay if we have event data
     if(data.eventName) createUploadOverlay(data);
 }
 
@@ -115,33 +114,26 @@ async function fillTikTok(data) {
     };
 
     console.log("🎵 Running Bullet-Proof TikTok Strategy...");
+    console.log("🔍 Active Strategies:", conf.field_strategies ? Object.keys(conf.field_strategies) : "NONE (Config Error)");
 
     // --- STEP 0: BYPASS WIZARD VIA URL ---
-    // This is the critical optimization: Skip the first page by injecting query params.
     const currentUrl = new URL(window.location.href);
     const hasIssueType = currentUrl.searchParams.get("issueType");
     const hasAffected = currentUrl.searchParams.get("affected");
 
-    // If parameters are missing, redirect immediately to skip the first page
+    // Only redirect if we are on the base page
     if ((!hasIssueType || !hasAffected) && conf.prefill_params) {
         console.log("⚡ Redirecting to pre-filled URL to skip wizard...");
-        
         const newUrl = new URL(currentUrl.origin + currentUrl.pathname);
-        // Add config params (issueType=1, affected=1) from JSON
-        if (conf.prefill_params) {
-            for (const [key, val] of Object.entries(conf.prefill_params)) {
-                newUrl.searchParams.set(key, val);
-            }
+        for (const [key, val] of Object.entries(conf.prefill_params)) {
+            newUrl.searchParams.set(key, val);
         }
-        // Add email param to pre-verify
         newUrl.searchParams.set("email", defaults.email);
-        
         window.location.href = newUrl.toString();
-        return; // Stop execution, browser will reload on new URL
+        return; 
     }
 
     // --- HELPER: ROBUST FINDER ---
-    // Finds elements by CSS, ID, or XPath
     const findElement = (selector) => {
         if (!selector) return null;
         try {
@@ -154,26 +146,23 @@ async function fillTikTok(data) {
         } catch (e) { return null; }
     };
 
-    // Helper to safely type into fields
     const typeValue = (el, val) => {
         if (!el) return false;
         el.scrollIntoView({block: "center", behavior: "smooth"});
         el.focus();
         el.value = val;
-        // Trigger all events to ensure React/Frameworks pick up the change
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
         return true;
     };
 
-    // Iterates through list of selectors in config until one works
     const applyFieldStrategy = async (strategies, value) => {
         if (!strategies || !Array.isArray(strategies)) return false;
         for (const strat of strategies) {
             const el = findElement(strat);
             if (el) {
-                console.log(`   found: ${strat}`);
+                console.log(`   ✅ Found field via: ${strat}`);
                 return typeValue(el, value);
             }
         }
@@ -188,29 +177,28 @@ async function fillTikTok(data) {
     };
 
     // --- STEP 1: VERIFY EMAIL STEP (If URL trick didn't autoskip it completely) ---
-    // Sometimes the URL param prefills email but still asks for "Next"
-    // Other times it goes straight to the main form. We handle both cases here.
-    
-    // Check if we are blocked at the "Email" only stage (Main form fields missing)
+    // The "Name" field (#name) ONLY exists on the main form.
+    // If we can't find it, we assume we are stuck on the intermediate Email step.
     const nameInput = findElement(conf.field_strategies?.name?.[0]);
     
     if (!nameInput) {
-        console.log("🔹 Checking for intermediate steps...");
+        console.log("🔹 Main form not detected. Checking for intermediate Email step...");
         
-        // If email field exists but name doesn't, we are likely on the verification step
         const emailStrat = conf.field_strategies?.email;
-        // Attempt to fill email (redundant if URL worked, but safe)
         const emailFilled = await applyFieldStrategy(emailStrat, defaults.email);
         
-        // If we found the email field, look for the Next button
         if (emailFilled) {
              const nextVariants = conf.buttons?.next || ['Next'];
              const btn = await waitForButton(nextVariants, 2000);
              if (btn) {
                  console.log("➡️ Clicking Next to enter main form...");
                  btn.click();
-                 await sleep(2500); // Wait for form transition
+                 await sleep(3000); // Give TikTok time to load the big form
+             } else {
+                 console.warn("⚠️ Email filled, but 'Next' button not found.");
              }
+        } else {
+            console.warn("⚠️ Could not find Email field on intermediate page.");
         }
     }
 
@@ -223,7 +211,6 @@ async function fillTikTok(data) {
         const strategies = conf.field_strategies?.[key];
         let value = defaults[key] || "";
         
-        // Special case: URLs need to be joined
         if (key === 'urls') {
             value = Array.isArray(data.urls) ? data.urls.join('\n') : (data.urls || '');
         }
@@ -232,8 +219,6 @@ async function fillTikTok(data) {
             const success = await applyFieldStrategy(strategies, value);
             if (success) console.log(`✅ Filled ${key}`);
             else console.warn(`⚠️ Failed to fill ${key} (checked ${strategies.length} strategies)`);
-        } else {
-            console.log(`ℹ️ No strategy found for ${key} in config.`);
         }
     }
 
@@ -243,19 +228,19 @@ async function fillTikTok(data) {
         try { if (!cb.checked) cb.click(); } catch(e){}
     });
 
-    // Agreements (Text Click Fallback)
+    // Agreements
     const terms = conf.agreement_terms || [];
     for (const term of terms) {
         await clickByText(term);
     }
 
-    // Highlight Send Button (Do NOT click automatically for safety)
+    // Highlight Send Button
     const sendVariants = conf.buttons?.send || ['Send', 'Submit'];
     const sendBtn = await waitForButton(sendVariants, 2000);
     if (sendBtn) {
         sendBtn.scrollIntoView({block: 'center'});
         console.log("✅ Ready. Please review and submit.");
-        sendBtn.style.border = "4px solid #ce0e2d"; // Visual cue for user
+        sendBtn.style.border = "4px solid #ce0e2d"; 
     }
 }
 
@@ -274,21 +259,14 @@ async function fillYouTube(data) {
 
     const infringingUrls = data.urls || [];
     
-    // 1. Add Videos
     for (const [index, badUrl] of infringingUrls.entries()) {
         const addBtnText = conf.buttons?.add_video || "Add a video";
         await waitAndClick(addBtnText, 5000);
         await sleep(1000);
 
-        if (conf.dropdowns) {
-            // Simplified dropdown logic for YouTube
-            // Note: Full implementation would use selectDropdownOption helper
-        }
-
         const badInputSel = conf.inputs.infringing_url?.[0] || conf.inputs.infringing_url?.[1];
         const titleInputSel = conf.inputs.video_title?.[0];
         
-        // Use a simple fill helper for legacy support
         const fillSimple = async (sel, val) => {
             const el = document.querySelector(sel);
             if(el) { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }
@@ -300,13 +278,9 @@ async function fillYouTube(data) {
         await waitAndClick(conf.buttons?.save || "#save-button", 3000);
         await sleep(2000);
     }
-    
-    // Note: Full YouTube logic is truncated here for brevity as requested focus was TikTok,
-    // but in production, you would include the full implementation from the previous version.
 }
 
 async function fillInstagram(data) {
-    // Basic fill for Instagram
     const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
     if(conf.name) {
         const el = document.querySelector(`[name="${conf.name}"]`);
@@ -315,7 +289,6 @@ async function fillInstagram(data) {
 }
 
 async function fillTwitter(data) {
-    // Basic fill for Twitter
     const conf = AUTOFILL_CONFIG.twitter?.autofill || {};
     if(conf.name) {
         const el = document.querySelector(`[name="${conf.name}"]`);
@@ -335,23 +308,19 @@ async function waitForButton(variants, timeout) {
         for (const v of variants) {
             let el;
             if (v.startsWith('//')) {
-                // XPath
                 try {
                     const res = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                     el = res.singleNodeValue;
                 } catch(e){}
             } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
-                // CSS
                 try { el = document.querySelector(v); } catch(e){}
             } else {
-                // Text Match
                 const xpath = `//button[contains(text(), '${v}')]`;
                 try {
                     const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                     el = res.singleNodeValue;
                 } catch(e){}
             }
-
             if (el && el.offsetParent !== null && !el.disabled) return el;
         }
         await sleep(200);
@@ -359,7 +328,6 @@ async function waitForButton(variants, timeout) {
     return null;
 }
 
-// Overlay Logic
 function createUploadOverlay(data) {
   const existing = document.getElementById("flo-upload-overlay");
   if (existing) existing.remove();
@@ -384,7 +352,6 @@ function createUploadOverlay(data) {
 
   document.body.appendChild(overlay);
 
-  // Drag logic
   let isDragging = false, startX, startY, initialLeft, initialTop;
   overlay.addEventListener('mousedown', (e) => {
       if (['BUTTON'].includes(e.target.tagName)) return;
