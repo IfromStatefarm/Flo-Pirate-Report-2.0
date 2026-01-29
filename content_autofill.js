@@ -136,7 +136,7 @@ if (!window.hasFloAutofillListener) {
 
     const data = {
         fullName: info.name,
-        email: info.email || "copyright@flosports.tv",
+        email: "Social@FloSports.tv", // Hardcoded per user request
         urls: cart.map(c => c.url),
         platform: platform,
         eventName: info.eventName,
@@ -155,6 +155,9 @@ async function runMainSequence(data) {
 }
 
 async function routeAutofill(data) {
+    // Ensure email is set correctly even for manual triggers
+    if (data) data.email = "Social@FloSports.tv";
+
     const host = window.location.hostname;
     if (host.includes('tiktok')) await fillTikTok(data);
     else if (host.includes('youtube')) await fillYouTube(data);
@@ -174,7 +177,7 @@ async function fillTikTok(data) {
       company: "FloSports",
       phone: "5122702356",
       address: "301 Congress ave #1500 Austin Tx 78701",
-      email: data.email || "copyright@flosports.tv"
+      email: data.email || "Social@FloSports.tv"
   };
 
   console.log("🎵 Running TikTok Strategy...");
@@ -351,7 +354,9 @@ async function fillYouTube(data) {
     const phoneEl = await findElementByText("Phone", "ytcp-form-textarea"); 
     if (phoneEl) await typeInField(phoneEl, "5122702356");
 
-    await fillDeep(conf.inputs.secondary_email, "copyright@flosports.tv");
+    // UPDATED: Hardcoded Email
+    await fillDeep(conf.inputs.secondary_email, "Social@FloSports.tv");
+    
     await fillDeep(conf.inputs.authority, "Authorized Representative");
     await selectDropdownOption(conf.dropdowns.country.label, conf.dropdowns.country.value);
     await fillDeep(conf.inputs.street, "301 Congress ave #1500");
