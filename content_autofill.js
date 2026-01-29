@@ -1,4 +1,4 @@
-/ content_autofill.js
+// content_autofill.js
 
 // 1. DEFAULT CONFIGURATION (Robust Fallback)
 if (typeof AUTOFILL_CONFIG === 'undefined') {
@@ -213,30 +213,45 @@ async function fillTikTok(data) {
     if (!nameInput) {
         console.log("🔹 Intermediate Step Detected (Email Verification)...");
         
-        const emailStrat = conf.field_strategies?.email;
-        // Even if prefilled by URL, we must "touch" it to enable the button sometimes
-        const emailFilled = await applyFieldStrategy(emailStrat, defaults.email);
+        // Aggressive Email Strategy for the intermediate page
+        // 1. Try finding input inside the #email container (screenshot structure)
+        // 2. Try by placeholder text "Enter your email address"
+        // 3. Try standard config strategies
+        const intermediateEmailStrategies = [
+            "#email input", 
+            "//div[@id='email']//input",
+            "input[placeholder*='Enter your email']",
+            ...(conf.field_strategies?.email || [])
+        ];
+
+        const emailFilled = await applyFieldStrategy(intermediateEmailStrategies, defaults.email);
         
-        // Try to click Next
-        const nextVariants = conf.buttons?.next || ['Next'];
-        const btn = await waitForButton(nextVariants, 2000);
-        
-        if (btn) {
-             if (btn.disabled) {
-                 console.log("⚠️ Next button disabled. Retrying input trigger...");
-                 // Retry filling with a slight delay or modification to wake up React
-                 await applyFieldStrategy(emailStrat, defaults.email + " "); // Add space
-                 await sleep(100);
-                 await applyFieldStrategy(emailStrat, defaults.email); // Remove space
-             }
+        if (emailFilled) {
+             const nextVariants = conf.buttons?.next || ['Next'];
+             const btn = await waitForButton(nextVariants, 2000);
              
-             if (!btn.disabled) {
-                 console.log("➡️ Clicking Next...");
-                 btn.click();
-                 await sleep(3000); 
+             if (btn) {
+                 if (btn.disabled) {
+                     console.log("⚠️ Next button disabled. Retrying input trigger...");
+                     // Retry filling with a slight delay or modification to wake up React
+                     await applyFieldStrategy(intermediateEmailStrategies, defaults.email + " "); // Add space
+                     await sleep(100);
+                     await applyFieldStrategy(intermediateEmailStrategies, defaults.email); // Remove space
+                 }
+                 
+                 // Re-check button state after retry
+                 if (!btn.disabled) {
+                     console.log("➡️ Clicking Next...");
+                     btn.click();
+                     await sleep(3000); 
+                 } else {
+                     console.warn("❌ Next button still disabled after retry.");
+                 }
              } else {
-                 console.warn("❌ Next button still disabled after retry.");
+                 console.warn("⚠️ 'Next' button not found.");
              }
+        } else {
+            console.warn("⚠️ Could not find Email field on intermediate page.");
         }
     }
 
