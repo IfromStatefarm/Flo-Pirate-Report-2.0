@@ -1,4 +1,4 @@
-/ content_autofill.js
+// content_autofill.js
 
 // 1. DEFAULT CONFIGURATION (Robust Fallback)
 if (typeof AUTOFILL_CONFIG === 'undefined') {
@@ -32,7 +32,6 @@ if (!window.hasFloAutofillListener) {
   window.hasFloAutofillListener = true;
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "startFullAutomation") {
-        // Force wait for config on manual trigger
         (async () => {
             if (!configLoaded) await loadConfig();
             await routeAutofill(request.data);
@@ -44,15 +43,7 @@ if (!window.hasFloAutofillListener) {
 }
 
 (async function init() {
-    // ALWAYS LOG START to confirm script injection
     console.log("🔄 Flo Autofill Script Injected/Re-loaded");
-
-    if (window.floAutofillRunning) {
-        console.log("⚠️ Autofill already marked as running. resetting...");
-        // If it was stuck, we might need to let it run again on a new page load
-        // But usually, a page reload clears this window variable. 
-        // If this is a SPA transition, we might need to be careful.
-    }
     window.floAutofillRunning = true;
 
     if (document.readyState === 'loading') {
@@ -92,7 +83,7 @@ if (!window.hasFloAutofillListener) {
     // START CONFIG LOAD
     loadConfig();
 
-    // STRICT WAIT LOOP: Don't proceed until config is ready
+    // STRICT WAIT LOOP
     let retries = 0;
     while (!configLoaded && retries < 50) { 
         if (retries % 10 === 0) console.log("⏳ Waiting for config...");
@@ -132,7 +123,6 @@ async function fillTikTok(data) {
     console.log("🎵 Running Bullet-Proof TikTok Strategy...");
 
     // --- STEP 0: BYPASS WIZARD VIA URL ---
-    // If we are on the base page, redirect to the pre-filled URL to save clicks
     const currentUrl = new URL(window.location.href);
     const hasIssueType = currentUrl.searchParams.get("issueType");
     const hasAffected = currentUrl.searchParams.get("affected");
@@ -161,18 +151,38 @@ async function fillTikTok(data) {
         } catch (e) { return null; }
     };
 
-    // --- HELPER: REACT VALUE SETTER ---
-    // This is the critical function that hacks React's internal state handling
-    const triggerReactChange = (el, val) => {
+    // --- HELPER: SIMULATE HUMAN TYPING ---
+    // This is the solution to your question. It uses the browser's native text insertion
+    // capabilities rather than just setting the value property.
+    const simulateTyping = (el, val) => {
+        if (!el) return false;
+
+        // 1. Focus the element (like clicking inside the box)
+        el.focus();
+        el.click();
+
+        // 2. Clear existing text (simulating Select All + Delete)
+        // We set value to empty string first to ensure a clean state
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        if (nativeInputValueSetter) {
-            nativeInputValueSetter.call(el, val);
-        } else {
-            el.value = val;
-        }
+        nativeInputValueSetter.call(el, "");
         el.dispatchEvent(new Event('input', { bubbles: true }));
+
+        // 3. "Type" the new value using execCommand
+        // This is deprecated but essentially the only way to perfectly mimic a user paste/type
+        // across all modern frameworks (React, Vue, Angular) without complex event chains.
+        const success = document.execCommand('insertText', false, val);
+
+        // 4. Fallback if execCommand fails (rare, but possible in some contexts)
+        if (!success) {
+            nativeInputValueSetter.call(el, val);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // 5. Finalize events
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true })); // Click away
+
+        return true;
     };
 
     const typeValue = (el, val) => {
@@ -187,16 +197,9 @@ async function fillTikTok(data) {
         if (!el) return false;
 
         el.scrollIntoView({block: "center", behavior: "smooth"});
-        el.focus();
         
-        // 1. Force Clear first to wake up the field
-        el.value = "";
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        
-        // 2. Use React Trigger logic
-        triggerReactChange(el, val);
-        
-        return true;
+        // Use the Human Simulation helper
+        return simulateTyping(el, val);
     };
 
     const applyFieldStrategy = async (strategies, value) => {
@@ -219,11 +222,8 @@ async function fillTikTok(data) {
     };
 
     // --- STEP 1: VERIFY EMAIL STEP ---
-    // Check if we are stuck on the intermediate page (where only email is shown)
-    // We check for the 'Name' field (main form). If missing, we are likely on the Email step.
     const nameInput = findElement(conf.field_strategies?.name?.[0]);
     
-    // Explicitly check for the "Verify your email" header or the intermediate URL pattern
     const isIntermediatePage = !nameInput && (
         document.body.innerText.includes("Verify your email") || 
         currentUrl.searchParams.has("email")
@@ -232,40 +232,32 @@ async function fillTikTok(data) {
     if (isIntermediatePage) {
         console.log("🔹 Intermediate Step Detected (Email Verification)...");
         
-        // Strategy list for the intermediate email field
-        // We add specific fallbacks here in code to be extra safe
         const emailStrat = [
+            "input[id^='tux-']", 
             ...(conf.field_strategies?.email || []),
-            "input[type='text']", // Fallback for specific intermediate page where only one input exists
-            "//input[@type='text']"
+            "input[type='text']"
         ];
         
-        // Attempt to fill
         await applyFieldStrategy(emailStrat, defaults.email);
-        
-        // Wait a moment for validation
         await sleep(500);
 
-        // Check for Next button
         const nextVariants = conf.buttons?.next || ['Next'];
         const btn = await waitForButton(nextVariants, 2000);
         
         if (btn) {
-             // If disabled, try "waking up" the input again
              if (btn.disabled) {
                  console.log("⚠️ Next button disabled. Retrying input trigger...");
-                 await applyFieldStrategy(emailStrat, defaults.email + " "); // Add space
+                 await applyFieldStrategy(emailStrat, defaults.email + " "); 
                  await sleep(200);
-                 await applyFieldStrategy(emailStrat, defaults.email); // Remove space
+                 await applyFieldStrategy(emailStrat, defaults.email); 
              }
              
-             // Click if enabled
              if (!btn.disabled) {
                  console.log("➡️ Clicking Next...");
                  btn.click();
-                 await sleep(3000); // Wait for page transition
+                 await sleep(3000); 
              } else {
-                 console.warn("❌ Next button still disabled after retry.");
+                 console.warn("❌ Next button still disabled.");
              }
         }
     }
@@ -292,7 +284,7 @@ async function fillTikTok(data) {
     const checkboxes = document.querySelectorAll('input[type="checkbox"]');
     checkboxes.forEach(cb => { try { if (!cb.checked) cb.click(); } catch(e){} });
 
-    // Agreements (Text Click Fallback)
+    // Agreements
     const terms = conf.agreement_terms || [];
     for (const term of terms) { await clickByText(term); }
 
@@ -325,7 +317,7 @@ async function fillYouTube(data) {
         await waitAndClick(addBtnText, 5000);
         await sleep(1000);
 
-        const badInputSel = conf.inputs.infringing_url?.[0] || conf.inputs.infringing_url?.[1];
+        const badInputSel = conf.inputs.infringing_url?.[0];
         const titleInputSel = conf.inputs.video_title?.[0];
         
         const fillSimple = async (sel, val) => {
@@ -333,8 +325,8 @@ async function fillYouTube(data) {
             if(el) { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }
         };
 
-        await fillSimple(titleInputSel, data.eventName || "FloSports Event");
-        await fillSimple(badInputSel, badUrl);
+        if(titleInputSel) await fillSimple(titleInputSel, data.eventName || "FloSports Event");
+        if(badInputSel) await fillSimple(badInputSel, badUrl);
         
         await waitAndClick(conf.buttons?.save || "#save-button", 3000);
         await sleep(2000);
@@ -357,10 +349,6 @@ async function fillTwitter(data) {
     }
 }
 
-// ==========================================
-// 5. SHARED UTILITIES
-// ==========================================
-
 async function waitForButton(variants, timeout) {
     const start = Date.now();
     if (!Array.isArray(variants)) variants = [variants];
@@ -369,23 +357,19 @@ async function waitForButton(variants, timeout) {
         for (const v of variants) {
             let el;
             if (v.startsWith('//')) {
-                // XPath
                 try {
                     const res = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                     el = res.singleNodeValue;
                 } catch(e){}
             } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
-                // CSS
                 try { el = document.querySelector(v); } catch(e){}
             } else {
-                // Text Match
                 const xpath = `//button[contains(text(), '${v}')]`;
                 try {
                     const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                     el = res.singleNodeValue;
                 } catch(e){}
             }
-
             if (el && el.offsetParent !== null && !el.disabled) return el;
         }
         await sleep(200);
@@ -393,7 +377,6 @@ async function waitForButton(variants, timeout) {
     return null;
 }
 
-// Overlay Logic
 function createUploadOverlay(data) {
   const existing = document.getElementById("flo-upload-overlay");
   if (existing) existing.remove();
@@ -418,7 +401,6 @@ function createUploadOverlay(data) {
 
   document.body.appendChild(overlay);
 
-  // Drag logic
   let isDragging = false, startX, startY, initialLeft, initialTop;
   overlay.addEventListener('mousedown', (e) => {
       if (['BUTTON'].includes(e.target.tagName)) return;
