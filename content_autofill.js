@@ -1,10 +1,11 @@
 // content_autofill.js
 
-// 1. DEFAULT CONFIGURATION
+// 1. DEFAULT CONFIGURATION (Fallback if Google Drive fails)
 if (typeof AUTOFILL_CONFIG === 'undefined') {
   var AUTOFILL_CONFIG = {
     tiktok: {
       autofill: {
+        // DEFAULT FALLBACKS - These run only if remote config fails
         wizard_terms: ["I am the copyright owner", "Authorized representative", "Statement", "Report an infringement"],
         email_candidates: ['input[type="email"]', "#email", "#contact_email", "[name='email']"],
         inputs: {
@@ -48,31 +49,50 @@ if (typeof AUTOFILL_CONFIG === 'undefined') {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// --- LOAD REMOTE CONFIG ---
-(async function initConfig() {
+// ==========================================
+// 2. CONFIGURATION LOADER (BLOCKING)
+// ==========================================
+async function loadRemoteConfig() {
+  console.log("📥 PIRATE AI: Fetching Configuration...");
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
+    
     if (response && response.success && response.config && response.config.platform_selectors) {
-      console.log("✅ Remote Config Loaded (Background)");
       const remote = response.config.platform_selectors;
       
-      if (remote.tiktok?.autofill) AUTOFILL_CONFIG.tiktok.autofill = { ...AUTOFILL_CONFIG.tiktok.autofill, ...remote.tiktok.autofill };
-      if (remote.youtube?.autofill) AUTOFILL_CONFIG.youtube.autofill = { ...AUTOFILL_CONFIG.youtube.autofill, ...remote.youtube.autofill };
-      if (remote.instagram?.autofill) AUTOFILL_CONFIG.instagram.autofill = { ...AUTOFILL_CONFIG.instagram.autofill, ...remote.instagram.autofill };
-      if (remote.twitter?.autofill) AUTOFILL_CONFIG.twitter.autofill = { ...AUTOFILL_CONFIG.twitter.autofill, ...remote.twitter.autofill };
+      // Deep merge helpers for key platforms
+      if (remote.tiktok?.autofill) {
+          AUTOFILL_CONFIG.tiktok.autofill = { ...AUTOFILL_CONFIG.tiktok.autofill, ...remote.tiktok.autofill };
+      }
+      if (remote.youtube?.autofill) {
+          AUTOFILL_CONFIG.youtube.autofill = { ...AUTOFILL_CONFIG.youtube.autofill, ...remote.youtube.autofill };
+      }
+      if (remote.instagram?.autofill) {
+          AUTOFILL_CONFIG.instagram.autofill = { ...AUTOFILL_CONFIG.instagram.autofill, ...remote.instagram.autofill };
+      }
+      if (remote.twitter?.autofill) {
+          AUTOFILL_CONFIG.twitter.autofill = { ...AUTOFILL_CONFIG.twitter.autofill, ...remote.twitter.autofill };
+      }
+      console.log("✅ PIRATE AI: Remote Config Applied Successfully");
+      return true;
     }
-  } catch(e) { console.warn("Using default local strategies.", e); }
-})();
+  } catch(e) { 
+    console.warn("⚠️ PIRATE AI: Config fetch failed, using defaults.", e); 
+  }
+  return false;
+}
 
 // ==========================================
-// 2. LISTENERS & AUTO-RUN
+// 3. MAIN EXECUTION FLOW
 // ==========================================
 
+// Listener for manual triggers
 if (!window.hasFloAutofillListener) {
   window.hasFloAutofillListener = true;
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "startFullAutomation") {
-        routeAutofill(request.data)
+        // We re-run the main sequence manually
+        runMainSequence(request.data)
           .then(() => sendResponse({ success: true }))
           .catch(err => sendResponse({ success: false, error: err.message }));
         return true; 
@@ -80,18 +100,17 @@ if (!window.hasFloAutofillListener) {
   });
 }
 
+// Auto-run on load
 (async function init() {
     if (window.floAutofillRunning) return;
     window.floAutofillRunning = true;
 
-    // Wait for DOM to be reasonably ready
+    // A. Wait for DOM
     if (document.readyState === 'loading') {
         await new Promise(r => document.addEventListener('DOMContentLoaded', r));
     }
 
-    // Small delay to ensure TikTok's dynamic elements settle
-    await sleep(1500);
-
+    // B. Check if we have work to do
     const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
     const cart = res.piracy_cart || [];
     const info = res.reporterInfo;
@@ -99,12 +118,14 @@ if (!window.hasFloAutofillListener) {
     if (cart.length === 0 || !info) return;
 
     const host = window.location.hostname;
-    // Normalize platform check
-    let platform = (cart[0].platform || "TikTok");
-    
-    // Safety check: ensure we are on the right domain for the platform
+    const platform = cart[0].platform || "TikTok";
+
+    // Basic Host Checks to prevent running on wrong sites
     if (platform === "TikTok" && !host.includes("tiktok")) return;
     if (platform === "YouTube" && !host.includes("youtube")) return;
+    
+    // C. LOAD CONFIG BEFORE PROCEEDING (The Fix)
+    await loadRemoteConfig();
 
     const data = {
         fullName: info.name,
@@ -117,9 +138,14 @@ if (!window.hasFloAutofillListener) {
     };
 
     console.log("🚀 Starting Flo Autofill for:", platform);
-    createUploadOverlay(data); // Show overlay immediately
     await routeAutofill(data);
 })();
+
+// Re-usable runner
+async function runMainSequence(data) {
+    await loadRemoteConfig();
+    await routeAutofill(data);
+}
 
 async function routeAutofill(data) {
     const host = window.location.hostname;
@@ -129,13 +155,11 @@ async function routeAutofill(data) {
     else if (host.includes('facebook')) await fillFacebook(data);
     else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
     
-    // Update overlay status
-    const statusEl = document.getElementById("flo-overlay-header");
-    if(statusEl) statusEl.innerText = "FloSports Helper (Ready)";
+    createUploadOverlay(data);
 }
 
 // ==========================================
-// 3. TIKTOK STRATEGY
+// 4. TIKTOK STRATEGY (CONFIG-DRIVEN WIZARD)
 // ==========================================
 async function fillTikTok(data) {
   const conf = AUTOFILL_CONFIG.tiktok.autofill;
@@ -146,36 +170,53 @@ async function fillTikTok(data) {
       email: data.email || "copyright@flosports.tv"
   };
 
-  console.log("🎵 Running TikTok Strategy...");
+  console.log("🎵 Running TikTok Strategy with Config:", conf);
 
   // --- STEP 1: HANDLE DECLARATION (WIZARD STEP) ---
-  const declarationTerms = conf.wizard_terms || ["I am the copyright owner", "Authorized representative", "Statement"];
+  // Note: If you updated events_config.json, 'wizard_terms' should be there.
+  // If not, it falls back to the array below.
+  const declarationTerms = conf.wizard_terms || ["I am the copyright owner", "Authorized representative", "Statement", "Report an infringement"];
   
+  console.log("Looking for terms:", declarationTerms);
+
   let wizardSuccess = false;
-  // Try finding the radio buttons/boxes for declaration
-  for(let i=0; i<5; i++) { // Increased attempts
+  for(let i=0; i<5; i++) { // Increased retries
       if(wizardSuccess) break;
       for (const term of declarationTerms) {
           const clicked = await clickByText(term);
           if (clicked) {
               console.log(`✅ Selected declaration: "${term}"`);
               wizardSuccess = true;
+              await sleep(1000); 
               break;
           }
       }
-      if(!wizardSuccess) await sleep(800);
+      if(!wizardSuccess) {
+          console.log("...waiting for wizard options...");
+          await sleep(800);
+      }
   }
 
-  await sleep(1000); // Wait for UI transition
+  // --- STEP 2: HANDLE NEXT BUTTON ---
+  const btnText = conf.next_button_text || "Next";
+  const nextBtn = await waitForButton(btnText, 2000);
+  if (nextBtn && !nextBtn.disabled && nextBtn.offsetParent !== null) {
+      console.log("➡️ Clicking Next...");
+      nextBtn.scrollIntoView({block: "center"});
+      nextBtn.click();
+      await sleep(1000);
+  }
 
-  // --- STEP 2: WAIT FOR MAIN FORM ---
+  // --- STEP 3: WAIT FOR MAIN FORM ---
   console.log("⏳ Waiting for form fields...");
+  // Use a very generic selector to detect form load
   const formReady = await waitForSelector('input, textarea', 5000);
-  if (!formReady) console.warn("⚠️ Main form fields not detected immediately.");
+  if (!formReady) console.warn("⚠️ Main form fields not detected immediately. Checking manual labels...");
 
-  // --- STEP 3: FILL FIELDS ---
+  // --- STEP 4: FILL FIELDS ---
   
   // A. EMAIL
+  console.log("📧 Filling Email...");
   const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
   let emailFilled = false;
   for (const sel of emailSels) {
@@ -184,13 +225,23 @@ async function fillTikTok(data) {
           break;
       }
   }
+  if (!emailFilled && conf.email_labels) {
+      for (const label of conf.email_labels) {
+          if (await fillInputByLabel(label, defaults.email)) {
+              emailFilled = true;
+              break;
+          }
+      }
+  }
 
   // B. OTHER FIELDS
   const fillFromConfig = async (key, val) => {
       const selectors = conf.inputs[key] || [];
       for (const s of selectors) {
+          // 1. Try CSS Selector
           if (await fillBySelector(s, val)) return;
-          // Fallback: Label text search
+          
+          // 2. If it's plain text, try as a Label
           if (!/[#\[.]/.test(s)) {
               if (await fillInputByLabel(s, val)) return;
           }
@@ -208,7 +259,6 @@ async function fillTikTok(data) {
   
   if (conf.inputs.urls) {
       for(const s of conf.inputs.urls) {
-          // Special logic for TikTok's placeholder search
           if (s.includes("tiktok.com")) {
              if (await fillByPlaceholder(s, urlText)) urlsFilled = true;
           } else {
@@ -237,7 +287,7 @@ async function fillTikTok(data) {
 }
 
 // ==========================================
-// 4. YOUTUBE STRATEGY
+// 5. YOUTUBE STRATEGY
 // ==========================================
 async function fillYouTube(data) {
     const conf = AUTOFILL_CONFIG.youtube.autofill; 
@@ -251,6 +301,7 @@ async function fillYouTube(data) {
 
     const infringingUrls = data.urls || [];
     
+    // 1. Add Videos
     for (const [index, badUrl] of infringingUrls.entries()) {
         const addBtnText = conf.buttons?.add_video || "Add a video";
         await waitAndClick(addBtnText, 5000);
@@ -273,6 +324,7 @@ async function fillYouTube(data) {
         await sleep(2000);
     }
 
+    // 2. Personal Info
     await selectDropdownOption(conf.dropdowns.affected_party.label, conf.dropdowns.affected_party.value);
     await fillDeep(conf.inputs.claimant_name, "Flosports");
     
@@ -287,6 +339,7 @@ async function fillYouTube(data) {
     await fillDeep(conf.inputs.state, "Texas");
     await fillDeep(conf.inputs.zip, "78701");
 
+    // 3. Agreements
     const stdRadio = await findDeep('ytcp-radio-button[name="removal-timing-option"][aria-label*="Standard"]');
     if (stdRadio) stdRadio.click();
 
@@ -302,7 +355,7 @@ async function fillYouTube(data) {
     await fillDeep(conf.inputs.signature, data.fullName);
 }
 
-// STUBS for Other Platforms
+// ... (Instagram/Twitter logic preserved) ...
 async function fillInstagram(data) {
     const conf = AUTOFILL_CONFIG.instagram.autofill;
     await fillByName(conf.name, data.fullName);
@@ -323,7 +376,7 @@ async function fillTwitter(data) {
 }
 
 // ==========================================
-// 5. ROBUST HELPERS
+// 6. ROBUST HELPERS
 // ==========================================
 
 async function waitForSelector(selector, timeout) {
@@ -331,7 +384,7 @@ async function waitForSelector(selector, timeout) {
     while (Date.now() - start < timeout) {
         try {
             if (document.querySelector(selector)) return true;
-        } catch (e) {}
+        } catch (e) { }
         await sleep(200);
     }
     return false;
@@ -341,6 +394,7 @@ async function waitForButton(textOrSel, timeout) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
         let el;
+        // Check if it looks like a CSS selector
         if (/[.#\[]/.test(textOrSel)) {
             try { el = document.querySelector(textOrSel); } catch(e){}
         } else {
@@ -360,8 +414,13 @@ async function fillBySelector(selector, value) {
     if (!value) return false;
     
     // HEURISTIC: Is this already a complex CSS selector?
+    // Checks for space, dot, hash, brackets, colon, or greater-than
     const isComplexSelector = /[ .#\[:>]/.test(selector);
-    if (!isComplexSelector) selector = `[name="${selector}"], #${selector}`;
+
+    if (!isComplexSelector) {
+        // It's likely just a name "email" or ID "email-field"
+        selector = `[name="${selector}"], #${selector}`;
+    }
     
     try {
         const el = document.querySelector(selector);
@@ -400,7 +459,7 @@ async function fillInputByLabel(labelText, value) {
       let targetInput = null;
       for (let i = 0; i < snapshot.snapshotLength; i++) {
           const node = snapshot.snapshotItem(i);
-          if (['SCRIPT','STYLE'].includes(node.tagName)) continue;
+          if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
 
           const forId = node.getAttribute('for');
           if (forId) {
@@ -477,6 +536,19 @@ async function findElementByText(text, tagName = "*", root = document.body) {
          const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
          if (res.singleNodeValue) return res.singleNodeValue;
     }
+    const elements = root.querySelectorAll('*');
+    for (const el of elements) {
+        if (el.shadowRoot) {
+            if (el.shadowRoot.textContent.includes(text)) {
+                 const candidates = el.shadowRoot.querySelectorAll(tagName);
+                 for (const cand of candidates) {
+                     if (cand.textContent.includes(text)) return cand;
+                 }
+            }
+            const found = await findElementByText(text, tagName, el.shadowRoot);
+            if (found) return found;
+        }
+    }
     return null;
 }
 
@@ -492,7 +564,7 @@ async function selectDropdownOption(label, optionText) {
 }
 
 // ==========================================
-// 6. OVERLAY
+// 7. OVERLAY
 // ==========================================
 function createUploadOverlay(data) {
   const existing = document.getElementById("flo-upload-overlay");
@@ -510,7 +582,7 @@ function createUploadOverlay(data) {
     <h3 id="flo-overlay-header" style="margin-top:0; color:#ce0e2d; cursor: move;">FloSports Helper ✥</h3>
     <div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
       <strong>Platform:</strong> ${data.platform || "TikTok"}<br>
-      <strong>Status:</strong> Autofilling...<br>
+      <strong>Status:</strong> Form Attempted.<br>
       <small style="color:#666;">Double check all fields.</small>
     </div>
     <div style="margin-bottom: 15px;">
@@ -579,6 +651,5 @@ function createUploadOverlay(data) {
       }
     });
   });
-}
 
-console.log("✅ PIRATE AI: Autofill script parsed successfully.");
+}
