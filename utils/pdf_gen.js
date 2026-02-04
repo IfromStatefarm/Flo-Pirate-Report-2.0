@@ -1,5 +1,5 @@
 // utils/pdf_gen.js
-import { jsPDF } from '../lib/jspdf.umd.min.js';
+import jsPDF from '../lib/jspdf.umd.min.js';
 
 export async function generatePDF(data) {
   try {
