@@ -3,19 +3,18 @@ import * as jsPDFModule from '../lib/jspdf.umd.min.js';
 
 export async function generatePDF(data) {
   try {
-    // Robust Constructor Resolution:
-    // 1. Try named export .jsPDF (common in ESM builds of this lib)
-    // 2. Try .default (common in UMD/CommonJS interop)
-    // 3. Try .default.jsPDF (nested default)
-    // 4. Fallback to the module itself if it IS the constructor
-    const jsPDF = jsPDFModule.jsPDF || 
-                  (jsPDFModule.default && jsPDFModule.default.jsPDF) || 
-                  jsPDFModule.default || 
-                  jsPDFModule;
+    // Robust Constructor Resolution for UMD in ESM:
+    // 1. Check if the module itself is the constructor (rare but possible in some bundlers)
+    // 2. Check for .jsPDF property (common named export)
+    // 3. Check for .default (common default export)
+    // 4. Check for .default.jsPDF (nested default object)
+    
+    let jsPDF = jsPDFModule.jsPDF || jsPDFModule.default?.jsPDF || jsPDFModule.default || jsPDFModule;
 
-    if (!jsPDF || typeof jsPDF !== 'function') {
-        console.error("jsPDF Import Debug:", jsPDFModule); // Helpful for debugging
-        throw new Error("jsPDF library not loaded correctly");
+    // Sanity check: Ensure it's a function (constructor)
+    if (typeof jsPDF !== 'function') {
+        console.error("jsPDF Import Debug:", jsPDFModule); 
+        throw new Error("jsPDF library not loaded correctly - Constructor not found");
     }
 
     const doc = new jsPDF();
@@ -80,42 +79,44 @@ export async function generatePDF(data) {
     let totalViews = 0;
 
     // Items Loop
-    data.items.forEach((item, index) => {
-        // Parse views for total
-        let viewCount = 0;
-        if (item.views && item.views !== "N/A") {
-            const v = item.views.toLowerCase();
-            if(v.includes('k')) viewCount = parseFloat(v) * 1000;
-            else if(v.includes('m')) viewCount = parseFloat(v) * 1000000;
-            else viewCount = parseFloat(v.replace(/,/g, '')) || 0;
-        }
-        totalViews += viewCount;
+    if (data.items && Array.isArray(data.items)) {
+        data.items.forEach((item, index) => {
+            // Parse views for total
+            let viewCount = 0;
+            if (item.views && item.views !== "N/A") {
+                const v = item.views.toLowerCase();
+                if(v.includes('k')) viewCount = parseFloat(v) * 1000;
+                else if(v.includes('m')) viewCount = parseFloat(v) * 1000000;
+                else viewCount = parseFloat(v.replace(/,/g, '')) || 0;
+            }
+            totalViews += viewCount;
 
-        // Truncate URL for display
-        let displayUrl = item.url.length > 55 ? item.url.substring(0, 52) + "..." : item.url;
+            // Truncate URL for display
+            let displayUrl = item.url.length > 55 ? item.url.substring(0, 52) + "..." : item.url;
 
-        // Add Row
-        doc.text(displayUrl, margin + 2, y);
-        doc.text(item.views || "N/A", margin + 110, y);
-        
-        if (item.screenshotLink && item.screenshotLink.startsWith('http')) {
-            doc.setTextColor(0, 0, 255);
-            doc.textWithLink("View Evidence", margin + 140, y, { url: item.screenshotLink });
-            doc.setTextColor(0, 0, 0);
-        } else {
-            doc.setTextColor(150);
-            doc.text("No Image", margin + 140, y);
-            doc.setTextColor(0);
-        }
-        
-        y += 7;
-        
-        // Page break check (simple)
-        if (y > 270) {
-            doc.addPage();
-            y = 20;
-        }
-    });
+            // Add Row
+            doc.text(displayUrl, margin + 2, y);
+            doc.text(item.views || "N/A", margin + 110, y);
+            
+            if (item.screenshotLink && item.screenshotLink.startsWith('http')) {
+                doc.setTextColor(0, 0, 255);
+                doc.textWithLink("View Evidence", margin + 140, y, { url: item.screenshotLink });
+                doc.setTextColor(0, 0, 0);
+            } else {
+                doc.setTextColor(150);
+                doc.text("No Image", margin + 140, y);
+                doc.setTextColor(0);
+            }
+            
+            y += 7;
+            
+            // Page break check (simple)
+            if (y > 270) {
+                doc.addPage();
+                y = 20;
+            }
+        });
+    }
 
     y += 5;
     doc.setFont("helvetica", "bold");
@@ -218,7 +219,7 @@ export async function generatePDF(data) {
     VERTICAL: ${data.vertical}
     
     INFRINGING URLS:
-    ${data.items.map(i => `- ${i.url} (Views: ${i.views}) [Evidence: ${i.screenshotLink || "N/A"}]`).join('\n')}
+    ${data.items ? data.items.map(i => `- ${i.url} (Views: ${i.views}) [Evidence: ${i.screenshotLink || "N/A"}]`).join('\n') : "No items."}
     
     --------------------------------------------------
     FORMAL NOTICE OF COPYRIGHT INFRINGEMENT
