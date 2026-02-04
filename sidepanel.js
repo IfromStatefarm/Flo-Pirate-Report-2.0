@@ -121,9 +121,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Helper to show error or setup message
   const showInitError = (msg, isSetup = false) => {
       if (loadingEl) {
-          loadingEl.innerHTML = `⚠️ <strong>${isSetup ? 'Setup Required' : 'Connection Failed'}</strong><br>${msg}${isSetup ? '' : '<br><button id="retryInitBtn" style="margin-top:5px;cursor:pointer;">Retry</button>'}`;
+          let html = `⚠️ <strong>${isSetup ? 'Setup Required' : 'Connection Failed'}</strong><br>${msg}`;
+          
+          if (isSetup) {
+              html += `<br><button id="openOptionsBtn" style="margin-top:10px; padding:5px 10px; cursor:pointer; border-radius:4px; border:1px solid #ccc; background:#fff;">Open Extension Options</button>`;
+          } else {
+              html += `<br><button id="retryInitBtn" style="margin-top:10px; padding:5px 10px; cursor:pointer; border-radius:4px; border:1px solid #ccc; background:#fff;">Retry Connection</button>`;
+          }
+
+          loadingEl.innerHTML = html;
           loadingEl.style.color = isSetup ? "#f39c12" : "red";
-          if (!isSetup) document.getElementById('retryInitBtn')?.addEventListener('click', () => window.location.reload());
+          
+          if (isSetup) {
+              document.getElementById('openOptionsBtn')?.addEventListener('click', () => chrome.runtime.openOptionsPage());
+          } else {
+              document.getElementById('retryInitBtn')?.addEventListener('click', () => window.location.reload());
+          }
       }
   };
 
