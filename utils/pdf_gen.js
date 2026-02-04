@@ -1,18 +1,15 @@
 // utils/pdf_gen.js
-import jsPDF from '../lib/jspdf.umd.min.js';
+import jsPDFlib from '../lib/jspdf.umd.min.js';
 
 export async function generatePDF(data) {
   try {
-    // Check if jsPDF loaded correctly
-    // In UMD builds, the default export IS the constructor
+    // Determine the constructor from the imported module
+    // UMD builds often export an object with { jsPDF: ... } or the constructor itself as default
+    const jsPDF = jsPDFlib.jsPDF || jsPDFlib;
+
     if (!jsPDF) throw new Error("jsPDF library not loaded");
 
-    // The UMD build might export the constructor directly or under a .jsPDF property depending on how it was built.
-    // However, usually `import jsPDF from ...` gives you the object that contains the constructor.
-    // If the default export has a .jsPDF property, we use that. Otherwise, we assume the default export IS the constructor.
-    const JsPDFConstructor = jsPDF.jsPDF || jsPDF;
-
-    const doc = new JsPDFConstructor();
+    const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 15;
     let y = 20;
