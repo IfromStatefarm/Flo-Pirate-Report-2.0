@@ -4,6 +4,7 @@ import {
   uploadToDrive, 
   appendToSheet, 
   ensureYearlyReportFolder,
+  ensureDailyScreenshotFolder, 
   fetchConfig, 
   getEventData,       
   updateEventUrl,     
@@ -464,7 +465,7 @@ async function handleAddVideo(tab, data) {
 }
 
 // ------------------------------------------
-// UPDATED BATCH REPORT LOGIC (PDF + FOLDERS)
+// UPDATED BATCH REPORT LOGIC
 // ------------------------------------------
 async function handleBatchReport(formData) {
   try {
@@ -479,10 +480,14 @@ async function handleBatchReport(formData) {
 
     const token = await getAuthToken();
     const currentYear = new Date().getFullYear();
+    const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     const todayFormatted = new Date().toLocaleDateString("en-US");
     
-    // 1. Ensure Year Folder exists (e.g. "Pirated Reports for 2025")
+    // 1. Ensure Folder Structure
+    // - Reports go to: "Pirated Reports for {Year}"
+    // - Screenshots go to: "All Screenshots/{YYYY-MM-DD}"
     const yearFolderId = await ensureYearlyReportFolder(token, currentYear);
+    const screenshotsFolderId = await ensureDailyScreenshotFolder(token, dateStr);
 
     // Grouping logic
     const grouped = {};
@@ -503,8 +508,9 @@ async function handleBatchReport(formData) {
       let detectedPlatform = "TikTok"; 
       if (urls[0].includes('youtube')) detectedPlatform = "YouTube";
       
-      // 2. UPLOAD SCREENSHOTS FIRST (to get links for the PDF)
-      const evidenceLinks = []; // Array of { url: string, screenshotLink: string, views: string }
+      // 2. UPLOAD SCREENSHOTS TO "ALL SCREENSHOTS/{DATE}"
+      // We do this FIRST so we can get the webViewLink for the PDF.
+      const evidenceLinks = []; 
       
       for (const item of items) {
           let imgLink = "No Screenshot Available";
@@ -512,9 +518,9 @@ async function handleBatchReport(formData) {
               const imgDataUrl = await getImage(item.screenshotId);
               if (imgDataUrl) {
                   const response = await fetch(imgDataUrl);
-                  // Upload to same year folder
-                  const upload = await uploadToDrive(token, yearFolderId, `${reportId}_Evidence_@${handle}.jpg`, await response.blob(), 'image/jpeg');
-                  imgLink = upload.webViewLink; // This link goes into PDF
+                  // Upload to the separate daily screenshots folder
+                  const upload = await uploadToDrive(token, screenshotsFolderId, `${reportId}_Evidence_@${handle}.jpg`, await response.blob(), 'image/jpeg');
+                  imgLink = upload.webViewLink; 
               }
           }
           evidenceLinks.push({ 
@@ -524,19 +530,20 @@ async function handleBatchReport(formData) {
           });
       }
 
-      // 3. GENERATE PDF (With links)
+      // 3. GENERATE PDF (Report goes to Year Folder)
+      // We pass the full 'evidenceLinks' array which now contains the Google Drive links
       const pdfData = { 
           eventName: formData.eventName, 
           vertical: formData.vertical, 
           reporterName: finalReporterName, 
           handle, 
-          items: evidenceLinks, // Pass full evidence array
+          items: evidenceLinks,
           reportId: reportId 
       };
       
       const pdfBlob = await generatePDF(pdfData);
       
-      // 4. UPLOAD PDF
+      // 4. UPLOAD PDF TO YEAR FOLDER
       const pdfName = `Report_${reportId}_@${handle}.pdf`;
       const pdfUpload = await uploadToDrive(token, yearFolderId, pdfName, pdfBlob, 'application/pdf');
 
