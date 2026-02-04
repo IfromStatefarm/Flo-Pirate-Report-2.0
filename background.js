@@ -507,6 +507,7 @@ async function handleBatchReport(formData) {
     const eventFolderId = await ensureFolderHierarchy(token, formData.eventName, dateStr);
     const screenshotFolderId = await ensureDailyScreenshotFolder(token, dateStr);
 
+    // Grouping logic
     const grouped = {};
     cart.forEach(item => {
       const handle = item.handle || "Unknown";
@@ -514,6 +515,7 @@ async function handleBatchReport(formData) {
       grouped[handle].push(item);
     });
 
+    // --- BATCH PROCESSING LOOP ---
     for (const handle of Object.keys(grouped)) {
       const items = grouped[handle];
       const urls = items.map(i => i.url);
@@ -526,8 +528,11 @@ async function handleBatchReport(formData) {
       
       const pdfData = { eventName: formData.eventName, vertical: formData.vertical, reporterName: finalReporterName, handle, urls, notes: `Report ID: ${reportId}` };
       const pdfBlob = await generatePDF(pdfData);
+      
+      // Upload PDF
       const pdfUpload = await uploadToDrive(token, eventFolderId, `${reportId}_@${handle}.pdf`, pdfBlob, 'application/pdf');
 
+      // Upload Screenshots
       if (screenshotFolderId) {
         for (const item of items) {
           let imgDataUrl = item.screenshot; 
@@ -539,9 +544,15 @@ async function handleBatchReport(formData) {
         }
       }
 
+      // Log to Sheet
       await appendToSheet(token, { values: [todayFormatted, formData.vertical, formData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", `Evidence: ${pdfUpload.webViewLink}`, finalReporterName, "", "", "", "", "", "", "", reportId] });
+      
+      // --- RATE LIMITER ---
+      // Wait 1.5s between entries to prevent Google API 429 Errors
+      await sleep(1500);
     }
 
+    // Cleanup after loop finishes
     await chrome.storage.local.remove('piracy_cart');
     await clearImages();
     return { success: true };
