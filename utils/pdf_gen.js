@@ -4,9 +4,15 @@ import jsPDF from '../lib/jspdf.umd.min.js';
 export async function generatePDF(data) {
   try {
     // Check if jsPDF loaded correctly
+    // In UMD builds, the default export IS the constructor
     if (!jsPDF) throw new Error("jsPDF library not loaded");
 
-    const doc = new jsPDF();
+    // The UMD build might export the constructor directly or under a .jsPDF property depending on how it was built.
+    // However, usually `import jsPDF from ...` gives you the object that contains the constructor.
+    // If the default export has a .jsPDF property, we use that. Otherwise, we assume the default export IS the constructor.
+    const JsPDFConstructor = jsPDF.jsPDF || jsPDF;
+
+    const doc = new JsPDFConstructor();
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 15;
     let y = 20;
