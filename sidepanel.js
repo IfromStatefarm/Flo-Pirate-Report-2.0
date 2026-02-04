@@ -118,17 +118,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Helper to show error
-  const showInitError = (msg) => {
+  // Helper to show error or setup message
+  const showInitError = (msg, isSetup = false) => {
       if (loadingEl) {
-          loadingEl.innerHTML = `⚠️ <strong>Connection Failed</strong><br>${msg}<br><button id="retryInitBtn" style="margin-top:5px;cursor:pointer;">Retry</button>`;
-          loadingEl.style.color = "red";
-          document.getElementById('retryInitBtn')?.addEventListener('click', () => window.location.reload());
+          loadingEl.innerHTML = `⚠️ <strong>${isSetup ? 'Setup Required' : 'Connection Failed'}</strong><br>${msg}${isSetup ? '' : '<br><button id="retryInitBtn" style="margin-top:5px;cursor:pointer;">Retry</button>'}`;
+          loadingEl.style.color = isSetup ? "#f39c12" : "red";
+          if (!isSetup) document.getElementById('retryInitBtn')?.addEventListener('click', () => window.location.reload());
       }
   };
 
   // 1. Load Config & Init
   try {
+    // Check for ID Configuration first
+    const options = await chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id']);
+    if (!options.piracy_folder_id || !options.piracy_sheet_id || !options.event_sheet_id) {
+        showInitError("Extension IDs are not configured. Please go to Extension Options to set them.", true);
+        return;
+    }
+
     const authPromise = chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
     
