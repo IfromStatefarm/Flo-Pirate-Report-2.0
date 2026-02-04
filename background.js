@@ -441,6 +441,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function handleDynamicSearch(data) {
   try {
+    // --- SESSION STATE ISOLATION (LOCK) ---
+    // Prevent new search if one is already active to avoid data cross-contamination
+    const session = await chrome.storage.session.get(['activeSearchTabId', 'activeEventDetails']);
+    
+    if (session.activeSearchTabId) {
+        try {
+            // Verify if the locked tab is still open
+            await chrome.tabs.get(session.activeSearchTabId);
+            // Tab exists, reject the new request
+            return { 
+                success: false, 
+                error: "SEARCH_IN_PROGRESS", 
+                activeEvent: session.activeEventDetails?.eventName || "Unknown"
+            };
+        } catch (e) {
+            // Tab was closed manually by user, clear the lock and proceed
+            await chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
+        }
+    }
+    // --------------------------------------
+
     const { eventName, vertical } = data;
     const sheetData = await getEventData(vertical); 
     const searchBaseUrl = sheetData.searchUrl;
