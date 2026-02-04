@@ -72,27 +72,85 @@
     // --- TIKTOK ---
     if (host.includes('tiktok.com')) {
       let handle = "Unknown";
+      let views = "N/A"; 
       let matched = false;
 
-      const videoRegex = /@([^/?]+)\/video\/(\d+)/;
-      const photoRegex = /@([^/?]+)\/photo\/(\d+)/;
+      // 1. Try JSON Scraping (Priority)
+      try {
+          const jsonConfig = SCRAPER_CONFIG.tiktok.json_data;
+          if (jsonConfig) {
+              const scriptIds = jsonConfig.script_ids || ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"];
+              let videoData = null;
 
-      let match = url.match(videoRegex) || url.match(photoRegex);
+              // Extract ID from URL to find specific video object
+              const idMatch = url.match(/\/video\/(\d+)/) || url.match(/\/photo\/(\d+)/);
+              const videoId = idMatch ? idMatch[1] : null;
 
-      if (match) {
-          handle = match[1];
-          matched = true;
-      } else {
-          try {
-              const pattern = SCRAPER_CONFIG.tiktok.url_match;
-              const customRegex = new RegExp(pattern);
-              const customMatch = url.match(customRegex);
-              if (customMatch) {
-                  handle = customMatch[1] || customMatch[3] || "Unknown";
-                  matched = true;
+              for (const id of scriptIds) {
+                  const el = document.getElementById(id);
+                  if (el && el.textContent) {
+                      const json = JSON.parse(el.textContent);
+                      
+                      // Strategy A: SIGI_STATE -> ItemModule -> [videoId]
+                      if (videoId && json.ItemModule && json.ItemModule[videoId]) {
+                          videoData = json.ItemModule[videoId];
+                      } 
+                      // Strategy B: __UNIVERSAL... -> __DEFAULT_SCOPE__ -> webapp.video-detail -> itemInfo -> itemStruct
+                      else if (json.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct) {
+                          videoData = json.__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct;
+                      }
+                      
+                      if (videoData) break;
+                  }
               }
-          } catch(e) {
-              console.warn("PIRATE AI: Custom regex failed:", e);
+
+              if (videoData) {
+                  // Helper to safely get nested values (e.g. "stats.playCount")
+                  const getVal = (obj, pathStr) => {
+                      return pathStr.split('.').reduce((o, k) => (o || {})[k], obj);
+                  };
+
+                  // Resolve Handle
+                  for (const path of (jsonConfig.fields.handle || [])) {
+                      const val = getVal(videoData, path);
+                      if (val) { handle = val; matched = true; break; }
+                  }
+
+                  // Resolve Views
+                  for (const path of (jsonConfig.fields.views || [])) {
+                      const val = getVal(videoData, path);
+                      if (val !== undefined) { views = val.toString(); break; }
+                  }
+                  
+                  console.log("PIRATE AI: JSON Scrape Success", { handle, views });
+              }
+          }
+      } catch (e) {
+          console.warn("PIRATE AI: JSON Scrape Error", e);
+      }
+
+      // 2. Fallback to Regex/DOM if JSON failed
+      if (!matched) {
+          const videoRegex = /@([^/?]+)\/video\/(\d+)/;
+          const photoRegex = /@([^/?]+)\/photo\/(\d+)/;
+
+          let match = url.match(videoRegex) || url.match(photoRegex);
+
+          if (match) {
+              handle = match[1];
+              matched = true;
+          } else {
+              try {
+                  const pattern = SCRAPER_CONFIG.tiktok.url_match;
+                  const customRegex = new RegExp(pattern);
+                  const customMatch = url.match(customRegex);
+                  if (customMatch) {
+                      handle = customMatch[1] || customMatch[3] || "Unknown";
+                      matched = true;
+                  }
+              } catch(e) {
+                  console.warn("PIRATE AI: Custom regex failed:", e);
+              }
           }
       }
 
@@ -102,8 +160,11 @@
           return null; 
       }
 
-      const viewEl = document.querySelector(SCRAPER_CONFIG.tiktok.views);
-      if (viewEl) views = viewEl.innerText;
+      // DOM fallback for views if JSON didn't catch it
+      if (views === "N/A") {
+          const viewEl = document.querySelector(SCRAPER_CONFIG.tiktok.views);
+          if (viewEl) views = viewEl.innerText;
+      }
 
       console.log(`PIRATE AI: Scrape Success! Handle: ${handle}`);
 
