@@ -4,13 +4,12 @@ import { getAuthToken } from './auth.js';
 const WHITELIST_TAB = 'Handles White List';
 
 // --- HELPER: GET USER OPTIONS ---
-// Centralized retrieval of Spreadsheet and Folder IDs from sync storage
 const getOptions = async () => {
   const data = await chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id']);
   return {
     driveRootId: data.piracy_folder_id,
     reportSheetId: data.piracy_sheet_id,
-    eventSheetId: data.event_sheet_id // Added retrieval for the event source sheet
+    eventSheetId: data.event_sheet_id
   };
 };
 
@@ -178,7 +177,20 @@ export async function addNewEventToSheet(vertical, eventName, eventUrl, platform
   });
 }
 
-// --- NEW: Handle Centralized Screenshot Folders ---
+// ==========================================
+// 2. DRIVE & FOLDER MANAGEMENT
+// ==========================================
+
+// UPDATED: Finds or Creates the "Pirated Reports for 20xx" folder
+export async function ensureYearlyReportFolder(token, year) {
+  const { driveRootId } = await getOptions();
+  if (!driveRootId) throw new Error("Drive Root ID not configured.");
+  
+  const folderName = `Pirated Reports for ${year}`;
+  return await findOrCreateFolder(token, driveRootId, folderName);
+}
+
+// Kept for backward compatibility if needed, but primarily using the Yearly folder now
 export async function ensureDailyScreenshotFolder(token, dateStr) {
   const { driveRootId } = await getOptions();
   if (!driveRootId) throw new Error("Drive Root ID not configured.");
@@ -187,10 +199,6 @@ export async function ensureDailyScreenshotFolder(token, dateStr) {
   const dailyFolderId = await findOrCreateFolder(token, masterScreenshotFolderId, dateStr);
   return dailyFolderId;
 }
-
-// ==========================================
-// 2. DRIVE & FOLDER MANAGEMENT
-// ==========================================
 
 export async function ensureFolderHierarchy(token, eventName, date) {
   const { driveRootId } = await getOptions();
@@ -225,11 +233,13 @@ export async function uploadToDrive(token, folderId, name, blob, mimeType) {
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', blob);
+  
   const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
     method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form
   });
   const data = await res.json();
   
+  // Fetch folder link for the sheet log
   const folderRes = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=webViewLink`, {
      headers: { Authorization: `Bearer ${token}` }
   });
