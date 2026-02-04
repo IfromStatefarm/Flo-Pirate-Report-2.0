@@ -24,7 +24,7 @@ document.getElementById('save').addEventListener('click', () => {
     event_sheet_id: eventSheetId
   }, () => {
     const status = document.getElementById('status');
-    status.innerText = '✅ Settings Saved! You can now use the Side Panel.';
+    status.innerText = ' Settings Saved! You can now use the Side Panel.';
     
     // Optional: Close options page after saving
     setTimeout(() => {
