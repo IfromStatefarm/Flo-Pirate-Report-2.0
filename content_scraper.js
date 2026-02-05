@@ -15,7 +15,15 @@
           '[data-e2e="video-views"]',
           'strong[data-e2e="video-views"]'
       ],
-      url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)"
+      url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)",
+      // Restored Default JSON Config structure for fallback
+      json_data: {
+          script_ids: ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"],
+          fields: {
+              handle: ["author.uniqueId", "author", "nickname"],
+              views: ["stats.playCount", "statsV2.playCount", "playCount"]
+          }
+      }
     },
     youtube: {
       channel_link: '#channel-name a',
@@ -109,11 +117,11 @@
                   if (el && el.textContent) {
                       const json = JSON.parse(el.textContent);
                       
-                      // Strategy A: SIGI_STATE -> ItemModule -> [videoId]
+                      // Strategy A: SIGI_STATE -> ItemModule -> [videoId] (Specific Match)
                       if (videoId && json.ItemModule && json.ItemModule[videoId]) {
                           videoData = json.ItemModule[videoId];
                       } 
-                      // Strategy B: __UNIVERSAL... -> __DEFAULT_SCOPE__ -> webapp.video-detail -> itemInfo -> itemStruct
+                      // Strategy B: Fallback to Scope if specific ID fail
                       else if (json.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct) {
                           videoData = json.__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct;
                       }
@@ -128,16 +136,19 @@
                       return pathStr.split('.').reduce((o, k) => (o || {})[k], obj);
                   };
 
-                  // Resolve Handle
+                  // Resolve Handle (Dynamic from Config)
                   for (const path of (jsonConfig.fields.handle || [])) {
                       const val = getVal(videoData, path);
                       if (val) { handle = val; matched = true; break; }
                   }
 
-                  // Resolve Views
+                  // Resolve Views (Dynamic from Config)
                   for (const path of (jsonConfig.fields.views || [])) {
                       const val = getVal(videoData, path);
-                      if (val !== undefined) { views = val.toString(); break; }
+                      if (val !== undefined) { 
+                          views = val.toString(); 
+                          break; 
+                      }
                   }
                   
                   console.log("PIRATE AI: JSON Scrape Success", { handle, views });
@@ -180,7 +191,6 @@
 
       // DOM fallback for views if JSON didn't catch it
       if (views === "N/A") {
-          // Normalize to array
           const viewSelectors = Array.isArray(SCRAPER_CONFIG.tiktok.views) 
               ? SCRAPER_CONFIG.tiktok.views 
               : [SCRAPER_CONFIG.tiktok.views];
@@ -188,7 +198,8 @@
           for (const selector of viewSelectors) {
               const viewEl = findElement(selector);
               if (viewEl) {
-                  views = viewEl.innerText;
+                  // FIX: Normalize view string immediately
+                  views = viewEl.innerText.replace(/[^0-9.KMBm]/g, '');
                   break; 
               }
           }
@@ -230,9 +241,9 @@
       const shortViewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_shorts); 
       
       if (viewSelector) {
-          views = viewSelector.innerText.replace(' views', '');
+          views = viewSelector.innerText.replace(/[^0-9,.]/g, ''); // Clean text
       } else if (shortViewSelector) {
-          views = shortViewSelector.innerText;
+          views = shortViewSelector.innerText.replace(/[^0-9.KMBm]/g, ''); // Clean text
       }
 
       let targetId = videoId;
@@ -566,6 +577,7 @@
       } catch (e) { console.warn("Could not attach storage listener"); }
   }
 
+  // --- RE-INJECT ON NAVIGATION ---
   let lastUrl = location.href; 
   new MutationObserver(() => {
     if (location.href !== lastUrl) {
