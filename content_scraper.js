@@ -13,10 +13,11 @@
     tiktok: {
       views: [
           '[data-e2e="video-views"]',
-          'strong[data-e2e="video-views"]'
+          'strong[data-e2e="video-views"]',
+          '//strong[contains(text(), "views")]'
       ],
       url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)",
-      // Restored Default JSON Config structure for fallback
+      // Config structure to match remote JSON logic
       json_data: {
           script_ids: ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"],
           fields: {
@@ -101,65 +102,67 @@
       let handle = "Unknown";
       let matched = false;
 
+      // Extract ID explicitly from URL to ensure we grab the RIGHT data from JSON
+      const idMatch = url.match(/\/video\/(\d+)/) || url.match(/\/photo\/(\d+)/);
+      const videoId = idMatch ? idMatch[1] : null;
+
       // 1. Try JSON Scraping (Priority)
       try {
-          const jsonConfig = SCRAPER_CONFIG.tiktok.json_data;
-          if (jsonConfig) {
-              const scriptIds = jsonConfig.script_ids || ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"];
-              let videoData = null;
+          const jsonConfig = SCRAPER_CONFIG.tiktok.json_data || { 
+              script_ids: ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"],
+              fields: { handle: ["author.uniqueId"], views: ["stats.playCount"] }
+          };
 
-              // Extract ID from URL to find specific video object
-              const idMatch = url.match(/\/video\/(\d+)/) || url.match(/\/photo\/(\d+)/);
-              const videoId = idMatch ? idMatch[1] : null;
+          const scriptIds = jsonConfig.script_ids;
+          let videoData = null;
 
-              for (const id of scriptIds) {
-                  const el = document.getElementById(id);
-                  if (el && el.textContent) {
-                      const json = JSON.parse(el.textContent);
-                      
-                      // Strategy A: SIGI_STATE -> ItemModule -> [videoId] (Specific Match)
-                      if (videoId && json.ItemModule && json.ItemModule[videoId]) {
-                          videoData = json.ItemModule[videoId];
-                      } 
-                      // Strategy B: Fallback to Scope if specific ID fail
-                      else if (json.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct) {
-                          videoData = json.__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct;
-                      }
-                      
-                      if (videoData) break;
-                  }
-              }
-
-              if (videoData) {
-                  // Helper to safely get nested values (e.g. "stats.playCount")
-                  const getVal = (obj, pathStr) => {
-                      return pathStr.split('.').reduce((o, k) => (o || {})[k], obj);
-                  };
-
-                  // Resolve Handle (Dynamic from Config)
-                  for (const path of (jsonConfig.fields.handle || [])) {
-                      const val = getVal(videoData, path);
-                      if (val) { handle = val; matched = true; break; }
-                  }
-
-                  // Resolve Views (Dynamic from Config)
-                  for (const path of (jsonConfig.fields.views || [])) {
-                      const val = getVal(videoData, path);
-                      if (val !== undefined) { 
-                          views = val.toString(); 
-                          break; 
-                      }
+          for (const id of scriptIds) {
+              const el = document.getElementById(id);
+              if (el && el.textContent) {
+                  const json = JSON.parse(el.textContent);
+                  
+                  // CRITICAL FIX: Only grab data if key matches our videoId
+                  if (videoId && json.ItemModule && json.ItemModule[videoId]) {
+                      videoData = json.ItemModule[videoId];
+                  } 
+                  // Strategy B: Fallback Scope if ItemModule not found
+                  else if (json.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct) {
+                      videoData = json.__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct;
                   }
                   
-                  console.log("PIRATE AI: JSON Scrape Success", { handle, views });
+                  if (videoData) break;
               }
+          }
+
+          if (videoData) {
+              // Helper to safely get nested values (e.g. "stats.playCount")
+              const getVal = (obj, pathStr) => {
+                  return pathStr.split('.').reduce((o, k) => (o || {})[k], obj);
+              };
+
+              // Resolve Handle (Dynamic from Config)
+              for (const path of (jsonConfig.fields.handle || [])) {
+                  const val = getVal(videoData, path);
+                  if (val) { handle = val; matched = true; break; }
+              }
+
+              // Resolve Views (Dynamic from Config)
+              for (const path of (jsonConfig.fields.views || [])) {
+                  const val = getVal(videoData, path);
+                  if (val !== undefined) { 
+                      views = val.toString(); 
+                      break; 
+                  }
+              }
+              
+              console.log("PIRATE AI: JSON Scrape Success", { handle, views });
           }
       } catch (e) {
           console.warn("PIRATE AI: JSON Scrape Error", e);
       }
 
       // 2. Fallback to Regex/DOM if JSON failed
-      if (!matched) {
+      if (!matched && videoId) {
           const videoRegex = /@([^/?]+)\/video\/(\d+)/;
           const photoRegex = /@([^/?]+)\/photo\/(\d+)/;
 
@@ -198,7 +201,7 @@
           for (const selector of viewSelectors) {
               const viewEl = findElement(selector);
               if (viewEl) {
-                  // FIX: Normalize view string immediately
+                  // Clean non-numeric characters (except K/M/B suffixes)
                   views = viewEl.innerText.replace(/[^0-9.KMBm]/g, '');
                   break; 
               }
@@ -241,9 +244,9 @@
       const shortViewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_shorts); 
       
       if (viewSelector) {
-          views = viewSelector.innerText.replace(/[^0-9,.]/g, ''); // Clean text
+          views = viewSelector.innerText.replace(/[^0-9,.]/g, ''); // Clean Standard
       } else if (shortViewSelector) {
-          views = shortViewSelector.innerText.replace(/[^0-9.KMBm]/g, ''); // Clean text
+          views = shortViewSelector.innerText.replace(/[^0-9.KMBm]/g, ''); // Clean Shorts
       }
 
       let targetId = videoId;
@@ -577,7 +580,6 @@
       } catch (e) { console.warn("Could not attach storage listener"); }
   }
 
-  // --- RE-INJECT ON NAVIGATION ---
   let lastUrl = location.href; 
   new MutationObserver(() => {
     if (location.href !== lastUrl) {
