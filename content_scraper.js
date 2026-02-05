@@ -121,13 +121,17 @@
               if (el && el.textContent) {
                   const json = JSON.parse(el.textContent);
                   
-                  // CRITICAL FIX: Only grab data if key matches our videoId
+                  // Strategy A: SIGI_STATE -> ItemModule -> [videoId] (Specific Match)
                   if (videoId && json.ItemModule && json.ItemModule[videoId]) {
                       videoData = json.ItemModule[videoId];
                   } 
                   // Strategy B: Fallback Scope if ItemModule not found
                   else if (json.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct) {
-                      videoData = json.__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct;
+                      const potentialData = json.__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct;
+                      // STRICT CHECK: Only use if ID matches current URL to prevent stale data usage
+                      if (potentialData.id === videoId) {
+                          videoData = potentialData;
+                      }
                   }
                   
                   if (videoData) break;
