@@ -13,18 +13,9 @@
     tiktok: {
       views: [
           '[data-e2e="video-views"]',
-          'strong[data-e2e="video-views"]',
-          '//strong[contains(text(), "views")]'
+          'strong[data-e2e="video-views"]'
       ],
-      url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)",
-      // Config structure to match remote JSON logic
-      json_data: {
-          script_ids: ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"],
-          fields: {
-              handle: ["author.uniqueId", "author", "nickname"],
-              views: ["stats.playCount", "statsV2.playCount", "playCount"]
-          }
-      }
+      url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)"
     },
     youtube: {
       channel_link: '#channel-name a',
@@ -102,71 +93,62 @@
       let handle = "Unknown";
       let matched = false;
 
-      // Extract ID explicitly from URL to ensure we grab the RIGHT data from JSON
-      const idMatch = url.match(/\/video\/(\d+)/) || url.match(/\/photo\/(\d+)/);
-      const videoId = idMatch ? idMatch[1] : null;
-
       // 1. Try JSON Scraping (Priority)
       try {
-          const jsonConfig = SCRAPER_CONFIG.tiktok.json_data || { 
-              script_ids: ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"],
-              fields: { handle: ["author.uniqueId"], views: ["stats.playCount"] }
-          };
+          const jsonConfig = SCRAPER_CONFIG.tiktok.json_data;
+          if (jsonConfig) {
+              const scriptIds = jsonConfig.script_ids || ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"];
+              let videoData = null;
 
-          const scriptIds = jsonConfig.script_ids;
-          let videoData = null;
+              // Extract ID from URL to find specific video object
+              const idMatch = url.match(/\/video\/(\d+)/) || url.match(/\/photo\/(\d+)/);
+              const videoId = idMatch ? idMatch[1] : null;
 
-          for (const id of scriptIds) {
-              const el = document.getElementById(id);
-              if (el && el.textContent) {
-                  const json = JSON.parse(el.textContent);
-                  
-                  // Strategy A: SIGI_STATE -> ItemModule -> [videoId] (Specific Match)
-                  if (videoId && json.ItemModule && json.ItemModule[videoId]) {
-                      videoData = json.ItemModule[videoId];
-                  } 
-                  // Strategy B: Fallback Scope if ItemModule not found
-                  else if (json.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct) {
-                      const potentialData = json.__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct;
-                      // STRICT CHECK: Only use if ID matches current URL to prevent stale data usage
-                      if (potentialData.id === videoId) {
-                          videoData = potentialData;
+              for (const id of scriptIds) {
+                  const el = document.getElementById(id);
+                  if (el && el.textContent) {
+                      const json = JSON.parse(el.textContent);
+                      
+                      // Strategy A: SIGI_STATE -> ItemModule -> [videoId]
+                      if (videoId && json.ItemModule && json.ItemModule[videoId]) {
+                          videoData = json.ItemModule[videoId];
+                      } 
+                      // Strategy B: __UNIVERSAL... -> __DEFAULT_SCOPE__ -> webapp.video-detail -> itemInfo -> itemStruct
+                      else if (json.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct) {
+                          videoData = json.__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct;
                       }
+                      
+                      if (videoData) break;
+                  }
+              }
+
+              if (videoData) {
+                  // Helper to safely get nested values (e.g. "stats.playCount")
+                  const getVal = (obj, pathStr) => {
+                      return pathStr.split('.').reduce((o, k) => (o || {})[k], obj);
+                  };
+
+                  // Resolve Handle
+                  for (const path of (jsonConfig.fields.handle || [])) {
+                      const val = getVal(videoData, path);
+                      if (val) { handle = val; matched = true; break; }
+                  }
+
+                  // Resolve Views
+                  for (const path of (jsonConfig.fields.views || [])) {
+                      const val = getVal(videoData, path);
+                      if (val !== undefined) { views = val.toString(); break; }
                   }
                   
-                  if (videoData) break;
+                  console.log("PIRATE AI: JSON Scrape Success", { handle, views });
               }
-          }
-
-          if (videoData) {
-              // Helper to safely get nested values (e.g. "stats.playCount")
-              const getVal = (obj, pathStr) => {
-                  return pathStr.split('.').reduce((o, k) => (o || {})[k], obj);
-              };
-
-              // Resolve Handle (Dynamic from Config)
-              for (const path of (jsonConfig.fields.handle || [])) {
-                  const val = getVal(videoData, path);
-                  if (val) { handle = val; matched = true; break; }
-              }
-
-              // Resolve Views (Dynamic from Config)
-              for (const path of (jsonConfig.fields.views || [])) {
-                  const val = getVal(videoData, path);
-                  if (val !== undefined) { 
-                      views = val.toString(); 
-                      break; 
-                  }
-              }
-              
-              console.log("PIRATE AI: JSON Scrape Success", { handle, views });
           }
       } catch (e) {
           console.warn("PIRATE AI: JSON Scrape Error", e);
       }
 
       // 2. Fallback to Regex/DOM if JSON failed
-      if (!matched && videoId) {
+      if (!matched) {
           const videoRegex = /@([^/?]+)\/video\/(\d+)/;
           const photoRegex = /@([^/?]+)\/photo\/(\d+)/;
 
@@ -198,6 +180,7 @@
 
       // DOM fallback for views if JSON didn't catch it
       if (views === "N/A") {
+          // Normalize to array
           const viewSelectors = Array.isArray(SCRAPER_CONFIG.tiktok.views) 
               ? SCRAPER_CONFIG.tiktok.views 
               : [SCRAPER_CONFIG.tiktok.views];
@@ -205,8 +188,7 @@
           for (const selector of viewSelectors) {
               const viewEl = findElement(selector);
               if (viewEl) {
-                  // Clean non-numeric characters (except K/M/B suffixes)
-                  views = viewEl.innerText.replace(/[^0-9.KMBm]/g, '');
+                  views = viewEl.innerText;
                   break; 
               }
           }
@@ -248,9 +230,9 @@
       const shortViewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_shorts); 
       
       if (viewSelector) {
-          views = viewSelector.innerText.replace(/[^0-9,.]/g, ''); // Clean Standard
+          views = viewSelector.innerText.replace(' views', '');
       } else if (shortViewSelector) {
-          views = shortViewSelector.innerText.replace(/[^0-9.KMBm]/g, ''); // Clean Shorts
+          views = shortViewSelector.innerText;
       }
 
       let targetId = videoId;
