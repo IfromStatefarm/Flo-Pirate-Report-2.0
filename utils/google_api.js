@@ -1,16 +1,23 @@
 import { getAuthToken } from './auth.js';
 
-// UPDATED: Using the Sheet ID provided by user
-const EVENT_SHEET_ID = '1K9QigjjGPexSIW3hsc2WQNjJvz9anT6_WfyTdPfiflE'; 
+// REMOVED: Hardcoded EVENT_SHEET_ID
 const WHITELIST_TAB = 'Handles White List';
 
 // --- HELPER: GET USER OPTIONS ---
-const getOptions = () => {
-  return chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id']).then(data => ({
+const getOptions = async () => {
+  const data = await chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id']);
+  return {
     driveRootId: data.piracy_folder_id,
-    reportSheetId: data.piracy_sheet_id
-  }));
+    reportSheetId: data.piracy_sheet_id,
+    eventSheetId: data.event_sheet_id
+  };
 };
+
+// --- HELPER: VALIDATE CONFIG ---
+export async function isConfigComplete() {
+    const { driveRootId, reportSheetId, eventSheetId } = await getOptions();
+    return !!(driveRootId && reportSheetId && eventSheetId);
+}
 
 // --- HELPER: CLEAN HANDLES FOR COMPARISON ---
 function normalizeHandle(input) {
@@ -43,9 +50,12 @@ export async function findFileId(name, mimeType, parentId = null) {
 
 export async function getEventData(vertical) {
   const token = await getAuthToken();
+  const { eventSheetId } = await getOptions();
+  
+  if (!eventSheetId) throw new Error("Event Sheet ID not configured.");
   
   const range = `${vertical}!A1:I`; 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}`;
   
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
@@ -93,6 +103,10 @@ function getColumnLetter(platform) {
 export async function checkIfAuthorized(platform, handle) {
   if (!handle) return false;
   const token = await getAuthToken();
+  const { eventSheetId } = await getOptions();
+  
+  if (!eventSheetId) return false;
+
   const platformIndexMap = {
     'tiktok': 0, 'instagram': 1, 'twitter': 2, 'x': 2, 'discord': 3,
     'youtube': 4, 'facebook': 5, 'reddit': 6, 'rumble': 7     
@@ -102,7 +116,7 @@ export async function checkIfAuthorized(platform, handle) {
   if (targetIndex === undefined) return false;
 
   const range = `${WHITELIST_TAB}!B2:I`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}`;
 
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -126,11 +140,12 @@ export async function checkIfAuthorized(platform, handle) {
 
 export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
   const token = await getAuthToken();
+  const { eventSheetId } = await getOptions();
   const colLetter = getColumnLetter(platform);
   const range = `${vertical}!${colLetter}${rowIndex}`;
   const body = { values: [[newUrl]] };
   
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`, {
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -139,6 +154,7 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
 
 export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
   const token = await getAuthToken();
+  const { eventSheetId } = await getOptions();
   const range = `${vertical}!A:I`; 
   
   const row = new Array(9).fill(""); 
@@ -154,14 +170,25 @@ export async function addNewEventToSheet(vertical, eventName, eventUrl, platform
 
   const body = { values: [row] };
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}:append?valueInputOption=USER_ENTERED`, {
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
 }
 
-// --- NEW: Handle Centralized Screenshot Folders ---
+// ==========================================
+// 2. DRIVE & FOLDER MANAGEMENT
+// ==========================================
+
+export async function ensureYearlyReportFolder(token, year) {
+  const { driveRootId } = await getOptions();
+  if (!driveRootId) throw new Error("Drive Root ID not configured.");
+  
+  const folderName = `Pirated Reports for ${year}`;
+  return await findOrCreateFolder(token, driveRootId, folderName);
+}
+
 export async function ensureDailyScreenshotFolder(token, dateStr) {
   const { driveRootId } = await getOptions();
   if (!driveRootId) throw new Error("Drive Root ID not configured.");
@@ -170,10 +197,6 @@ export async function ensureDailyScreenshotFolder(token, dateStr) {
   const dailyFolderId = await findOrCreateFolder(token, masterScreenshotFolderId, dateStr);
   return dailyFolderId;
 }
-
-// ==========================================
-// 2. DRIVE & FOLDER MANAGEMENT
-// ==========================================
 
 export async function ensureFolderHierarchy(token, eventName, date) {
   const { driveRootId } = await getOptions();
@@ -208,11 +231,13 @@ export async function uploadToDrive(token, folderId, name, blob, mimeType) {
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', blob);
+  
   const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
     method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form
   });
   const data = await res.json();
   
+  // Fetch folder link for the sheet log
   const folderRes = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=webViewLink`, {
      headers: { Authorization: `Bearer ${token}` }
   });
@@ -252,6 +277,7 @@ export async function appendToSheet(token, logData) {
   
   let values;
 
+  // Supports both explicit row array (used by batch report) and object (fallback)
   if (logData.values && Array.isArray(logData.values)) {
       values = [logData.values];
   } 
@@ -261,7 +287,7 @@ export async function appendToSheet(token, logData) {
         now.toLocaleDateString(),
         logData.vertical || "Unknown",
         logData.eventName || "Unknown",
-        "TikTok", // Default if not provided
+        "TikTok", 
         "VOD",
         "N/A",
         logData.reporterName || "Unknown",
@@ -414,8 +440,4 @@ export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
   });
-}
-
-export async function updateReportStatus(reportId, newStatus) {
-    return true; 
 }
