@@ -26,6 +26,7 @@
     try {
       const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
       if (response && response.success && response.config && response.config.platform_selectors) {
+        console.log("✅ PIRATE AI: Remote Selectors Loaded");
         const remote = response.config.platform_selectors;
         if (remote.tiktok && remote.tiktok.scraper) SCRAPER_CONFIG.tiktok = { ...SCRAPER_CONFIG.tiktok, ...remote.tiktok.scraper };
         if (remote.youtube && remote.youtube.scraper) SCRAPER_CONFIG.youtube = { ...SCRAPER_CONFIG.youtube, ...remote.youtube.scraper };
@@ -50,7 +51,7 @@
   }
 
   // ==========================================
-  // 1. THE STRATEGY SCRAPER (Refactored for Live Audit)
+  // 1. THE STRATEGY SCRAPER (Simplified for Live Audit)
   // ==========================================
   function scrapePageStrategy() {
     const host = window.location.hostname;
@@ -90,29 +91,57 @@
           return null; 
       }
 
-      return { platform: "TikTok", url, handle, views, timestamp };
+      return { 
+        platform: "TikTok", 
+        url, 
+        handle: handle, 
+        views, 
+        timestamp 
+      };
     }
 
     // --- YOUTUBE ---
     else if (host.includes('youtube.com')) {
       const params = new URLSearchParams(window.location.search);
       const videoId = params.get('v');
-      if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) return null;
+      
+      if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) {
+          return null;
+      }
 
       const channelLink = document.querySelector(SCRAPER_CONFIG.youtube.channel_link);
       let channel = "Unknown";
+      
       if (channelLink) {
           const href = channelLink.getAttribute('href') || "";
-          channel = href.includes('/@') ? href.split('/@')[1] : channelLink.innerText;
+          if (href.includes('/@')) {
+              channel = href.split('/@')[1]; 
+          } else {
+              channel = channelLink.innerText; 
+          }
       }
-      return { platform: "YouTube", url, handle: channel, views, timestamp };
+
+      return { 
+        platform: "YouTube", 
+        url, 
+        handle: channel, 
+        views, 
+        timestamp 
+      };
     }
 
-    // --- OTHERS ---
+    // --- INSTAGRAM ---
     else if (host.includes('instagram.com')) {
       if (!url.includes('/p/') && !url.includes('/reel/')) return null;
-      const handle = document.querySelector(SCRAPER_CONFIG.instagram.handle)?.innerText;
-      return { platform: "Instagram", url, handle: handle || "InstagramUser", views, timestamp };
+      const headerHandle = document.querySelector(SCRAPER_CONFIG.instagram.handle)?.innerText;
+      
+      return { 
+        platform: "Instagram", 
+        url, 
+        handle: headerHandle || "InstagramUser", 
+        views: "PENDING", 
+        timestamp 
+      };
     }
 
     return null;
@@ -124,8 +153,11 @@
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'addToCart') {
       const data = scrapePageStrategy();
-      if (data) sendResponse({ success: true, item: data });
-      else sendResponse({ success: false, error: "Not a valid content page." });
+      if (data) {
+          sendResponse({ success: true, item: data });
+      } else {
+          sendResponse({ success: false, error: "Not a valid content page." });
+      }
     }
     return true;
   });
@@ -133,14 +165,19 @@
   // ==========================================
   // 3. OVERLAY UI LOGIC
   // ==========================================
+
   function handleAddToQueue(btnAdd) {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
       
-      let data = scrapePageStrategy();
-      if (!data) { 
-          alert("❌ No valid video detected on this page."); 
-          return; 
+      let data = null;
+      try {
+          data = scrapePageStrategy();
+      } catch(err) {
+          console.error("Scraping error:", err);
+          return;
       }
+      
+      if (!data) { return; }
       
       btnAdd.innerText = "Checking...";
       btnAdd.disabled = true;
@@ -150,8 +187,13 @@
           platform: data.platform, 
           handle: data.handle 
       }, (response) => {
+          if (chrome.runtime.lastError) {
+              saveItem(data, btnAdd);
+              return;
+          }
+
           if (response && response.authorized) {
-              alert(`⚠️ BLOCKED: @${data.handle} is whitelisted.`);
+              alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.`);
               btnAdd.innerText = "+ Add";
               btnAdd.disabled = false;
           } else {
@@ -164,9 +206,11 @@
       chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
           if (res && res.success) {
               btnAdd.innerText = "Saved!"; 
+              btnAdd.style.backgroundColor = "#4CAF50";
               setTimeout(() => { 
                   btnAdd.innerText = "+ Add"; 
                   btnAdd.disabled = false; 
+                  btnAdd.style.backgroundColor = "#ce0e2d";
               }, 1500);
           }
       });
@@ -183,16 +227,20 @@
       background: white; padding: 15px; border-radius: 12px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.15); width: 220px;
       border: 1px solid #e0e0e0; text-align: center;
-      font-family: sans-serif; cursor: move; user-select: none;
+      font-family: sans-serif; transition: opacity 0.3s; cursor: move; user-select: none;
     `;
 
     overlay.innerHTML = `
-      <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move;">PIRATE AI HELPER ✥</div>
-      <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px;">...</div>
+      <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move;">
+        PIRATE AI HELPER ✥
+      </div>
+      <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; pointer-events: none;">...</div>
+      
       <div style="display: flex; gap: 8px; margin-bottom: 10px;">
         <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
         <button id="flo-report" style="flex: 1; background: #333; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">Panel</button>
       </div>
+
       <button id="flo-reset" style="background: none; border: none; color: #999; font-size: 11px; text-decoration: underline; cursor: pointer;">Reset Queue</button>
     `;
 
@@ -201,16 +249,16 @@
     document.getElementById('flo-add').addEventListener('click', (e) => handleAddToQueue(e.target));
     document.getElementById('flo-report').addEventListener('click', () => chrome.runtime.sendMessage({ action: 'openPopup' }));
     document.getElementById('flo-reset').addEventListener('click', () => {
-        if (confirm("Clear queue?")) chrome.runtime.sendMessage({ action: 'clearCart' });
+      if (confirm(`Clear cart?`)) chrome.runtime.sendMessage({ action: 'clearCart' });
     });
 
-    // Simple Drag Logic
     let isDragging = false, startX, startY, initialLeft, initialTop;
     overlay.addEventListener('mousedown', (e) => {
-        if (['BUTTON'].includes(e.target.tagName)) return;
+        if (['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) return;
         isDragging = true; startX = e.clientX; startY = e.clientY;
         const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
         overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
+        e.preventDefault();
     });
     document.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
@@ -228,9 +276,12 @@
     if (el) el.innerText = n;
   }
 
-  chrome.storage.onChanged.addListener((changes, ns) => {
-      if (ns === 'local' && changes.piracy_cart) updateCount(changes.piracy_cart.newValue.length);
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace === 'local' && changes.piracy_cart) {
+          updateCount((changes.piracy_cart.newValue || []).length);
+      }
   });
 
   setTimeout(initOverlay, 1500);
+
 })();
