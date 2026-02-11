@@ -1,236 +1,275 @@
-// content_scraper.js
+// background.js
+import { getAuthToken, getUserEmail } from './utils/auth.js';
+import { 
+  uploadToDrive, 
+  appendToSheet, 
+  ensureYearlyReportFolder,
+  ensureDailyScreenshotFolder, 
+  fetchConfig, 
+  getEventData,       
+  updateEventUrl,     
+  addNewEventToSheet,
+  checkIfAuthorized,
+  getColumnHData,
+  updateRowStatus,
+  formatCellAsTakenDown,
+  updateCellWithRichText
+} from './utils/google_api.js';
+import { generatePDF } from './utils/pdf_gen.js';
+import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
 
-(function() { // Wrap in IIFE to prevent variable leaks
-  
-  // Guard against re-injection
-  if (window.hasFloScraperRun) return;
-  window.hasFloScraperRun = true;
+// Open Side Panel on Click
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((error) => console.error(error));
 
-  let currentCount = 0;
+// --- ID GENERATOR ---
+function generateReportId() {
+  const nums = Math.floor(10 + Math.random() * 90); 
+  const letters = Math.random().toString(36).substring(2, 8); 
+  return `${nums}${letters}`.toUpperCase();
+}
 
-  // DEFAULT SELECTORS (Robust Fallbacks)
-  let SCRAPER_CONFIG = {
-    tiktok: {
-      url_match: "@([^/]+)\\/(?:video|photo)\\/(\\d+)"
-    },
-    youtube: {
-      channel_link: '#channel-name a',
-    },
-    instagram: {
-      handle: 'header a'
-    }
-  };
+// ==========================================
+// 1. LIVE AUDIT ENGINE
+// ==========================================
 
-  // --- CONFIG LOADER ---
-  (async function loadConfig() {
+/**
+ * Performs a real-time audit of TikTok view counts.
+ * Uses JSON rehydration data for high-precision integer counts.
+ */
+async function auditTikTokViews(url) {
+    console.log(`🔍 Auditing real-time views for: ${url}`);
+    let tabId = null;
     try {
-      const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
-      if (response && response.success && response.config && response.config.platform_selectors) {
-        const remote = response.config.platform_selectors;
-        if (remote.tiktok && remote.tiktok.scraper) SCRAPER_CONFIG.tiktok = { ...SCRAPER_CONFIG.tiktok, ...remote.tiktok.scraper };
-        if (remote.youtube && remote.youtube.scraper) SCRAPER_CONFIG.youtube = { ...SCRAPER_CONFIG.youtube, ...remote.youtube.scraper };
-        if (remote.instagram && remote.instagram.scraper) SCRAPER_CONFIG.instagram = { ...SCRAPER_CONFIG.instagram, ...remote.instagram.scraper };
-      }
+        const tab = await chrome.tabs.create({ url: url, active: false });
+        tabId = tab.id;
+
+        // Wait for page load
+        await new Promise((resolve) => {
+            const timeout = setTimeout(() => resolve("timeout"), 15000); 
+            const listener = (tid, info) => {
+                if (tid === tabId && info.status === 'complete') {
+                    clearTimeout(timeout);
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    resolve("complete");
+                }
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+        });
+        
+        await new Promise(r => setTimeout(r, 2000)); // Buffer for hydration
+
+        const result = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: () => {
+                const getNested = (obj, path) => path.split('.').reduce((o, i) => o?.[i], obj);
+                
+                // 1. Check for deletion/404
+                const text = document.body.innerText.toLowerCase();
+                if (text.includes("video currently unavailable") || text.includes("video not found")) return "DELETED";
+
+                // 2. Try JSON Data Extraction (Highest Accuracy)
+                const jsonIds = ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"];
+                for (const id of jsonIds) {
+                    const el = document.getElementById(id);
+                    if (el && el.textContent) {
+                        try {
+                            const json = JSON.parse(el.textContent);
+                            // Extract video ID from URL
+                            const vidMatch = window.location.href.match(/\/video\/(\d+)/);
+                            const vidId = vidMatch ? vidMatch[1] : null;
+
+                            // Strategy A: SIGI_STATE
+                            if (vidId && json.ItemModule && json.ItemModule[vidId]) {
+                                return json.ItemModule[vidId].stats.playCount;
+                            }
+                            // Strategy B: UNIVERSAL_DATA
+                            const struct = getNested(json, "__DEFAULT_SCOPE__.webapp.video-detail.itemInfo.itemStruct");
+                            if (struct) return struct.stats.playCount;
+                        } catch(e) {}
+                    }
+                }
+
+                // 3. Fallback to DOM Selectors
+                const selectors = ['[data-e2e="video-views"]', 'strong[data-e2e="video-views"]'];
+                for (const sel of selectors) {
+                    const el = document.querySelector(sel);
+                    if (el) return el.innerText;
+                }
+
+                return "N/A";
+            }
+        });
+
+        if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+        return result[0]?.result || "N/A";
+
     } catch (e) {
-      // Suppress heavy logging
+        console.error("Audit Error:", e);
+        if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+        return "ERROR";
     }
-  })();
+}
 
-  function isExtensionValid() {
-    try { return !!chrome.runtime && !!chrome.runtime.id; } 
-    catch (e) { return false; }
+// ==========================================
+// 2. MAIN MESSAGE HANDLER
+// ==========================================
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'checkUserIdentity') {
+    getUserEmail().then(email => sendResponse({ email: email }));
+    return true; 
   }
 
-  function handleContextInvalidated() {
-    const overlay = document.getElementById('flo-overlay');
-    if (overlay) {
-      overlay.innerHTML = `<div style="padding:15px; color:#666;">⚠️ Extension Updated<br><button style="margin-top:5px; padding:5px;" onclick="location.reload()">Refresh Page</button></div>`;
-      overlay.style.border = "2px solid red";
-    }
+  if (request.action === "checkWhitelist") {
+    checkIfAuthorized(request.platform, request.handle)
+      .then(isAuthorized => sendResponse({ authorized: isAuthorized }))
+      .catch(err => sendResponse({ error: err.message }));
+    return true; 
   }
 
-  // ==========================================
-  // 1. THE STRATEGY SCRAPER (Refactored for Live Audit)
-  // ==========================================
-  function scrapePageStrategy() {
-    const host = window.location.hostname;
-    const url = window.location.href;
-    const timestamp = new Date().toISOString();
-    
-    // VIEWS are now "PENDING" at capture time. 
-    // They will be audited in the background during the 'Log to Sheet' phase.
-    let views = "PENDING"; 
-
-    // --- TIKTOK ---
-    if (host.includes('tiktok.com')) {
-      let handle = "Unknown";
-      let matched = false;
-
-      const videoRegex = /@([^/?]+)\/video\/(\d+)/;
-      const photoRegex = /@([^/?]+)\/photo\/(\d+)/;
-      let match = url.match(videoRegex) || url.match(photoRegex);
-
-      if (match) {
-          handle = match[1];
-          matched = true;
-      } else {
-          try {
-              const pattern = SCRAPER_CONFIG.tiktok.url_match;
-              const customRegex = new RegExp(pattern);
-              const customMatch = url.match(customRegex);
-              if (customMatch) {
-                  handle = customMatch[1] || customMatch[3] || "Unknown";
-                  matched = true;
-              }
-          } catch(e) {}
-      }
-
-      if (!matched) {
-          if (url === "https://www.tiktok.com/" || url === "https://www.tiktok.com") return null;
-          return null; 
-      }
-
-      return { platform: "TikTok", url, handle, views, timestamp };
-    }
-
-    // --- YOUTUBE ---
-    else if (host.includes('youtube.com')) {
-      const params = new URLSearchParams(window.location.search);
-      const videoId = params.get('v');
-      if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) return null;
-
-      const channelLink = document.querySelector(SCRAPER_CONFIG.youtube.channel_link);
-      let channel = "Unknown";
-      if (channelLink) {
-          const href = channelLink.getAttribute('href') || "";
-          channel = href.includes('/@') ? href.split('/@')[1] : channelLink.innerText;
-      }
-      return { platform: "YouTube", url, handle: channel, views, timestamp };
-    }
-
-    // --- OTHERS ---
-    else if (host.includes('instagram.com')) {
-      if (!url.includes('/p/') && !url.includes('/reel/')) return null;
-      const handle = document.querySelector(SCRAPER_CONFIG.instagram.handle)?.innerText;
-      return { platform: "Instagram", url, handle: handle || "InstagramUser", views, timestamp };
-    }
-
-    return null;
+  if (request.action === 'logToSheet') {
+      handleBatchReport(request.data).then(res => sendResponse({ success: res.success }));
+      return true;
   }
 
-  // ==========================================
-  // 2. MESSAGE LISTENER
-  // ==========================================
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'addToCart') {
-      const data = scrapePageStrategy();
-      if (data) sendResponse({ success: true, item: data });
-      else sendResponse({ success: false, error: "Not a valid content page." });
-    }
+  if (request.action === 'getConfig') {
+    fetchConfig().then(config => sendResponse({ success: true, config }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
-  });
+  }
 
-  // ==========================================
-  // 3. OVERLAY UI LOGIC
-  // ==========================================
-  function handleAddToQueue(btnAdd) {
-      if (!isExtensionValid()) { handleContextInvalidated(); return; }
-      
-      let data = scrapePageStrategy();
-      if (!data) { 
-          alert("❌ No valid video detected on this page."); 
-          return; 
+  if (request.action === 'addToCart') {
+    handleAddVideo(sender.tab, request.data).then(sendResponse);
+    return true; 
+  }
+
+  if (request.action === 'clearCart') {
+    Promise.all([chrome.storage.local.remove('piracy_cart'), clearImages()])
+      .then(() => sendResponse({success: true}));
+    return true;
+  }
+
+  if (request.action === 'openPopup') {
+    if (sender.tab && sender.tab.id) chrome.sidePanel.open({ tabId: sender.tab.id });
+    return true;
+  }
+});
+
+// ==========================================
+// 3. BATCH PROCESSING & LIVE AUDIT
+// ==========================================
+
+async function handleBatchReport(formData) {
+  try {
+    const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
+    let cart = storage.piracy_cart || [];
+    const finalReporterName = formData.fullName || storage.last_reporter || "Unknown User";
+
+    if (cart.length === 0) return { success: false, error: "Cart is empty" };
+
+    // --- PHASE 1: LIVE AUDIT ---
+    // Update all TikTok views with real-time data before reporting
+    console.log("🚀 Starting Live Audit of all cart items...");
+    for (let i = 0; i < cart.length; i++) {
+        const item = cart[i];
+        if (item.platform === "TikTok") {
+            const freshViews = await auditTikTokViews(item.url);
+            cart[i].views = freshViews;
+            // 2 second rate-limit buffer to prevent IP block
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+
+    const token = await getAuthToken();
+    const currentYear = new Date().getFullYear();
+    const dateStr = new Date().toISOString().split('T')[0];
+    const todayFormatted = new Date().toLocaleDateString("en-US");
+    
+    const yearFolderId = await ensureYearlyReportFolder(token, currentYear);
+    const screenshotsFolderId = await ensureDailyScreenshotFolder(token, dateStr);
+
+    const grouped = {};
+    cart.forEach(item => {
+      const handle = item.handle || "Unknown";
+      if (!grouped[handle]) grouped[handle] = [];
+      grouped[handle].push(item);
+    });
+
+    for (const handle of Object.keys(grouped)) {
+      const items = grouped[handle];
+      const urls = items.map(i => i.url);
+      const urlString = urls.join('\n'); 
+      const viewString = items.map(i => i.views).join('\n');
+      const reportId = generateReportId();
+
+      const evidenceLinks = []; 
+      for (const item of items) {
+          let imgLink = "No Screenshot";
+          if (item.screenshotId) {
+              const imgDataUrl = await getImage(item.screenshotId);
+              if (imgDataUrl) {
+                  const response = await fetch(imgDataUrl);
+                  const upload = await uploadToDrive(token, screenshotsFolderId, `${reportId}_@${handle}.jpg`, await response.blob(), 'image/jpeg');
+                  imgLink = upload.webViewLink; 
+              }
+          }
+          evidenceLinks.push({ url: item.url, screenshotLink: imgLink, views: item.views });
       }
+
+      const pdfData = { 
+          eventName: formData.eventName, 
+          vertical: formData.vertical, 
+          reporterName: finalReporterName, 
+          handle, 
+          items: evidenceLinks,
+          reportId: reportId 
+      };
       
-      btnAdd.innerText = "Checking...";
-      btnAdd.disabled = true;
+      const pdfBlob = await generatePDF(pdfData);
+      const pdfUpload = await uploadToDrive(token, yearFolderId, `Report_${reportId}_@${handle}.pdf`, pdfBlob, 'application/pdf');
 
-      chrome.runtime.sendMessage({ 
-          action: 'checkWhitelist', 
-          platform: data.platform, 
-          handle: data.handle 
-      }, (response) => {
-          if (response && response.authorized) {
-              alert(`⚠️ BLOCKED: @${data.handle} is whitelisted.`);
-              btnAdd.innerText = "+ Add";
-              btnAdd.disabled = false;
-          } else {
-              saveItem(data, btnAdd);
-          }
-      });
+      await appendToSheet(token, { values: [
+          todayFormatted, 
+          formData.vertical, 
+          formData.eventName, 
+          items[0].platform, 
+          "VOD", 
+          viewString, 
+          finalReporterName, 
+          urlString, 
+          "DMCA takedown request", 
+          "Reported", 
+          `Report: ${pdfUpload.webViewLink}`, 
+          finalReporterName, 
+          "", "", "", "", "", "", "", 
+          reportId
+      ]});
+      
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    await chrome.storage.local.remove('piracy_cart');
+    await clearImages();
+    chrome.runtime.sendMessage({ action: "playSuccessSound" }).catch(() => {});
+    return { success: true };
+  } catch (e) {
+    console.error("Batch Report Error:", e);
+    return { success: false, error: e.message };
   }
+}
 
-  function saveItem(data, btnAdd) {
-      chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
-          if (res && res.success) {
-              btnAdd.innerText = "Saved!"; 
-              setTimeout(() => { 
-                  btnAdd.innerText = "+ Add"; 
-                  btnAdd.disabled = false; 
-              }, 1500);
-          }
-      });
-  }
+async function handleAddVideo(tab, data) {
+    const screenshotPromise = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 50 });
+    const screenshotUrl = await Promise.race([screenshotPromise, new Promise(r => setTimeout(() => r(null), 2500))]);
+    const screenshotId = crypto.randomUUID();
+    if (screenshotUrl) await saveImage(screenshotId, screenshotUrl);
 
-  async function initOverlay() {
-    if (document.getElementById('flo-overlay')) return;
-    if (!isExtensionValid()) return;
-
-    const overlay = document.createElement('div');
-    overlay.id = 'flo-overlay';
-    overlay.style.cssText = `
-      position: fixed; top: 150px; right: 20px; z-index: 2147483647;
-      background: white; padding: 15px; border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15); width: 220px;
-      border: 1px solid #e0e0e0; text-align: center;
-      font-family: sans-serif; cursor: move; user-select: none;
-    `;
-
-    overlay.innerHTML = `
-      <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move;">PIRATE AI HELPER ✥</div>
-      <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px;">...</div>
-      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-        <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
-        <button id="flo-report" style="flex: 1; background: #333; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">Panel</button>
-      </div>
-      <button id="flo-reset" style="background: none; border: none; color: #999; font-size: 11px; text-decoration: underline; cursor: pointer;">Reset Queue</button>
-    `;
-
-    document.body.appendChild(overlay);
-
-    document.getElementById('flo-add').addEventListener('click', (e) => handleAddToQueue(e.target));
-    document.getElementById('flo-report').addEventListener('click', () => chrome.runtime.sendMessage({ action: 'openPopup' }));
-    document.getElementById('flo-reset').addEventListener('click', () => {
-        if (confirm("Clear queue?")) chrome.runtime.sendMessage({ action: 'clearCart' });
-    });
-
-    // Simple Drag Logic
-    let isDragging = false, startX, startY, initialLeft, initialTop;
-    overlay.addEventListener('mousedown', (e) => {
-        if (['BUTTON'].includes(e.target.tagName)) return;
-        isDragging = true; startX = e.clientX; startY = e.clientY;
-        const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
-        overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
-    });
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        overlay.style.left = `${initialLeft + (e.clientX - startX)}px`;
-        overlay.style.top = `${initialTop + (e.clientY - startY)}px`;
-    });
-    document.addEventListener('mouseup', () => isDragging = false);
-
+    const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null };
     const storage = await chrome.storage.local.get('piracy_cart');
-    updateCount((storage.piracy_cart || []).length);
-  }
-
-  function updateCount(n) {
-    const el = document.getElementById('flo-count');
-    if (el) el.innerText = n;
-  }
-
-  chrome.storage.onChanged.addListener((changes, ns) => {
-      if (ns === 'local' && changes.piracy_cart) updateCount(changes.piracy_cart.newValue.length);
-  });
-
-  setTimeout(initOverlay, 1500);
-})();
+    let cart = storage.piracy_cart || [];
+    if (!cart.some(item => item.url === data.url)) {
+      cart.push(newItem);
+      await chrome.storage.local.set({ 'piracy_cart': cart });
+    }
+    return { success: true, count: cart.length };
+}
