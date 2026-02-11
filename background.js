@@ -3,13 +3,12 @@ import { getAuthToken, getUserEmail } from './utils/auth.js';
 import { 
   uploadToDrive, 
   appendToSheet, 
-  ensureFolderHierarchy, 
+  ensureYearlyReportFolder,
+  ensureDailyScreenshotFolder, 
   fetchConfig, 
-  fetchRightsPdf,
   getEventData,       
   updateEventUrl,     
   addNewEventToSheet,
-  ensureDailyScreenshotFolder,
   checkIfAuthorized,
   getColumnHData,
   updateRowStatus,
@@ -46,7 +45,91 @@ function generateReportId() {
 let stopScannerSignal = false;
 
 // ==========================================
-// 1. THE SHEET SCANNER (The Closer 2.0)
+// 1. FRESH SCRAPING LOGIC (LAZY LOADING)
+// ==========================================
+
+async function getFreshTikTokViews(url) {
+    let tabId = null;
+    try {
+        const tab = await chrome.tabs.create({ url: url, active: false });
+        tabId = tab.id;
+
+        // Wait for tab to load completely
+        await new Promise(resolve => {
+            const listener = (tid, info) => {
+                if (tid === tabId && info.status === 'complete') {
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    resolve();
+                }
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+        });
+        
+        // Small buffer for hydration
+        await new Promise(r => setTimeout(r, 2000));
+
+        // Inject extractor
+        const result = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: () => {
+                try {
+                    // Check for deleted content indicators
+                    const bodyText = document.body.innerText;
+                    if (bodyText.includes("Video currently unavailable") || 
+                        bodyText.includes("not find this account") ||
+                        bodyText.includes("Video not found")) {
+                        return { views: "DELETED", status: "DELETED" };
+                    }
+
+                    // Strategy 1: __UNIVERSAL_DATA_FOR_REHYDRATION__
+                    let el = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
+                    if (el && el.textContent) {
+                        const json = JSON.parse(el.textContent);
+                        const defaultScope = json.__DEFAULT_SCOPE__;
+                        // Path: webapp.video-detail.itemInfo.itemStruct.stats.playCount
+                        const struct = defaultScope?.['webapp.video-detail']?.itemInfo?.itemStruct;
+                        if (struct && struct.stats) {
+                            return { views: struct.stats.playCount, status: "ACTIVE" };
+                        }
+                    }
+                    
+                    // Strategy 2: SIGI_STATE
+                    el = document.getElementById('SIGI_STATE');
+                    if (el && el.textContent) {
+                         const json = JSON.parse(el.textContent);
+                         const itemMod = json.ItemModule;
+                         if (itemMod) {
+                             const keys = Object.keys(itemMod);
+                             if (keys.length > 0 && itemMod[keys[0]].stats) {
+                                 return { views: itemMod[keys[0]].stats.playCount, status: "ACTIVE" };
+                             }
+                         }
+                    }
+                    
+                    // Strategy 3: DOM Fallback
+                    const viewEl = document.querySelector('[data-e2e="video-views"]');
+                    if (viewEl) return { views: viewEl.innerText, status: "ACTIVE" };
+
+                    return { views: "N/A", status: "UNKNOWN" };
+                } catch(e) {
+                    return { views: "ERROR", status: "ERROR" };
+                }
+            }
+        });
+        
+        // Cleanup
+        if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+        return result[0]?.result || { views: "N/A", status: "UNKNOWN" };
+
+    } catch(e) {
+        console.error("Fresh Scrape Error:", e);
+        if(tabId) chrome.tabs.remove(tabId).catch(()=>{});
+        return { views: "N/A", status: "ERROR" };
+    }
+}
+
+// ==========================================
+// 2. THE SHEET SCANNER (The Closer 2.0)
 // ==========================================
 
 // Helper to send progress to sidepanel
@@ -67,36 +150,30 @@ async function runSheetScanner(startRow = 1) {
     const rows = await getColumnHData();
     let consecutiveBlanks = 0;
     
-    // Safety check: startRow cannot be less than 1 (header is 0)
     if (startRow < 1) startRow = 1;
 
-    // Loop through rows
     for (let i = startRow; i < rows.length; i++) {
-        // Stop check
         if (stopScannerSignal) {
             console.log("🛑 Sheet Scanner: Stopped by user.");
             sendProgress("Scanner Stopped", "User interrupted the process.");
             break;
         }
 
-        // Safety Break for 3 consecutive blanks
         if (consecutiveBlanks >= 3) {
             console.log("🕵️ Sheet Scanner: Hit 3 blank cells. Stopping.");
             sendProgress("Scanner Stopped", "Hit 3 consecutive blank cells.");
             break;
         }
 
-        const cellValue = rows[i][0]; // Column H is index 0 in the response values
+        const cellValue = rows[i][0]; 
         
-        // Skip empty cells but count them for safety break
         if (!cellValue) {
             consecutiveBlanks++;
             continue;
         }
         
-        consecutiveBlanks = 0; // Reset count on non-blank
+        consecutiveBlanks = 0; 
 
-        // Extract URLs with indices for Rich Text formatting
         const urlRegex = /https?:\/\/[^\s,]+/g;
         let match;
         const matches = [];
@@ -115,20 +192,11 @@ async function runSheetScanner(startRow = 1) {
         const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 } };
         const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 } };
         
-        // --- REAL-TIME RICH TEXT TRACKING ---
-        // Initialize runs for the whole cell as default
-        // We will update this array progressively
         let currentRuns = [{ startIndex: 0, format: defaultStyle }];
-        
-        // Helper to regenerate runs based on known dead ranges
-        const deadRanges = []; // Array of {start, end}
+        const deadRanges = []; 
 
         for (let j = 0; j < matches.length; j++) {
-            // CRITICAL STOP CHECK INSIDE INNER LOOP
-            if (stopScannerSignal) {
-                console.log("🛑 Stop signal received. Aborting inner loop.");
-                break;
-            }
+            if (stopScannerSignal) break;
 
             const { url, index, end } = matches[j];
             sendProgress(`Row ${i+1}`, `Link ${j+1}/${matches.length}: Checking...`);
@@ -142,18 +210,14 @@ async function runSheetScanner(startRow = 1) {
             else if (url.includes('twitch')) platform = 'twitch';
 
             try {
-                // Check using Tab-based verification
                 const isDown = await verifyTakedownViaTab(url, platform); 
                 
                 if (isDown) {
                     deadCount++;
                     console.log(`  - DOWN: ${url}`);
-                    
-                    // Add to dead ranges
                     deadRanges.push({ start: index, end: end });
                     deadRanges.sort((a, b) => a.start - b.start);
 
-                    // Rebuild Runs for Real-time Update
                     const newRuns = [];
                     let cursor = 0;
                     
@@ -173,7 +237,6 @@ async function runSheetScanner(startRow = 1) {
                         newRuns.push({ startIndex: cursor, format: defaultStyle });
                     }
 
-                    // Perform the update immediately so user sees strikethrough
                     await updateCellWithRichText(i, cellValue, newRuns);
                     
                 } else {
@@ -182,10 +245,9 @@ async function runSheetScanner(startRow = 1) {
                 }
             } catch (err) {
                 console.warn(`  - Error checking ${url}:`, err);
-                activeCount++; // Assume active on error
+                activeCount++; 
             }
             
-            // Rate limit (1.5s) to avoid browser throttling tabs
             await new Promise(r => setTimeout(r, 1500)); 
         }
 
@@ -194,7 +256,6 @@ async function runSheetScanner(startRow = 1) {
              break;
         }
 
-        // Final Status Update for the Row
         if (deadCount > 0 && activeCount === 0) {
             console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
             sendProgress(`Row ${i+1}: Resolved`, "Updating Sheet...");
@@ -203,8 +264,6 @@ async function runSheetScanner(startRow = 1) {
              console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
              sendProgress(`Row ${i+1}: Investigating`, `${deadCount} dead links struck.`);
              await updateRowStatus(i, "Investigating");
-        } else if (activeCount > 0 && deadCount === 0) {
-             // console.log(`Row ${i+1}: All active.`);
         }
     }
     
@@ -223,11 +282,9 @@ async function runSheetScanner(startRow = 1) {
 async function verifyTakedownViaTab(url, platform) {
     let tabId = null;
     try {
-        // 1. Open Tab in Background (active: false)
         const tab = await chrome.tabs.create({ url: url, active: false });
         tabId = tab.id;
 
-        // 2. Wait for Load (with timeout)
         await new Promise((resolve, reject) => {
             const timeout = setTimeout(() => resolve("timeout"), 12000); 
             
@@ -241,17 +298,13 @@ async function verifyTakedownViaTab(url, platform) {
             chrome.tabs.onUpdated.addListener(listener);
         });
         
-        // Wait a bit for dynamic content to render
         await new Promise(r => setTimeout(r, 2000));
 
-        // 3. Inject Script to Check Tombstone
         const result = await chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: (plat) => {
                 const text = document.body.innerText.toLowerCase();
                 const title = document.title.toLowerCase();
-                
-                // Generic Tombstones
                 if (title.includes("404") || title.includes("not found") || title.includes("page not found")) return true;
 
                 if (plat === 'tiktok') {
@@ -267,7 +320,6 @@ async function verifyTakedownViaTab(url, platform) {
                     if (text.includes("video has been removed")) return true;
                     if (text.includes("video is private")) return true;
                     if (text.includes("this video is no longer available")) return true;
-                    // If redirected to home, likely removed (heuristic)
                     if (window.location.href === "https://www.youtube.com/") return true; 
                 }
                 
@@ -288,23 +340,18 @@ async function verifyTakedownViaTab(url, platform) {
             args: [platform]
         });
 
-        // 4. Cleanup
         chrome.tabs.remove(tabId).catch(() => {});
-        
         return result[0]?.result || false;
 
     } catch (e) {
         console.error("Tab Check Error:", e);
         if (tabId) chrome.tabs.remove(tabId).catch(() => {});
-        return false; // Fail safe: Assume active
+        return false;
     }
 }
 
-// ... (addToTrackingQueue legacy helper, kept empty if needed by other files)
-async function addToTrackingQueue(reportId, urls, platform) {}
-
 // ==========================================
-// 2. BOT INJECTION LISTENER
+// 3. BOT INJECTION LISTENER
 // ==========================================
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
@@ -319,7 +366,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 // ==========================================
-// 3. MAIN MESSAGE HANDLER
+// 4. MAIN MESSAGE HANDLER
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
@@ -378,12 +425,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'logToSheet') {
+  // --- UPDATED PROCESS QUEUE HANDLER ---
+  if (request.action === 'processQueue') {
       handleBatchReport(request.data).then(res => {
-          sendResponse({ success: res.success });
-          if(res.success) chrome.runtime.sendMessage({ action: "playSuccessSound" }); 
+          if (res.success) {
+              chrome.runtime.sendMessage({ action: "progressComplete" });
+          } else {
+              chrome.runtime.sendMessage({ action: "progressError", error: res.error });
+          }
       });
-      return true;
+      return false; // Async status handled by runtime messages
   }
 
   if (request.action === 'getConfig') {
@@ -419,15 +470,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
   }
 
-  // UPDATED LISTENER FOR CLOSER
   if (request.action === 'triggerCloser') {
-      // Pass startRow if provided, or default to 1
       const startRow = request.startRow || 1;
       runSheetScanner(startRow).then(() => sendResponse({ success: true }));
       return true;
   }
 
-  // --- STOP LISTENER ---
   if (request.action === 'stopSheetScanner') {
       stopScannerSignal = true;
       sendResponse({ success: true });
@@ -436,11 +484,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // ==========================================
-// 4. HELPER FUNCTIONS
+// 5. HELPER FUNCTIONS
 // ==========================================
 
 async function handleDynamicSearch(data) {
   try {
+    const session = await chrome.storage.session.get(['activeSearchTabId', 'activeEventDetails']);
+    if (session.activeSearchTabId) {
+        try {
+            await chrome.tabs.get(session.activeSearchTabId);
+            return { 
+                success: false, 
+                error: "SEARCH_IN_PROGRESS", 
+                activeEvent: session.activeEventDetails?.eventName || "Unknown"
+            };
+        } catch (e) {
+            await chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
+        }
+    }
+
     const { eventName, vertical } = data;
     const sheetData = await getEventData(vertical); 
     const searchBaseUrl = sheetData.searchUrl;
@@ -490,23 +552,66 @@ async function handleAddVideo(tab, data) {
   }
 }
 
+// ------------------------------------------
+// UPDATED BATCH REPORT LOGIC (LAZY SCRAPE)
+// ------------------------------------------
 async function handleBatchReport(formData) {
   try {
     const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
-    const cart = storage.piracy_cart || [];
+    let cart = storage.piracy_cart || [];
     const savedName = storage.last_reporter || "Unknown User";
     const finalReporterName = formData.reporterName || savedName;
 
-    if (cart.length === 0 && formData.urls) {
-        if (Array.isArray(formData.urls)) formData.urls.forEach(u => cart.push({ url: u, handle: "Manual", views: "N/A" }));
+    // --- PHASE 1: FRESH SCRAPE (LAZY LOADING) ---
+    const updatedCart = [];
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'Verifying view counts...', percent: 5 });
+
+    for (let i = 0; i < cart.length; i++) {
+        let item = cart[i];
+        
+        // Only lazy scrape TikTok if views are PENDING or N/A
+        if (item.url.includes('tiktok.com') && (item.views === 'PENDING' || item.views === 'N/A')) {
+             chrome.runtime.sendMessage({ 
+                 action: 'progressUpdate', 
+                 status: `Scraping views (${i+1}/${cart.length})...`, 
+                 percent: 5 + Math.floor((i/cart.length)*30) 
+             });
+             
+             try {
+                 const freshData = await getFreshTikTokViews(item.url);
+                 if (freshData.views) item.views = freshData.views;
+                 if (freshData.status === 'DELETED') {
+                     item.views = 'DELETED';
+                     console.log(`Video ${item.url} is DELETED.`);
+                 } else {
+                     console.log(`Verified ${item.url}: ${item.views} views.`);
+                 }
+             } catch(e) {
+                 console.error(`Failed fresh scrape for ${item.url}`, e);
+             }
+             
+             // Rate limit delay to avoid TikTok flagging
+             await new Promise(r => setTimeout(r, 2000));
+        }
+        updatedCart.push(item);
     }
+    
+    // Update local cart with verified numbers just in case
+    cart = updatedCart;
+    await chrome.storage.local.set({ 'piracy_cart': cart });
 
+    // --- PHASE 2: PROCESSING REPORTS ---
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'Connecting to Google...', percent: 40 });
     const token = await getAuthToken();
-    const dateStr = new Date().toISOString().split('T')[0];
+    const currentYear = new Date().getFullYear();
+    const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     const todayFormatted = new Date().toLocaleDateString("en-US");
-    const eventFolderId = await ensureFolderHierarchy(token, formData.eventName, dateStr);
-    const screenshotFolderId = await ensureDailyScreenshotFolder(token, dateStr);
+    
+    // 1. Ensure Folder Structure
+    const yearFolderId = await ensureYearlyReportFolder(token, currentYear);
+    const screenshotsFolderId = await ensureDailyScreenshotFolder(token, dateStr);
 
+    // Grouping logic
     const grouped = {};
     cart.forEach(item => {
       const handle = item.handle || "Unknown";
@@ -514,7 +619,18 @@ async function handleBatchReport(formData) {
       grouped[handle].push(item);
     });
 
+    const totalGroups = Object.keys(grouped).length;
+    let groupIdx = 0;
+
+    // --- BATCH PROCESSING LOOP ---
     for (const handle of Object.keys(grouped)) {
+      groupIdx++;
+      chrome.runtime.sendMessage({ 
+          action: 'progressUpdate', 
+          status: `Processing Report ${groupIdx}/${totalGroups} (@${handle})...`, 
+          percent: 40 + Math.floor((groupIdx/totalGroups)*50) 
+      });
+
       const items = grouped[handle];
       const urls = items.map(i => i.url);
       const urlString = urls.join('\n'); 
@@ -524,28 +640,56 @@ async function handleBatchReport(formData) {
       let detectedPlatform = "TikTok"; 
       if (urls[0].includes('youtube')) detectedPlatform = "YouTube";
       
-      const pdfData = { eventName: formData.eventName, vertical: formData.vertical, reporterName: finalReporterName, handle, urls, notes: `Report ID: ${reportId}` };
-      const pdfBlob = await generatePDF(pdfData);
-      const pdfUpload = await uploadToDrive(token, eventFolderId, `${reportId}_@${handle}.pdf`, pdfBlob, 'application/pdf');
-
-      if (screenshotFolderId) {
-        for (const item of items) {
-          let imgDataUrl = item.screenshot; 
-          if (item.screenshotId) imgDataUrl = await getImage(item.screenshotId);
-          if(imgDataUrl) {
-            const response = await fetch(imgDataUrl);
-            await uploadToDrive(token, screenshotFolderId, `${formData.eventName}_${reportId}_@${handle}_Evidence.jpg`, await response.blob(), 'image/jpeg');
+      // 2. UPLOAD SCREENSHOTS
+      const evidenceLinks = []; 
+      
+      for (const item of items) {
+          let imgLink = "No Screenshot Available";
+          if (formData.uploadScreenshots && item.screenshotId) {
+              const imgDataUrl = await getImage(item.screenshotId);
+              if (imgDataUrl) {
+                  const response = await fetch(imgDataUrl);
+                  // Upload to the separate daily screenshots folder
+                  const upload = await uploadToDrive(token, screenshotsFolderId, `${reportId}_Evidence_@${handle}.jpg`, await response.blob(), 'image/jpeg');
+                  imgLink = upload.webViewLink; 
+              }
           }
-        }
+          evidenceLinks.push({ 
+              url: item.url, 
+              screenshotLink: imgLink, 
+              views: item.views 
+          });
       }
 
-      await appendToSheet(token, { values: [todayFormatted, formData.vertical, formData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", `Evidence: ${pdfUpload.webViewLink}`, finalReporterName, "", "", "", "", "", "", "", reportId] });
+      // 3. GENERATE PDF
+      const pdfData = { 
+          eventName: formData.eventConfig?.eventName || formData.eventName || "Unknown Event", 
+          vertical: formData.vertical, 
+          reporterName: finalReporterName, 
+          handle, 
+          items: evidenceLinks,
+          reportId: reportId 
+      };
+      
+      const pdfBlob = await generatePDF(pdfData);
+      
+      // 4. UPLOAD PDF
+      const pdfName = `Report_${reportId}_@${handle}.pdf`;
+      const pdfUpload = await uploadToDrive(token, yearFolderId, pdfName, pdfBlob, 'application/pdf');
+
+      // 5. LOG TO SHEET
+      // viewString contains the verified numbers (e.g. "1200\n500") or "DELETED"
+      await appendToSheet(token, { values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", `Report: ${pdfUpload.webViewLink}`, finalReporterName, "", "", "", "", "", "", "", reportId] });
+      
+      await new Promise(r => setTimeout(r, 1000));
     }
 
+    // Cleanup
     await chrome.storage.local.remove('piracy_cart');
     await clearImages();
     return { success: true };
   } catch (e) {
+    console.error("Batch Report Error:", e);
     return { success: false, error: e.message };
   }
 }
