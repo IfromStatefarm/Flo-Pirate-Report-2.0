@@ -1,691 +1,499 @@
 // content_autofill.js
 
-// 1. DEFAULT CONFIGURATION (Fallback if Google Drive fails)
-if (typeof AUTOFILL_CONFIG === 'undefined') {
-  var AUTOFILL_CONFIG = {
-    tiktok: {
-      autofill: {
-        // DEFAULT FALLBACKS - These run only if remote config fails
-        wizard_terms: ["I am the copyright owner", "Authorized representative", "Statement", "Report an infringement"],
-        email_candidates: ['input[type="email"]', "#email", "#contact_email", "[name='email']"],
-        inputs: {
-          name: ["#name", "Signature", "Sign your name"],
-          company: ["#nameOfOwner", "Copyright owner name"],
-          phone: ["#phoneNumber", "Phone number"],
-          address: ["#address", "Address"],
-          urls: ["tiktok.com/@tiktok/video", "Content to report", "Enter the URL(s)", "Infringing material"]
-        }
-      }
-    },
-    youtube: {
-      autofill: {
-        buttons: { add_video: "Add a video", save: "#save-button" },
-        inputs: {
-          source_url: ["#videoLink", '[aria-label="My video URL"]'],
-          video_title: ["#videoTitle", '[aria-label="Title"]'],
-          infringing_url: ["#targetVideo", '[aria-label="YouTube URL of video to be removed"]'],
-          claimant_name: "#claimant-name",
-          authority: "#requester-authority",
-          street: '[aria-label="Street address"]',
-          city: '[aria-label="City"]',
-          state: "#state",
-          zip: '[aria-label="Zip code"]',
-          signature: '[aria-label="Signature"]'
-        },
-        dropdowns: {
-          type_work: { label: "Type of work", value: "Video" },
-          subcategory: { label: "Subcategory", value: "Internet video" },
-          source: { label: "Source", value: "From outside of YouTube" },
-          location: { label: "Location of infringing content", value: "Entire video" },
-          affected_party: { label: "Affected party", value: "My company, organization, or client" },
-          country: { label: "country-select", value: "United States" }
-        }
-      }
-    },
-    instagram: { autofill: { name: "your_name", email: "email", urls: ['textarea[name="content_urls"]'], signature: "electronic_signature" } },
-    twitter: { autofill: { name: "reporter_name", email: "email", company: "company_name", urls: 'textarea[name="source_url"]', signature: "signature" } }
-  };
-}
+(function() { // 1. Wrap in IIFE to prevent 'sleep' redeclaration errors
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-// ==========================================
-// 2. CONFIGURATION LOADER (BLOCKING)
-// ==========================================
-async function loadRemoteConfig() {
-  console.log("📥 PIRATE AI: Fetching Configuration...");
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
-
-    if (response && response.success && response.config && response.config.platform_selectors) {
-      const remote = response.config.platform_selectors;
-
-      // Deep merge helpers for key platforms
-      if (remote.tiktok?.autofill) {
-          AUTOFILL_CONFIG.tiktok.autofill = { ...AUTOFILL_CONFIG.tiktok.autofill, ...remote.tiktok.autofill };
-      }
-      if (remote.youtube?.autofill) {
-          AUTOFILL_CONFIG.youtube.autofill = { ...AUTOFILL_CONFIG.youtube.autofill, ...remote.youtube.autofill };
-      }
-      if (remote.instagram?.autofill) {
-          AUTOFILL_CONFIG.instagram.autofill = { ...AUTOFILL_CONFIG.instagram.autofill, ...remote.instagram.autofill };
-      }
-      if (remote.twitter?.autofill) {
-          AUTOFILL_CONFIG.twitter.autofill = { ...AUTOFILL_CONFIG.twitter.autofill, ...remote.twitter.autofill };
-      }
-      console.log("✅ PIRATE AI: Remote Config Applied Successfully");
-      return true;
+    // 2. DEFAULT CONFIGURATION (Robust Fallback)
+    if (typeof AUTOFILL_CONFIG === 'undefined') {
+      var AUTOFILL_CONFIG = {}; 
     }
-  } catch(e) { 
-    console.warn("⚠️ PIRATE AI: Config fetch failed, using defaults.", e); 
-  }
-  return false;
-}
-
-// ==========================================
-// 3. MAIN EXECUTION FLOW
-// ==========================================
-
-// Listener for manual triggers
-if (!window.hasFloAutofillListener) {
-  window.hasFloAutofillListener = true;
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "startFullAutomation") {
-        // We re-run the main sequence manually
-        runMainSequence(request.data)
-          .then(() => sendResponse({ success: true }))
-          .catch(err => sendResponse({ success: false, error: err.message }));
-        return true; 
-    }
-  });
-}
-
-// Auto-run on load
-(async function init() {
-    if (window.floAutofillRunning) return;
-    window.floAutofillRunning = true;
-
-    // A. Wait for DOM
-    if (document.readyState === 'loading') {
-        await new Promise(r => document.addEventListener('DOMContentLoaded', r));
-    }
-
-    // B. Check if we have work to do
-    const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
-    const cart = res.piracy_cart || [];
-    const info = res.reporterInfo;
-
-    if (cart.length === 0 || !info) return;
-
-    const host = window.location.hostname;
-    const path = window.location.pathname;
-    const platform = cart[0].platform || "TikTok";
-
-    // Basic Host Checks to prevent running on wrong sites
-    if (platform === "TikTok" && !host.includes("tiktok")) return;
-    if (platform === "YouTube" && !host.includes("youtube")) return;
-
-    // Warning for TikTok Page Location
-    if (platform === "TikTok" && !path.includes("/legal/report")) {
-        console.warn("⚠️ PIRATE AI: You seem to be on a general TikTok page, not the reporting form. Automation may fail.");
-        console.warn("ℹ️ Try navigating to: https://www.tiktok.com/legal/report/Copyright");
-    }
-
-    // C. LOAD CONFIG BEFORE PROCEEDING
-    await loadRemoteConfig();
-
-    const data = {
-        fullName: info.name,
-        email: "Social@FloSports.tv", // Hardcoded per user request
-        urls: cart.map(c => c.url),
-        platform: platform,
-        eventName: info.eventName,
-	@@ -145,470 +68,244 @@ if (!window.hasFloAutofillListener) {
-    };
-
-    console.log("🚀 Starting Flo Autofill for:", platform);
-    await routeAutofill(data);
-})();
-
-// Re-usable runner
-async function runMainSequence(data) {
-    await loadRemoteConfig();
-    await routeAutofill(data);
-}
-
-async function routeAutofill(data) {
-    // Ensure email is set correctly even for manual triggers
-    if (data) data.email = "Social@FloSports.tv";
-
-    const host = window.location.hostname;
-    if (host.includes('tiktok')) await fillTikTok(data);
-    else if (host.includes('youtube')) await fillYouTube(data);
-    else if (host.includes('instagram')) await fillInstagram(data);
-    else if (host.includes('facebook')) await fillFacebook(data);
-    else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
-
-    createUploadOverlay(data);
-}
-
-// ==========================================
-// 4. TIKTOK STRATEGY (CONFIG-DRIVEN WIZARD)
-// ==========================================
-async function fillTikTok(data) {
-  const conf = AUTOFILL_CONFIG.tiktok.autofill;
-  const defaults = {
-      company: "FloSports",
-      phone: "5122702356",
-      address: "301 Congress ave #1500 Austin Tx 78701",
-      email: data.email || "Social@FloSports.tv"
-  };
-
-  console.log("🎵 Running TikTok Strategy...");
-
-  // --- STRATEGY: URL PARAMETER BYPASS ---
-  const currentUrl = new URL(window.location.href);
-  const hasParams = currentUrl.searchParams.has('issueType');
-  // We check for "Address" or "Phone" because they only appear on the FINAL form
-  const isFullForm = await waitForSelector('input[name="address"], #address, input[name="phoneNumber"]', 1000);
-
-  // 1. IF GENERIC PAGE (No Params): Redirect to Magic URL
-  if (currentUrl.pathname.includes('/legal/report/Copyright') && !hasParams) {
-      console.log("⚡ PIRATE AI: Generic page detected. Upgrading URL to skip wizard...");
-
-      currentUrl.searchParams.set('issueType', '1'); // Copyright
-      currentUrl.searchParams.set('affected', '1');  // I am owner
-      if (defaults.email) currentUrl.searchParams.set('email', defaults.email);
-
-      console.log("🔄 Redirecting to:", currentUrl.toString());
-      window.location.replace(currentUrl.toString());
-      return; 
-  }
-
-  // 2. IF INTERMEDIATE PAGE (Has Params but NO Full Form): Handle Email & Click Next
-  if (hasParams && !isFullForm) {
-      console.log("🔹 INTERMEDIATE STEP: Email Verification detected.");
-
-      // Wait for the email field specifically to ensure it's rendered
-      // UPDATED: Added specific selectors for the nested input
-      await waitForSelector('div#email input, [placeholder*="Enter your email"], input[name="email"], input[type="email"]', 3000);
-
-      // A. Fill Email if needed
-      // UPDATED: Prioritize selectors based on the screenshot provided
-      const specificEmailSelectors = [
-          'div#email input', // Targets input inside <div id="email"> which is what the screenshot shows
-          '[placeholder*="Enter your email"]', // Matches the placeholder in the screenshot
-          'input[type="text"][placeholder*="email"]', // Fallback for text input used for email
-          '[name="email"]', 
-          'input[type="email"]'
-      ];
-      const emailSels = specificEmailSelectors.concat(conf.email_candidates || []);
-
-      let emailFound = false;
-      for (const sel of emailSels) {
-          if (await fillBySelector(sel, defaults.email)) {
-              console.log(`📧 Filled intermediate email field using selector: ${sel}`);
-              emailFound = true;
-              break; 
-          }
-      }
-
-      // B. Click Next to force page refresh
-      const btnText = conf.next_button_text || "Next";
-      const nextBtn = await waitForButton(btnText, 2000);
-      if (nextBtn && !nextBtn.disabled) {
-          console.log("➡️ Clicking 'Next' to load Full Form...");
-          nextBtn.scrollIntoView({block: "center"});
-          nextBtn.click();
-
-          // CRITICAL: Wait for the refresh/transition logic
-          console.log("⏳ Waiting for page transition...");
-          await sleep(2000); 
-          // Re-check form existence
-          await waitForSelector('input[name="address"], #address, textarea', 8000);
-      } else {
-          console.warn("⚠️ Could not find 'Next' button on intermediate page.");
-      }
-  } else {
-      console.log("⏩ Full form already active.");
-  }
-
-  // --- STEP 3: FILL FULL FORM ---
-  console.log("📝 Filling Full Form...");
-
-  // A. EMAIL (Again, just in case)
-  const emailSels = conf.email_candidates || ['input[type="email"]', "#email", "#contact_email"];
-  let emailFilled = false;
-  for (const sel of emailSels) {
-      if (await fillBySelector(sel, defaults.email)) {
-          emailFilled = true;
-          break;
-      }
-  }
-  if (!emailFilled && conf.email_labels) {
-      for (const label of conf.email_labels) {
-          if (await fillInputByLabel(label, defaults.email)) {
-              emailFilled = true;
-              break;
-          }
-      }
-  }
-
-  // B. OTHER FIELDS
-  const fillFromConfig = async (key, val) => {
-      const selectors = conf.inputs[key] || [];
-      for (const s of selectors) {
-          const looksLikeLabel = !/[#\[.]/.test(s) || s.includes(' ');
-          if (looksLikeLabel) {
-              if (await fillInputByLabel(s, val)) return;
-          } else {
-              if (await fillBySelector(s, val)) return;
-          }
-      }
-  };
-
-  await fillFromConfig("name", data.fullName);
-  await fillFromConfig("company", defaults.company);
-  await fillFromConfig("phone", defaults.phone);
-  await fillFromConfig("address", defaults.address);
-
-  // C. URLS
-  const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-  let urlsFilled = false;
-
-  if (conf.inputs.urls) {
-      for(const s of conf.inputs.urls) {
-          const looksLikeLabel = !/[#\[.]/.test(s) || s.includes(' ');
-
-          if (s.includes("tiktok.com")) {
-             if (await fillByPlaceholder(s, urlText)) urlsFilled = true;
-          } else if (looksLikeLabel) {
-             if (await fillInputByLabel(s, urlText)) urlsFilled = true;
-          } else {
-             if (await fillBySelector(s, urlText)) urlsFilled = true;
-          }
-          if (urlsFilled) break;
-      }
-  }
-
-  // D. CHECKBOXES
-  console.log("☑️ Clicking Checkboxes...");
-  const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-  checkboxes.forEach(cb => { 
-      if (!cb.checked && cb.offsetParent !== null) cb.click(); 
-  });
-
-  const agreementTerms = ["I declare", "good faith", "perjury", "accurate"];
-  for (const term of agreementTerms) {
-      await clickByText(term); 
-  }
-
-  console.log("✅ TikTok Automation Finished.");
-}
-
-// ==========================================
-// 5. YOUTUBE STRATEGY
-// ==========================================
-async function fillYouTube(data) {
-    const conf = AUTOFILL_CONFIG.youtube.autofill; 
-    console.log("📝 Running YouTube Strategy...");
-
-    async function waitAndClick(textOrSel, time=3000) {
-       const btn = await waitForButton(textOrSel, time);
-       if (btn) { btn.click(); return true; }
-       return false;
-    }
-
-    const infringingUrls = data.urls || [];
-
-    // 1. Add Videos
-    for (const [index, badUrl] of infringingUrls.entries()) {
-        const addBtnText = conf.buttons?.add_video || "Add a video";
-        await waitAndClick(addBtnText, 5000);
-        await sleep(1000);
-
-        if (conf.dropdowns) {
-            await selectDropdownOption(conf.dropdowns.type_work.label, conf.dropdowns.type_work.value);
-            await selectDropdownOption(conf.dropdowns.subcategory.label, conf.dropdowns.subcategory.value);
-            await selectDropdownOption(conf.dropdowns.source.label, conf.dropdowns.source.value);
-        }
-
-        await fillDeep(conf.inputs.source_url?.[0], data.sourceUrl);
-        await fillDeep(conf.inputs.video_title?.[0], data.eventName || "FloSports Event");
-
-        const badInputSel = conf.inputs.infringing_url?.[0] || conf.inputs.infringing_url?.[1];
-        await fillDeep(badInputSel, badUrl);
-
-        await selectDropdownOption(conf.dropdowns.location.label, conf.dropdowns.location.value);
-        await waitAndClick(conf.buttons?.save || "#save-button", 3000);
-        await sleep(2000);
-    }
-
-    // 2. Personal Info
-    await selectDropdownOption(conf.dropdowns.affected_party.label, conf.dropdowns.affected_party.value);
-    await fillDeep(conf.inputs.claimant_name, "Flosports");
-
-    const phoneEl = await findElementByText("Phone", "ytcp-form-textarea"); 
-    if (phoneEl) await typeInField(phoneEl, "5122702356");
-
-    // UPDATED: Hardcoded Email
-    await fillDeep(conf.inputs.secondary_email, "Social@FloSports.tv");
-
-    await fillDeep(conf.inputs.authority, "Authorized Representative");
-    await selectDropdownOption(conf.dropdowns.country.label, conf.dropdowns.country.value);
-    await fillDeep(conf.inputs.street, "301 Congress ave #1500");
-    await fillDeep(conf.inputs.city, "Austin");
-    await fillDeep(conf.inputs.state, "Texas");
-    await fillDeep(conf.inputs.zip, "78701");
-
-    // 3. Agreements
-    const stdRadio = await findDeep('ytcp-radio-button[name="removal-timing-option"][aria-label*="Standard"]');
-    if (stdRadio) stdRadio.click();
-
-    const prevent = await findDeep('ytcp-checkbox-lit[aria-label*="Prevent future copies"]');
-    if (prevent) prevent.click();
-
-    const agreements = ["good faith", "accurate", "abuse"];
-    for (const txt of agreements) {
-        const cb = await findElementByText(txt, "ytcp-checkbox-lit");
-        if (cb && cb.getAttribute('aria-checked') === 'false') cb.click();
-    }
-
-    await fillDeep(conf.inputs.signature, data.fullName);
-}
-
-// ... (Instagram/Twitter logic preserved) ...
-async function fillInstagram(data) {
-    const conf = AUTOFILL_CONFIG.instagram.autofill;
-    await fillByName(conf.name, data.fullName);
-    await fillByName(conf.email, data.email);
-    const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-    for(const sel of conf.urls) await fillBySelector(sel, urlText);
-    await fillByName(conf.signature, data.fullName);
-}
-async function fillFacebook(data) { await fillInstagram(data); }
-async function fillTwitter(data) {
-    const conf = AUTOFILL_CONFIG.twitter.autofill;
-    await fillByName(conf.name, data.fullName);
-    await fillByName(conf.email, data.email);
-    await fillByName(conf.company, "FloSports");
-    const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-    await fillBySelector(conf.urls, urlText);
-    await fillByName(conf.signature, data.fullName);
-}
-
-// ==========================================
-// 6. ROBUST HELPERS
-// ==========================================
-
-async function waitForSelector(selector, timeout) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-        try {
-            if (document.querySelector(selector)) return true;
-        } catch (e) { }
-        await sleep(200);
-    }
-    return false;
-}
-
-async function waitForButton(textOrSel, timeout) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-        let el;
-        // Check if it looks like a CSS selector
-        if (/[.#\[]/.test(textOrSel)) {
-            try { el = document.querySelector(textOrSel); } catch(e){}
+    
+    // Define sleep inside the scope
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    let configLoaded = false;
+    
+    // --- LOAD REMOTE CONFIG HELPER ---
+    async function loadConfig() {
+      try {
+        // Check if extension context is valid before messaging
+        if (!chrome.runtime?.id) return;
+        
+        const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
+        if (response && response.success && response.config && response.config.platform_selectors) {
+          console.log("✅ Remote Config Loaded");
+          AUTOFILL_CONFIG = response.config.platform_selectors;
+          configLoaded = true;
         } else {
-            const xpath = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${textOrSel.toLowerCase()}')]`;
+          console.warn("⚠️ Remote Config empty or invalid.");
+        }
+      } catch(e) { 
+          console.warn("⚠️ Using default local strategies (Config load failed).", e); 
+      }
+    }
+    
+    // ==========================================
+    // 2. LISTENERS & AUTO-RUN
+    // ==========================================
+    
+    if (!window.hasFloAutofillListener) {
+      window.hasFloAutofillListener = true;
+      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === "startFullAutomation") {
+            // Force wait for config on manual trigger
+            (async () => {
+                if (!configLoaded) await loadConfig();
+                await routeAutofill(request.data);
+                sendResponse({ success: true });
+            })();
+            return true; 
+        }
+      });
+    }
+    
+    (async function init() {
+        console.log("🔄 Flo Autofill Script Injected/Re-loaded");
+        
+        // Always reset running flag on new injection/page load
+        window.floAutofillRunning = true;
+    
+        if (document.readyState === 'loading') {
+            await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+        }
+    
+        // Safety check for extension context
+        try {
+            const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
+            const cart = res.piracy_cart || [];
+            const info = res.reporterInfo;
+        
+            if (cart.length === 0 || !info) {
+                console.log("ℹ️ No active report data found in storage.");
+                return;
+            }
+        
+            const host = window.location.hostname;
+            const platform = cart[0].platform || "TikTok";
+        
+            // Basic Host Safety Checks
+            if (platform === "TikTok" && !host.includes("tiktok")) return;
+            if (platform === "YouTube" && !host.includes("youtube")) return;
+            if (platform === "Instagram" && !host.includes("instagram")) return;
+            if (platform === "Twitter" && !host.includes("x.com") && !host.includes("twitter")) return;
+        
+            const data = {
+                fullName: info.name,
+                email: info.email || "copyright@flosports.tv",
+                urls: cart.map(c => c.url),
+                platform: platform,
+                eventName: info.eventName,
+                vertical: info.vertical,
+                sourceUrl: info.sourceUrl
+            };
+        
+            console.log("🚀 Starting Flo Autofill for:", platform);
+            
+            // START CONFIG LOAD
+            loadConfig();
+        
+            // STRICT WAIT LOOP
+            let retries = 0;
+            while (!configLoaded && retries < 50) { 
+                if (retries % 10 === 0) console.log("⏳ Waiting for config...");
+                await sleep(100);
+                retries++;
+            }
+        
+            if (!configLoaded) console.warn("⚠️ Timed out waiting for config. Strategies may fail.");
+        
+            await sleep(500); 
+            routeAutofill(data);
+        } catch(e) {
+            console.warn("Autofill Init Error (Context likely invalidated):", e);
+        }
+    })();
+    
+    async function routeAutofill(data) {
+        const host = window.location.hostname;
+        if (host.includes('tiktok')) await fillTikTok(data);
+        else if (host.includes('youtube')) await fillYouTube(data);
+        else if (host.includes('instagram')) await fillInstagram(data);
+        else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
+        
+        if(data.eventName) createUploadOverlay(data);
+    }
+    
+    // ==========================================
+    // 3. TIKTOK ROBUST AUTOMATION
+    // ==========================================
+    async function fillTikTok(data) {
+        const conf = AUTOFILL_CONFIG.tiktok?.autofill || {};
+        const defaults = {
+            company: "FloSports",
+            phone: "5122702356",
+            address: "301 Congress ave #1500 Austin Tx 78701",
+            email: data.email || "copyright@flosports.tv",
+            name: data.fullName
+        };
+    
+        console.log("🎵 Running Bullet-Proof TikTok Strategy...");
+    
+        // --- STEP 0: BYPASS WIZARD VIA URL ---
+        const currentUrl = new URL(window.location.href);
+        const hasIssueType = currentUrl.searchParams.get("issueType");
+        const hasAffected = currentUrl.searchParams.get("affected");
+    
+        if ((!hasIssueType || !hasAffected) && conf.prefill_params) {
+            console.log("⚡ Redirecting to pre-filled URL to skip wizard...");
+            const newUrl = new URL(currentUrl.origin + currentUrl.pathname);
+            for (const [key, val] of Object.entries(conf.prefill_params)) {
+                newUrl.searchParams.set(key, val);
+            }
+            newUrl.searchParams.set("email", defaults.email);
+            window.location.href = newUrl.toString();
+            return; 
+        }
+    
+        // --- HELPER: ROBUST FINDER ---
+        const findElement = (selector) => {
+            if (!selector) return null;
             try {
-                const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                el = res.singleNodeValue;
-            } catch(e){}
-        }
-        if (el) return el;
-        await sleep(200);
-    }
-    return null;
-}
-
-async function fillBySelector(selector, value) {
-    if (!value) return false;
-
-    // HEURISTIC: Is this already a complex CSS selector?
-    // Checks for space, dot, hash, brackets, colon, or greater-than
-    const isComplexSelector = /[ .#\[:>]/.test(selector);
-
-    let finalSelector = selector;
-
-    if (!isComplexSelector) {
-        // It's likely just a name "email" or ID "email-field"
-        finalSelector = `[name="${selector}"], #${selector}`;
-    }
-
-    try {
-        const el = document.querySelector(finalSelector);
-        if (el) {
-            await typeInField(el, value);
-            return true;
-        }
-    } catch (e) {
-        // Only warn if it's NOT a syntax error (which happens when text is passed as selector)
-        if (e.name !== 'SyntaxError') {
-            console.warn(`PIRATE AI: Skipping selector "${selector}" - ${e.message}`);
-        }
-    }
-    return false;
-}
-
-async function fillByName(nameAttr, value) {
-    return fillBySelector(`[name="${nameAttr}"]`, value);
-}
-
-async function fillByPlaceholder(partialPlaceholder, value) {
-    if (!value) return false;
-    const inputs = Array.from(document.querySelectorAll('input, textarea'));
-    const target = inputs.find(el => el.placeholder && el.placeholder.toLowerCase().includes(partialPlaceholder.toLowerCase()));
-    if (target) {
-        await typeInField(target, value);
-        return true;
-    }
-    return false;
-}
-
-async function fillInputByLabel(labelText, value) {
-  if (!value) return false;
-  const lowerLabel = labelText.toLowerCase();
-  const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "${lowerLabel}")]`;
-  try {
-      const snapshot = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-
-      let targetInput = null;
-      for (let i = 0; i < snapshot.snapshotLength; i++) {
-          const node = snapshot.snapshotItem(i);
-          if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
-
-          const forId = node.getAttribute('for');
-          if (forId) {
-              targetInput = document.getElementById(forId);
-              if (targetInput) break;
-          }
-
-          let parent = node;
-          for(let k=0; k<3; k++) { 
-              if (!parent) break;
-              const input = parent.querySelector('input:not([type="hidden"]), textarea');
-              if (input) {
-                  targetInput = input;
-                  break;
-              }
-              parent = parent.parentElement;
-          }
-          if (targetInput) break;
-      }
-
-      if (targetInput) {
-          await typeInField(targetInput, value);
-          return true;
-      }
-  } catch(e) { console.warn("Label xpath failed", e); }
-  return false;
-}
-
-async function clickByText(text) {
-    const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
-    try {
-        const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        const el = res.singleNodeValue;
-        if (el) {
-            el.scrollIntoView({block: "center"});
+                if (selector.startsWith('//') || selector.startsWith('(')) {
+                    const res = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    return res.singleNodeValue;
+                } else {
+                    return document.querySelector(selector);
+                }
+            } catch (e) { return null; }
+        };
+    
+        // --- HELPER: SIMULATE HUMAN TYPING ---
+        const simulateTyping = (el, val) => {
+            if (!el) return false;
+    
+            el.focus();
             el.click();
+    
+            // 3. FIX: TypeError: Illegal invocation
+            // Dynamically get the correct prototype (HTMLInputElement vs HTMLTextAreaElement)
+            try {
+                const proto = Object.getPrototypeOf(el);
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(proto, "value").set;
+                
+                // 1. Clear first (using native setter)
+                if (nativeInputValueSetter) {
+                    nativeInputValueSetter.call(el, "");
+                } else {
+                    el.value = "";
+                }
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+    
+                // 2. Try execCommand (Human Simulation)
+                let success = false;
+                try {
+                    success = document.execCommand('insertText', false, val);
+                } catch (err) {
+                    // Ignore execCommand errors
+                }
+    
+                // 3. Fallback if execCommand failed
+                if (!success) {
+                    if (nativeInputValueSetter) {
+                        nativeInputValueSetter.call(el, val);
+                    } else {
+                        el.value = val;
+                    }
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            } catch (e) {
+                console.warn("React setter hack failed, using standard value assignment:", e);
+                // Absolute last resort: Standard DOM value setting
+                el.value = val;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+    
+            // Finalize events
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('blur', { bubbles: true })); 
+    
             return true;
-        }
-    } catch(e){}
-    return false;
-}
-
-async function typeInField(el, value) {
-    if (!el || !value) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.focus();
-    el.value = value;
-    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-    el.blur();
-}
-
-async function findDeep(selector, root = document.body) {
-    let el = root.querySelector(selector);
-    if (el) return el;
-    const elements = root.querySelectorAll('*');
-    for (const element of elements) {
-        if (element.shadowRoot) {
-            const found = await findDeep(selector, element.shadowRoot);
-            if (found) return found;
-        }
-    }
-    return null;
-}
-
-async function fillDeep(selector, value) {
-    const el = await findDeep(selector);
-    if (el) await typeInField(el, value);
-}
-
-async function findElementByText(text, tagName = "*", root = document.body) {
-    const xpath = `//${tagName}[contains(text(), '${text}')]`;
-    if (root === document.body || root.nodeType === Node.DOCUMENT_NODE) {
-         const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-         if (res.singleNodeValue) return res.singleNodeValue;
-    }
-    const elements = root.querySelectorAll('*');
-    for (const el of elements) {
-        if (el.shadowRoot) {
-            if (el.shadowRoot.textContent.includes(text)) {
-                 const candidates = el.shadowRoot.querySelectorAll(tagName);
-                 for (const cand of candidates) {
-                     if (cand.textContent.includes(text)) return cand;
+        };
+    
+        const typeValue = (el, val) => {
+            if (!el) return false;
+            
+            if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') {
+                const inner = el.querySelector('input, textarea');
+                if (inner) el = inner;
+            }
+    
+            if (!el) return false;
+    
+            el.scrollIntoView({block: "center", behavior: "smooth"});
+            return simulateTyping(el, val);
+        };
+    
+        const applyFieldStrategy = async (strategies, value) => {
+            if (!strategies || !Array.isArray(strategies)) return false;
+            for (const strat of strategies) {
+                const el = findElement(strat);
+                if (el) {
+                    console.log(`   ✅ Found field via: ${strat}`);
+                    return typeValue(el, value);
+                }
+            }
+            return false;
+        };
+    
+        // --- STEP 1: VERIFY EMAIL STEP ---
+        const nameInput = findElement(conf.field_strategies?.name?.[0]);
+        
+        const isIntermediatePage = !nameInput && (
+            document.body.innerText.includes("Verify your email") || 
+            currentUrl.searchParams.has("email")
+        );
+        
+        if (isIntermediatePage) {
+            console.log("🔹 Intermediate Step Detected (Email Verification)...");
+            
+            const emailStrat = [
+                "input[id^='tux-']", 
+                ...(conf.field_strategies?.email || []),
+                "input[type='text']"
+            ];
+            
+            await applyFieldStrategy(emailStrat, defaults.email);
+            await sleep(500);
+    
+            const nextVariants = conf.buttons?.next || ['Next'];
+            const btn = await waitForButton(nextVariants, 2000);
+            
+            if (btn) {
+                 if (btn.disabled) {
+                     console.log("⚠️ Next button disabled. Retrying input trigger...");
+                     await applyFieldStrategy(emailStrat, defaults.email + " "); 
+                     await sleep(200);
+                     await applyFieldStrategy(emailStrat, defaults.email); 
+                 }
+                 
+                 if (!btn.disabled) {
+                     console.log("➡️ Clicking Next...");
+                     btn.click();
+                     await sleep(3000); 
+                 } else {
+                     console.warn("❌ Next button still disabled.");
                  }
             }
-            const found = await findElementByText(text, tagName, el.shadowRoot);
-            if (found) return found;
+        }
+    
+        // --- STEP 2: FULL FORM FILL ---
+        console.log("📝 Filling Main Report Form...");
+        
+        // 1. Text Fields
+        const fieldOrder = ['name', 'company', 'phone', 'address', 'urls', 'signature'];
+        
+        for (const key of fieldOrder) {
+            const strategies = conf.field_strategies?.[key];
+            let value = defaults[key] || "";
+            
+            if (key === 'urls') {
+                value = Array.isArray(data.urls) ? data.urls.join('\n') : (data.urls || '');
+            } else if (key === 'signature') {
+                value = defaults.name; // Use reporter name for signature
+            }
+    
+            if (strategies) {
+                await applyFieldStrategy(strategies, value);
+            }
+        }
+    
+        // 2. Radio Buttons
+        if (conf.radios) {
+            // Type of Work
+            if (conf.radios.typeCopyRight) {
+                const el = document.querySelector(conf.radios.typeCopyRight.selector);
+                if (el && !el.checked) {
+                    console.log("🔘 Clicking 'Type of Copyrighted Work'...");
+                    el.click();
+                }
+            }
+            // Source
+            if (conf.radios.copyrightedWorkSource) {
+                const el = document.querySelector(conf.radios.copyrightedWorkSource.selector);
+                if (el && !el.checked) {
+                    console.log("🔘 Clicking 'Source of Copyrighted Work'...");
+                    el.click();
+                }
+            }
+        }
+    
+        // 3. Toggles
+        if (conf.toggles && conf.toggles.needAddSeed) {
+            const toggle = document.querySelector(conf.toggles.needAddSeed);
+            if (toggle && !toggle.checked) { 
+                 console.log("🎚️ Toggling 'Prevent Future Copies'...");
+                 toggle.click();
+            }
+        }
+    
+        // 4. Checkboxes (Statements)
+        if (conf.checkboxes && conf.checkboxes.agreement) {
+            const agreementBoxes = document.querySelectorAll(conf.checkboxes.agreement);
+            agreementBoxes.forEach(cb => {
+                if (!cb.checked) {
+                    console.log("☑️ Checking Agreement Box...");
+                    cb.click();
+                }
+            });
+        }
+    
+        // Fallback Checkboxes
+        const allCheckboxes = document.querySelectorAll('input[type="checkbox"]');
+        allCheckboxes.forEach(cb => { try { if (!cb.checked) cb.click(); } catch(e){} });
+    
+        // Highlight Send Button
+        const sendVariants = conf.buttons?.send || ['Send', 'Submit'];
+        const sendBtn = await waitForButton(sendVariants, 2000);
+        if (sendBtn) {
+            sendBtn.scrollIntoView({block: 'center'});
+            sendBtn.style.border = "4px solid #ce0e2d"; 
         }
     }
-    return null;
-}
-
-async function selectDropdownOption(label, optionText) {
-    const trigger = await findElementByText(label, "ytcp-dropdown-trigger");
-    if (trigger) {
-        trigger.click();
-        await sleep(500);
-        const option = await findElementByText(optionText, "paper-item");
-        if (option) option.click();
-        else document.body.click(); 
+    
+    // ==========================================
+    // 4. YOUTUBE (Legacy Logic Preserved)
+    // ==========================================
+    async function fillYouTube(data) {
+        const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
+        console.log("📝 Running YouTube Strategy...");
+    
+        async function waitAndClick(textOrSel, time=3000) {
+           const btn = await waitForButton(textOrSel, time);
+           if (btn) { btn.click(); return true; }
+           return false;
+        }
+    
+        const infringingUrls = data.urls || [];
+        
+        for (const [index, badUrl] of infringingUrls.entries()) {
+            const addBtnText = conf.buttons?.add_video || "Add a video";
+            await waitAndClick(addBtnText, 5000);
+            await sleep(1000);
+    
+            const badInputSel = conf.inputs.infringing_url?.[0];
+            const titleInputSel = conf.inputs.video_title?.[0];
+            
+            const fillSimple = async (sel, val) => {
+                const el = document.querySelector(sel);
+                if(el) { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }
+            };
+    
+            if(titleInputSel) await fillSimple(titleInputSel, data.eventName || "FloSports Event");
+            if(badInputSel) await fillSimple(badInputSel, badUrl);
+            
+            await waitAndClick(conf.buttons?.save || "#save-button", 3000);
+            await sleep(2000);
+        }
     }
-}
+    
+    async function fillInstagram(data) {
+        const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
+        if(conf.name) {
+            const el = document.querySelector(`[name="${conf.name}"]`);
+            if(el) el.value = data.fullName;
+        }
+    }
+    
+    async function fillTwitter(data) {
+        const conf = AUTOFILL_CONFIG.twitter?.autofill || {};
+        if(conf.name) {
+            const el = document.querySelector(`[name="${conf.name}"]`);
+            if(el) el.value = data.fullName;
+        }
+    }
+    
+    async function waitForButton(variants, timeout) {
+        const start = Date.now();
+        if (!Array.isArray(variants)) variants = [variants];
+    
+        while (Date.now() - start < timeout) {
+            for (const v of variants) {
+                let el;
+                if (v.startsWith('//')) {
+                    // XPath
+                    try {
+                        const res = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                        el = res.singleNodeValue;
+                    } catch(e){}
+                } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
+                    // CSS
+                    try { el = document.querySelector(v); } catch(e){}
+                } else {
+                    // Text Match
+                    const xpath = `//button[contains(text(), '${v}')]`;
+                    try {
+                        const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                        el = res.singleNodeValue;
+                    } catch(e){}
+                }
+    
+                if (el && el.offsetParent !== null && !el.disabled) return el;
+            }
+            await sleep(200);
+        }
+        return null;
+    }
+    
+    // Overlay Logic
+    function createUploadOverlay(data) {
+      const existing = document.getElementById("flo-upload-overlay");
+      if (existing) existing.remove();
+    
+      const overlay = document.createElement("div");
+      overlay.id = "flo-upload-overlay";
+      overlay.style.cssText = `
+        position: fixed; top: 80px; right: 20px; width: 300px;
+        background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
+      `;
+    
+      overlay.innerHTML = `
+        <h3 style="margin-top:0; color:#ce0e2d;">FloSports Helper ✥</h3>
+        <div style="margin-bottom: 10px; border-bottom: 1px solid #eee;">
+          <strong>Platform:</strong> ${data.platform || "TikTok"}<br>
+          <small>Review fields, then click Send.</small>
+        </div>
+        <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+        <div id="flo-log-status" style="margin-top:8px; font-size:12px;"></div>
+      `;
+    
+      document.body.appendChild(overlay);
+    
+      let isDragging = false, startX, startY, initialLeft, initialTop;
+      overlay.addEventListener('mousedown', (e) => {
+          if (['BUTTON'].includes(e.target.tagName)) return;
+          isDragging = true; startX = e.clientX; startY = e.clientY;
+          const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
+          overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
+          e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+          if (!isDragging) return;
+          overlay.style.left = `${initialLeft + (e.clientX - startX)}px`;
+          overlay.style.top = `${initialTop + (e.clientY - startY)}px`;
+      });
+      document.addEventListener('mouseup', () => isDragging = false);
+    
+      document.getElementById("flo-log-btn").addEventListener("click", () => {
+        const status = document.getElementById("flo-log-status");
+        status.innerText = "Logging...";
+        chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+          if (response && response.success) {
+            status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
+            setTimeout(() => overlay.remove(), 2000);
+          } else {
+            status.innerText = "❌ Failed."; status.style.color = "red";
+          }
+        });
+      });
+    }
 
-// ==========================================
-// 7. OVERLAY
-// ==========================================
-function createUploadOverlay(data) {
-  const existing = document.getElementById("flo-upload-overlay");
-  if (existing) existing.remove();
-	@@ -622,77 +319,42 @@ function createUploadOverlay(data) {
-  `;
-
-  overlay.innerHTML = `
-    <h3 id="flo-overlay-header" style="margin-top:0; color:#ce0e2d; cursor: move;">FloSports Helper ✥</h3>
-    <div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
-      <strong>Platform:</strong> ${data.platform || "TikTok"}<br>
-      <strong>Status:</strong> Form Attempted.<br>
-      <small style="color:#666;">Double check all fields.</small>
-    </div>
-    <div style="margin-bottom: 15px;">
-      <strong>Step 2:</strong> Submit Report<br>
-      <small>Click "Send" on the form.</small>
-    </div>
-    <div>
-      <strong>Step 3:</strong> Log to Sheet<br>
-      <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%; margin-top:5px;">Log & Finish</button>
-      
-      <div id="flo-progress-container" style="display:none; width: 100%; background-color: #f1f1f1; border-radius: 4px; margin-top: 10px; overflow: hidden;">
-        <div id="flo-progress-fill" style="width: 0%; height: 8px; background-color: #ce0e2d; border-radius: 4px; transition: width 0.3s ease-in-out;"></div>
-      </div>
-      
-      <div id="flo-log-status" style="margin-top:8px; font-size:12px; font-weight:bold;"></div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  let isDragging = false;
-  let startX, startY, initialLeft, initialTop;
-
-  overlay.addEventListener('mousedown', (e) => {
-      if (['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) return;
-      isDragging = true; startX = e.clientX; startY = e.clientY;
-      const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
-      overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
-      e.preventDefault();
-  });
-
-  document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      const dx = e.clientX - startX; const dy = e.clientY - startY;
-      overlay.style.left = `${initialLeft + dx}px`; overlay.style.top = `${initialTop + dy}px`;
-  });
-
-  document.addEventListener('mouseup', () => { isDragging = false; });
-
-  document.getElementById("flo-log-btn").addEventListener("click", () => {
-    const status = document.getElementById("flo-log-status");
-    const btn = document.getElementById("flo-log-btn");
-    const progressContainer = document.getElementById("flo-progress-container");
-    const progressFill = document.getElementById("flo-progress-fill");
-
-    status.innerText = "⏳ Generating PDF & Logging...";
-    status.style.color = "blue";
-    btn.disabled = true;
-    btn.style.background = "#ccc";
-    progressContainer.style.display = "block";
-
-    let width = 0;
-    const interval = setInterval(() => {
-        if (width >= 90) { clearInterval(interval); } else { width += (Math.random() * 5); progressFill.style.width = width + "%"; }
-    }, 200);
-
-    chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
-      clearInterval(interval); 
-      if (response && response.success) {
-        progressFill.style.width = "100%"; progressFill.style.backgroundColor = "#4CAF50"; 
-        status.innerText = "✅ Logged Successfully! Closing..."; status.style.color = "green";
-        setTimeout(() => overlay.remove(), 2500);
-      } else {
-        progressFill.style.backgroundColor = "red"; status.innerText = "❌ Log Failed."; status.style.color = "red";
-        btn.disabled = false; btn.style.background = "#ce0e2d";
-      }
-    });
-  });
-
-}
+})();
