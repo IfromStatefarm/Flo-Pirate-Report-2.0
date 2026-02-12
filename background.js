@@ -22,6 +22,18 @@ import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
 
+// --- ALARMS ---
+const ALARM_NAME = "theCloser";
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.alarms.create(ALARM_NAME, { periodInMinutes: 60 });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) {
+    runSheetScanner(1); // Default to row 1 on auto-run
+  }
+});
+
 // --- ID GENERATOR ---
 function generateReportId() {
   const nums = Math.floor(10 + Math.random() * 90); 
@@ -29,26 +41,169 @@ function generateReportId() {
   return `${nums}${letters}`.toUpperCase();
 }
 
+// --- STOP FLAG ---
+let stopScannerSignal = false;
+
 // ==========================================
-// 1. THE LIVE AUDIT ENGINE (New)
+// 1. THE SHEET SCANNER (The Closer 2.0)
 // ==========================================
 
-/**
- * auditTikTokViews
- * Opens a background tab for a specific URL, waits for load, and scrapes fresh view counts.
- * Prioritizes raw integer data from JSON scripts.
- */
-async function auditTikTokViews(url) {
-    console.log(`🔍 Auditing real-time views for: ${url}`);
+// Helper to send progress to sidepanel
+function sendProgress(status, details) {
+    chrome.runtime.sendMessage({ 
+        action: 'closerProgress', 
+        status: status,
+        details: details 
+    }).catch(() => {}); // Ignore error if panel closed
+}
+
+async function runSheetScanner(startRow = 1) {
+  stopScannerSignal = false;
+  console.log(`🕵️ Sheet Scanner: Starting from Row ${startRow}...`);
+  sendProgress(`Starting from Row ${startRow}`, "Fetching sheet data...");
+  
+  try {
+    const rows = await getColumnHData();
+    let consecutiveBlanks = 0;
+    
+    if (startRow < 1) startRow = 1;
+
+    for (let i = startRow; i < rows.length; i++) {
+        if (stopScannerSignal) {
+            console.log("🛑 Sheet Scanner: Stopped by user.");
+            sendProgress("Scanner Stopped", "User interrupted the process.");
+            break;
+        }
+
+        if (consecutiveBlanks >= 3) {
+            console.log("🕵️ Sheet Scanner: Hit 3 blank cells. Stopping.");
+            sendProgress("Scanner Stopped", "Hit 3 consecutive blank cells.");
+            break;
+        }
+
+        const cellValue = rows[i][0]; 
+        
+        if (!cellValue) {
+            consecutiveBlanks++;
+            continue;
+        }
+        
+        consecutiveBlanks = 0; 
+
+        const urlRegex = /https?:\/\/[^\s,]+/g;
+        let match;
+        const matches = [];
+        while ((match = urlRegex.exec(cellValue)) !== null) {
+            matches.push({ url: match[0], index: match.index, end: match.index + match[0].length });
+        }
+        
+        if (matches.length === 0) continue;
+
+        console.log(`Row ${i+1}: Checking ${matches.length} links...`);
+        sendProgress(`Scanning Row ${i+1}`, `Found ${matches.length} link(s)...`);
+
+        let activeCount = 0;
+        let deadCount = 0;
+        
+        const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 } };
+        const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 } };
+        
+        let currentRuns = [{ startIndex: 0, format: defaultStyle }];
+        const deadRanges = []; 
+
+        for (let j = 0; j < matches.length; j++) {
+            if (stopScannerSignal) break;
+
+            const { url, index, end } = matches[j];
+            sendProgress(`Row ${i+1}`, `Link ${j+1}/${matches.length}: Checking...`);
+            
+            let platform = 'unknown';
+            if (url.includes('tiktok')) platform = 'tiktok';
+            else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
+            else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
+            else if (url.includes('instagram')) platform = 'instagram';
+            else if (url.includes('facebook')) platform = 'facebook';
+            else if (url.includes('twitch')) platform = 'twitch';
+
+            try {
+                const isDown = await verifyTakedownViaTab(url, platform); 
+                
+                if (isDown) {
+                    deadCount++;
+                    console.log(`  - DOWN: ${url}`);
+                    deadRanges.push({ start: index, end: end });
+                    deadRanges.sort((a, b) => a.start - b.start);
+
+                    const newRuns = [];
+                    let cursor = 0;
+                    
+                    if (deadRanges.length > 0 && deadRanges[0].start > 0) {
+                         newRuns.push({ startIndex: 0, format: defaultStyle });
+                    }
+                    
+                    for (const range of deadRanges) {
+                        if (range.start > cursor) {
+                            newRuns.push({ startIndex: cursor, format: defaultStyle });
+                        }
+                        newRuns.push({ startIndex: range.start, format: deadStyle });
+                        cursor = range.end;
+                    }
+                    
+                    if (cursor < cellValue.length) {
+                        newRuns.push({ startIndex: cursor, format: defaultStyle });
+                    }
+
+                    await updateCellWithRichText(i, cellValue, newRuns);
+                    
+                } else {
+                    activeCount++;
+                    console.log(`  - ACTIVE: ${url}`);
+                }
+            } catch (err) {
+                console.warn(`  - Error checking ${url}:`, err);
+                activeCount++; 
+            }
+            
+            await new Promise(r => setTimeout(r, 1500)); 
+        }
+
+        if (stopScannerSignal) {
+             sendProgress("Scanner Stopped", "Operation cancelled.");
+             break;
+        }
+
+        if (deadCount > 0 && activeCount === 0) {
+            console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
+            sendProgress(`Row ${i+1}: Resolved`, "Updating Sheet...");
+            await updateRowStatus(i, "Resolved");
+        } else if (activeCount > 0 && deadCount > 0) {
+             console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
+             sendProgress(`Row ${i+1}: Investigating`, `${deadCount} dead links struck.`);
+             await updateRowStatus(i, "Investigating");
+        }
+    }
+    
+    if (!stopScannerSignal) {
+        console.log("🕵️ Sheet Scanner: Complete.");
+        sendProgress("Scanner Complete", "Finished processing rows.");
+    }
+
+  } catch (e) {
+    console.error("Sheet Scanner Failed:", e);
+    sendProgress("Scanner Failed", e.message);
+  }
+}
+
+// Uses Tab Loading to check if video exists
+async function verifyTakedownViaTab(url, platform) {
     let tabId = null;
     try {
-        // Open URL in an inactive tab
         const tab = await chrome.tabs.create({ url: url, active: false });
         tabId = tab.id;
 
-        // Wait for page to reach 'complete' status
-        await new Promise((resolve) => {
-            const timeout = setTimeout(() => resolve("timeout"), 15000); 
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => resolve("timeout"), 12000); 
+            
             const listener = (tid, info) => {
                 if (tid === tabId && info.status === 'complete') {
                     clearTimeout(timeout);
@@ -59,69 +214,75 @@ async function auditTikTokViews(url) {
             chrome.tabs.onUpdated.addListener(listener);
         });
         
-        // Brief buffer for client-side hydration
-        await new Promise(r => setTimeout(r, 2500));
+        await new Promise(r => setTimeout(r, 2000));
 
         const result = await chrome.scripting.executeScript({
             target: { tabId: tabId },
-            func: () => {
+            func: (plat) => {
                 const text = document.body.innerText.toLowerCase();
+                const title = document.title.toLowerCase();
+                if (title.includes("404") || title.includes("not found") || title.includes("page not found")) return true;
+
+                if (plat === 'tiktok') {
+                    if (text.includes("video currently unavailable")) return true;
+                    if (text.includes("video not found")) return true;
+                    if (text.includes("couldn't find this account")) return true;
+                    if (text.includes("page not available")) return true;
+                    if (document.querySelector('[data-e2e="video-removed"]')) return true;
+                }
                 
-                // Check if video is deleted or unavailable
-                if (text.includes("video currently unavailable") || 
-                    text.includes("video not found") || 
-                    text.includes("page not available") ||
-                    document.title.includes("404")) {
-                    return "DELETED";
+                if (plat === 'youtube') {
+                    if (text.includes("video unavailable")) return true;
+                    if (text.includes("video has been removed")) return true;
+                    if (text.includes("video is private")) return true;
+                    if (text.includes("this video is no longer available")) return true;
+                    if (window.location.href === "https://www.youtube.com/") return true; 
+                }
+                
+                if (plat === 'twitter') {
+                    if (text.includes("this page doesn’t exist")) return true;
+                    if (text.includes("tweet has been deleted")) return true;
+                    if (text.includes("account suspended")) return true;
+                }
+                
+                if (plat === 'instagram' || plat === 'facebook') {
+                    if (text.includes("sorry, this page isn't available")) return true;
+                    if (text.includes("link you followed may be broken")) return true;
+                    if (text.includes("content isn't available")) return true;
                 }
 
-                // Strategy 1: Extract from rehydration JSON (Highest Precision)
-                const jsonIds = ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"];
-                for (const id of jsonIds) {
-                    const el = document.getElementById(id);
-                    if (el && el.textContent) {
-                        try {
-                            const json = JSON.parse(el.textContent);
-                            const vidMatch = window.location.href.match(/\/video\/(\d+)/) || window.location.href.match(/\/photo\/(\d+)/);
-                            const vidId = vidMatch ? vidMatch[1] : null;
-
-                            // Check SIGI_STATE path
-                            if (vidId && json.ItemModule?.[vidId]?.stats?.playCount !== undefined) {
-                                return json.ItemModule[vidId].stats.playCount;
-                            }
-                            // Check Universal Data path
-                            const detail = json.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct;
-                            if (detail?.stats?.playCount !== undefined) {
-                                return detail.stats.playCount;
-                            }
-                        } catch(e) {}
-                    }
-                }
-
-                // Strategy 2: DOM Fallback
-                const selectors = ['[data-e2e="video-views"]', 'strong[data-e2e="video-views"]'];
-                for (const sel of selectors) {
-                    const el = document.querySelector(sel);
-                    if (el && el.innerText) return el.innerText;
-                }
-
-                return "N/A";
-            }
+                return false;
+            },
+            args: [platform]
         });
 
-        // Close the audit tab immediately
-        if (tabId) chrome.tabs.remove(tabId).catch(() => {});
-        return result[0]?.result || "N/A";
+        chrome.tabs.remove(tabId).catch(() => {});
+        return result[0]?.result || false;
 
     } catch (e) {
-        console.error("Audit Tab Error:", e);
+        console.error("Tab Check Error:", e);
         if (tabId) chrome.tabs.remove(tabId).catch(() => {});
-        return "ERROR";
+        return false;
     }
 }
 
 // ==========================================
-// 2. MAIN MESSAGE HANDLER
+// 2. BOT INJECTION LISTENER
+// ==========================================
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete') {
+    const session = await chrome.storage.session.get(['activeSearchTabId']);
+    if (session.activeSearchTabId && tabId === session.activeSearchTabId) {
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ['search_bot.js']
+        }).catch(err => console.error("Failed to inject bot:", err));
+    }
+  }
+});
+
+// ==========================================
+// 3. MAIN MESSAGE HANDLER
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
@@ -137,8 +298,54 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; 
   }
 
+  if (request.action === 'findEventUrl') {
+    handleDynamicSearch(request.data).then(sendResponse);
+    return true; 
+  }
+
+  if (request.action === 'getVerticalData') {
+    getEventData(request.vertical).then(data => sendResponse({ success: true, data: data }));
+    return true; 
+  }
+
+  if (request.action === 'botSearchComplete') {
+    chrome.storage.session.get(['activeEventDetails', 'activeSearchTabId'], (session) => {
+        const activeEventDetails = session.activeEventDetails;
+        const activeSearchTabId = session.activeSearchTabId;
+
+        if (activeEventDetails) {
+          const { vertical, rowIndex, originalName } = activeEventDetails;
+          if (rowIndex === 'APPEND') {
+            addNewEventToSheet(vertical, originalName, request.url);
+          } else {
+            updateEventUrl(vertical, rowIndex, request.url);
+          }
+          if (activeSearchTabId) chrome.tabs.remove(activeSearchTabId).catch(() => {});
+          
+          chrome.runtime.sendMessage({ 
+            action: 'urlFound', 
+            url: request.url,
+            source: 'Automated Search' 
+          });
+          chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
+        }
+    });
+    sendResponse({ received: true });
+    return true;
+  }
+
+  if (request.action === 'botSearchFailed') {
+    chrome.runtime.sendMessage({ action: 'botSearchFailed', error: request.reason });
+    chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
+    sendResponse({ received: true });
+    return true;
+  }
+
   if (request.action === 'logToSheet') {
-      handleBatchReport(request.data).then(res => sendResponse({ success: res.success }));
+      handleBatchReport(request.data).then(res => {
+          sendResponse({ success: res.success });
+          if(res.success) chrome.runtime.sendMessage({ action: "playSuccessSound" }); 
+      });
       return true;
   }
 
@@ -159,123 +366,79 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === "saveEventUrl") {
+    handleUrlSave(request.data);
+    return false; 
+  }
+
   if (request.action === 'openPopup') {
     if (sender.tab && sender.tab.id) chrome.sidePanel.open({ tabId: sender.tab.id });
     return true;
   }
+  
+  if (request.action === 'appendEventToSheet') {
+      const { vertical, eventName, eventUrl } = request.data;
+      addNewEventToSheet(vertical, eventName, eventUrl);
+      return false;
+  }
 
-  // Messenger for automated search bots
-  if (request.action === 'botSearchComplete' || request.action === 'botSearchFailed') {
-      // Logic for handling crawler updates
+  if (request.action === 'triggerCloser') {
+      const startRow = request.startRow || 1;
+      runSheetScanner(startRow).then(() => sendResponse({ success: true }));
+      return true;
+  }
+
+  if (request.action === 'stopSheetScanner') {
+      stopScannerSignal = true;
+      sendResponse({ success: true });
       return true;
   }
 });
 
 // ==========================================
-// 3. BATCH PROCESSING & AUDIT LOGIC
+// 4. HELPER FUNCTIONS
 // ==========================================
 
-async function handleBatchReport(formData) {
+async function handleDynamicSearch(data) {
   try {
-    const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
-    let cart = storage.piracy_cart || [];
-    const finalReporterName = formData.fullName || storage.last_reporter || "Unknown User";
-
-    if (cart.length === 0) return { success: false, error: "Empty cart" };
-
-    // --- PHASE 1: LIVE AUDIT ---
-    // Iterate through the cart and refresh data for TikTok items
-    console.log("🚀 Starting Live Audit of all cart items...");
-    for (let i = 0; i < cart.length; i++) {
-        const item = cart[i];
-        if (item.platform === "TikTok") {
-            const freshViews = await auditTikTokViews(item.url);
-            cart[i].views = freshViews;
-            
-            // 2-second rate limit delay between opening tabs
-            await new Promise(r => setTimeout(r, 2000));
+    const session = await chrome.storage.session.get(['activeSearchTabId', 'activeEventDetails']);
+    if (session.activeSearchTabId) {
+        try {
+            await chrome.tabs.get(session.activeSearchTabId);
+            return { 
+                success: false, 
+                error: "SEARCH_IN_PROGRESS", 
+                activeEvent: session.activeEventDetails?.eventName || "Unknown"
+            };
+        } catch (e) {
+            await chrome.storage.session.remove(['activeSearchTabId', 'activeEventDetails']);
         }
     }
 
-    const token = await getAuthToken();
-    const currentYear = new Date().getFullYear();
-    const dateStr = new Date().toISOString().split('T')[0];
-    const todayFormatted = new Date().toLocaleDateString("en-US");
+    const { eventName, vertical } = data;
+    const sheetData = await getEventData(vertical); 
+    const searchBaseUrl = sheetData.searchUrl;
+    if (!searchBaseUrl) return { success: false, error: "No Search URL found in Sheet." };
+
+    const eventKey = eventName.toLowerCase();
+    const existingEvent = sheetData.eventMap[eventKey];
     
-    const yearFolderId = await ensureYearlyReportFolder(token, currentYear);
-    const screenshotsFolderId = await ensureDailyScreenshotFolder(token, dateStr);
+    const eventDetails = {
+        vertical: vertical,
+        eventName: eventName,
+        originalName: eventName,
+        rowIndex: existingEvent ? existingEvent.rowIndex : 'APPEND'
+    };
 
-    // Group items by handle for individual reports
-    const grouped = {};
-    cart.forEach(item => {
-      const handle = item.handle || "Unknown";
-      if (!grouped[handle]) grouped[handle] = [];
-      grouped[handle].push(item);
+    const finalUrl = searchBaseUrl; 
+    const tab = await chrome.tabs.create({ url: finalUrl, active: true });
+    
+    await chrome.storage.session.set({
+        activeSearchTabId: tab.id,
+        activeEventDetails: eventDetails
     });
-
-    for (const handle of Object.keys(grouped)) {
-      const items = grouped[handle];
-      const urls = items.map(i => i.url);
-      const urlString = urls.join('\n'); 
-      const viewString = items.map(i => i.views).join('\n'); 
-      const reportId = generateReportId();
-
-      // Upload Screenshots and build evidence list
-      const evidenceLinks = []; 
-      for (const item of items) {
-          let imgLink = "No Screenshot Available";
-          if (item.screenshotId) {
-              const imgDataUrl = await getImage(item.screenshotId);
-              if (imgDataUrl) {
-                  const response = await fetch(imgDataUrl);
-                  const upload = await uploadToDrive(token, screenshotsFolderId, `${reportId}_Evidence_@${handle}.jpg`, await response.blob(), 'image/jpeg');
-                  imgLink = upload.webViewLink; 
-              }
-          }
-          evidenceLinks.push({ url: item.url, screenshotLink: imgLink, views: item.views });
-      }
-
-      // Generate PDF
-      const pdfData = { 
-          eventName: formData.eventName, 
-          vertical: formData.vertical, 
-          reporterName: finalReporterName, 
-          handle, 
-          items: evidenceLinks,
-          reportId: reportId 
-      };
-      
-      const pdfBlob = await generatePDF(pdfData);
-      const pdfUpload = await uploadToDrive(token, yearFolderId, `Report_${reportId}_@${handle}.pdf`, pdfBlob, 'application/pdf');
-
-      // Final Log to Foundation Sheet
-      await appendToSheet(token, { values: [
-          todayFormatted, 
-          formData.vertical, 
-          formData.eventName, 
-          items[0].platform, 
-          "VOD", 
-          viewString, 
-          finalReporterName, 
-          urlString, 
-          "DMCA takedown request", 
-          "Reported", 
-          `Report: ${pdfUpload.webViewLink}`, 
-          finalReporterName, 
-          "", "", "", "", "", "", "", 
-          reportId
-      ]});
-      
-      await new Promise(r => setTimeout(r, 1000));
-    }
-
-    // Cleanup session
-    await chrome.storage.local.remove('piracy_cart');
-    await clearImages();
-    chrome.runtime.sendMessage({ action: "playSuccessSound" }).catch(() => {});
-    return { success: true };
+    return { success: true, status: "tab_opened" };
   } catch (e) {
-    console.error("Batch Report Error:", e);
     return { success: false, error: e.message };
   }
 }
@@ -283,12 +446,12 @@ async function handleBatchReport(formData) {
 async function handleAddVideo(tab, data) {
   try {
     const screenshotPromise = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 50 });
-    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2500));
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2000));
     const screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
     const screenshotId = crypto.randomUUID();
     if (screenshotUrl) await saveImage(screenshotId, screenshotUrl);
 
-    const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null };
+    const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null, timestamp: new Date().toISOString() };
     const storage = await chrome.storage.local.get('piracy_cart');
     let cart = storage.piracy_cart || [];
     if (!cart.some(item => item.url === data.url)) {
@@ -299,4 +462,149 @@ async function handleAddVideo(tab, data) {
   } catch (e) {
     return { success: false, error: e.message };
   }
+}
+
+// ------------------------------------------
+// UPDATED BATCH REPORT LOGIC
+// ------------------------------------------
+async function handleBatchReport(formData) {
+  try {
+    const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
+    const cart = storage.piracy_cart || [];
+    const savedName = storage.last_reporter || "Unknown User";
+    const finalReporterName = formData.reporterName || savedName;
+
+    if (cart.length === 0 && formData.urls) {
+        if (Array.isArray(formData.urls)) formData.urls.forEach(u => cart.push({ url: u, handle: "Manual", views: "N/A" }));
+    }
+
+    const token = await getAuthToken();
+    const currentYear = new Date().getFullYear();
+    const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const todayFormatted = new Date().toLocaleDateString("en-US");
+    
+    // 1. Ensure Folder Structure
+    // - Reports go to: "Pirated Reports for {Year}"
+    // - Screenshots go to: "All Screenshots/{YYYY-MM-DD}"
+    const yearFolderId = await ensureYearlyReportFolder(token, currentYear);
+    const screenshotsFolderId = await ensureDailyScreenshotFolder(token, dateStr);
+
+    // Grouping logic
+    const grouped = {};
+    cart.forEach(item => {
+      const handle = item.handle || "Unknown";
+      if (!grouped[handle]) grouped[handle] = [];
+      grouped[handle].push(item);
+    });
+
+    // --- BATCH PROCESSING LOOP ---
+    for (const handle of Object.keys(grouped)) {
+      const items = grouped[handle];
+      const urls = items.map(i => i.url);
+      const urlString = urls.join('\n'); 
+      const viewString = items.map(i => i.views || "N/A").join('\n');
+      const reportId = generateReportId();
+
+      let detectedPlatform = "TikTok"; 
+      if (urls[0].includes('youtube')) detectedPlatform = "YouTube";
+      
+      // 2. UPLOAD SCREENSHOTS TO "ALL SCREENSHOTS/{DATE}"
+      // We do this FIRST so we can get the webViewLink for the PDF.
+      const evidenceLinks = []; 
+      
+      for (const item of items) {
+          let imgLink = "No Screenshot Available";
+          if (item.screenshotId) {
+              const imgDataUrl = await getImage(item.screenshotId);
+              if (imgDataUrl) {
+                  const response = await fetch(imgDataUrl);
+                  // Upload to the separate daily screenshots folder
+                  const upload = await uploadToDrive(token, screenshotsFolderId, `${reportId}_Evidence_@${handle}.jpg`, await response.blob(), 'image/jpeg');
+                  imgLink = upload.webViewLink; 
+              }
+          }
+          evidenceLinks.push({ 
+              url: item.url, 
+              screenshotLink: imgLink, 
+              views: item.views 
+          });
+      }
+
+      // 3. GENERATE PDF (Report goes to Year Folder)
+      // We pass the full 'evidenceLinks' array which now contains the Google Drive links
+      const pdfData = { 
+          eventName: formData.eventName, 
+          vertical: formData.vertical, 
+          reporterName: finalReporterName, 
+          handle, 
+          items: evidenceLinks,
+          reportId: reportId 
+      };
+      
+      const pdfBlob = await generatePDF(pdfData);
+      
+      // 4. UPLOAD PDF TO YEAR FOLDER
+      const pdfName = `Report_${reportId}_@${handle}.pdf`;
+      const pdfUpload = await uploadToDrive(token, yearFolderId, pdfName, pdfBlob, 'application/pdf');
+
+      // 5. LOG TO SHEET
+      await appendToSheet(token, { values: [todayFormatted, formData.vertical, formData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", `Report: ${pdfUpload.webViewLink}`, finalReporterName, "", "", "", "", "", "", "", reportId] });
+      
+      // NEW: Hand off to Playwright for platform automation
+      // We use 'pdfData' because it contains the handle, eventName, vertical, and evidence links
+      await triggerPlaywrightAutomation(pdfData);
+
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
+    // Cleanup
+    await chrome.storage.local.remove('piracy_cart');
+    await clearImages();
+    return { success: true };
+  } catch (e) {
+    console.error("Batch Report Error:", e);
+    return { success: false, error: e.message };
+  }
+}
+
+async function handleUrlSave(data) {
+  try {
+    const { vertical, eventName, url, platform } = data; 
+    const sheetData = await getEventData(vertical);
+    const eventKey = eventName.toLowerCase();
+    const eventInfo = sheetData.eventMap[eventKey];
+    if (eventInfo && eventInfo.rowIndex) await updateEventUrl(vertical, eventInfo.rowIndex, url, platform);
+    else await addNewEventToSheet(vertical, eventName, url, platform);
+  } catch (err) { console.error(err); }
+}
+
+// ==========================================
+// 5. AUTOMATION BRIDGE
+// ==========================================
+async function triggerPlaywrightAutomation(data) {
+    const SERVER_URL = 'http://localhost:3001/report/tiktok';
+    
+    console.log("📤 Sending payload to Playwright server...", data);
+    
+    try {
+        const response = await fetch(SERVER_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: data.items[0].url, // Sends the first URL of the batch to start the automation
+                handle: data.handle,
+                eventName: data.eventName,
+                vertical: data.vertical,
+                reporterName: data.reporterName
+            })
+        });
+
+        const result = await response.json();
+        return result.success;
+    } catch (error) {
+        console.error("🚫 Bridge Error: Ensure the local Node.js server is running.", error);
+        return false;
+    }
 }
