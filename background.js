@@ -550,6 +550,10 @@ async function handleBatchReport(formData) {
       // 5. LOG TO SHEET
       await appendToSheet(token, { values: [todayFormatted, formData.vertical, formData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", `Report: ${pdfUpload.webViewLink}`, finalReporterName, "", "", "", "", "", "", "", reportId] });
       
+      // NEW: Hand off to Playwright for platform automation
+      // We use 'pdfData' because it contains the handle, eventName, vertical, and evidence links
+      await triggerPlaywrightAutomation(pdfData);
+
       await new Promise(r => setTimeout(r, 1500));
     }
 
@@ -572,4 +576,35 @@ async function handleUrlSave(data) {
     if (eventInfo && eventInfo.rowIndex) await updateEventUrl(vertical, eventInfo.rowIndex, url, platform);
     else await addNewEventToSheet(vertical, eventName, url, platform);
   } catch (err) { console.error(err); }
+}
+
+// ==========================================
+// 5. AUTOMATION BRIDGE
+// ==========================================
+async function triggerPlaywrightAutomation(data) {
+    const SERVER_URL = 'http://localhost:3001/report/tiktok';
+    
+    console.log("📤 Sending payload to Playwright server...", data);
+    
+    try {
+        const response = await fetch(SERVER_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: data.items[0].url, // Sends the first URL of the batch to start the automation
+                handle: data.handle,
+                eventName: data.eventName,
+                vertical: data.vertical,
+                reporterName: data.reporterName
+            })
+        });
+
+        const result = await response.json();
+        return result.success;
+    } catch (error) {
+        console.error("🚫 Bridge Error: Ensure the local Node.js server is running.", error);
+        return false;
+    }
 }
