@@ -551,7 +551,6 @@ async function handleBatchReport(formData) {
       await appendToSheet(token, { values: [todayFormatted, formData.vertical, formData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", `Report: ${pdfUpload.webViewLink}`, finalReporterName, "", "", "", "", "", "", "", reportId] });
       
       // NEW: Hand off to Playwright for platform automation
-      // We use 'pdfData' because it contains the handle, eventName, vertical, and evidence links
       await triggerPlaywrightAutomation(pdfData);
 
       await new Promise(r => setTimeout(r, 1500));
@@ -593,7 +592,7 @@ async function triggerPlaywrightAutomation(data) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                url: data.items[0].url, // Sends the first URL of the batch to start the automation
+                url: data.items[0].url, 
                 handle: data.handle,
                 eventName: data.eventName,
                 vertical: data.vertical,
