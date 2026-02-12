@@ -279,6 +279,7 @@ export async function appendToSheet(token, logData) {
   
   let values;
 
+  // Supports both explicit row array (used by batch report) and object (fallback)
   if (logData.values && Array.isArray(logData.values)) {
       values = [logData.values];
   } 
@@ -288,7 +289,7 @@ export async function appendToSheet(token, logData) {
         now.toLocaleDateString(),
         logData.vertical || "Unknown",
         logData.eventName || "Unknown",
-        "TikTok", // Default if not provided
+        "TikTok", 
         "VOD",
         "N/A",
         logData.reporterName || "Unknown",
@@ -441,8 +442,4 @@ export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
   });
-}
-
-export async function updateReportStatus(reportId, newStatus) {
-    return true; 
 }

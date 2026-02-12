@@ -19,8 +19,6 @@
     },
     youtube: {
       channel_link: '#channel-name a',
-      views_std: 'span.view-count',
-      views_shorts: 'span[role="text"][aria-label*="views"]'
     },
     instagram: {
       handle: 'header a'
@@ -53,11 +51,6 @@
     if (overlay) {
       overlay.innerHTML = `<div style="padding:15px; color:#666;">⚠️ Extension Updated<br><button style="margin-top:5px; padding:5px;" onclick="location.reload()">Refresh Page</button></div>`;
       overlay.style.border = "2px solid red";
-    } else {
-      const errDiv = document.createElement('div');
-      errDiv.style.cssText = "position: fixed; top: 150px; right: 20px; z-index: 2147483647; background: white; border: 2px solid red; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif;";
-      errDiv.innerHTML = `⚠️ Extension Context Invalidated.<br><button style="margin-top:5px; padding:5px; cursor:pointer;" onclick="location.reload()">Refresh Page</button>`;
-      document.body.appendChild(errDiv);
     }
   }
 
@@ -78,15 +71,16 @@
   }
 
   // ==========================================
-  // 1. THE STRATEGY SCRAPER
+  // 1. THE STRATEGY SCRAPER (Simplified for Live Audit)
   // ==========================================
   function scrapePageStrategy() {
     const host = window.location.hostname;
     const url = window.location.href;
     const timestamp = new Date().toISOString();
-    let views = "N/A"; 
-
-    console.log("PIRATE AI: Attempting scrape on", host, url);
+    
+    // VIEWS are now "PENDING" at capture time. 
+    // They will be audited in the background during the 'Log to Sheet' phase.
+    let views = "PENDING"; 
 
     // --- TIKTOK ---
     if (host.includes('tiktok.com')) {
@@ -174,7 +168,6 @@
 
       if (!matched) {
           if (url === "https://www.tiktok.com/" || url === "https://www.tiktok.com") return null;
-          console.warn("PIRATE AI: No valid video ID found in URL.");
           return null; 
       }
 
@@ -226,27 +219,10 @@
           }
       }
 
-      const viewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_std); 
-      const shortViewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_shorts); 
-      
-      if (viewSelector) {
-          views = viewSelector.innerText.replace(' views', '');
-      } else if (shortViewSelector) {
-          views = shortViewSelector.innerText;
-      }
-
-      let targetId = videoId;
-      if (!targetId && url.includes('/shorts/')) targetId = url.split('/shorts/')[1];
-      if (!targetId && url.includes('/live/')) targetId = url.split('/live/')[1];
-      
-      const cleanId = targetId ? targetId.split('?')[0] : null;
-      const screenshot = cleanId ? `https://img.youtube.com/vi/${cleanId}/maxresdefault.jpg` : null;
-
       return { 
         platform: "YouTube", 
         url, 
         handle: channel, 
-        screenshot: screenshot, 
         views, 
         timestamp 
       };
@@ -261,57 +237,7 @@
         platform: "Instagram", 
         url, 
         handle: headerHandle || "InstagramUser", 
-        views: "N/A", 
-        timestamp 
-      };
-    }
-
-    // --- TWITTER / X ---
-    else if (host.includes('twitter.com') || host.includes('x.com')) {
-      if (!url.includes('/status/')) return null;
-      const pathParts = new URL(url).pathname.split('/');
-      
-      return { 
-        platform: "Twitter", 
-        url, 
-        handle: pathParts[1] || "TwitterUser", 
-        views: "N/A", 
-        timestamp 
-      };
-    }
-
-    // --- TWITCH ---
-    else if (host.includes('twitch.tv')) {
-      const pathParts = new URL(url).pathname.split('/');
-      const handle = pathParts[1] || "TwitchUser";
-
-      return { 
-        platform: "Twitch", 
-        url, 
-        handle, 
-        views: "N/A", 
-        timestamp 
-      };
-    }
-
-    // --- FACEBOOK ---
-    else if (host.includes('facebook.com')) {
-      return { 
-        platform: "Facebook", 
-        url, 
-        handle: "FacebookUser", 
-        views: "N/A", 
-        timestamp 
-      };
-    }
-
-    // --- DISCORD ---
-    else if (host.includes('discord.com')) {
-      return { 
-        platform: "Discord", 
-        url, 
-        handle: "DiscordUser", 
-        views: "N/A", 
+        views: "PENDING", 
         timestamp 
       };
     }
@@ -346,108 +272,51 @@
           data = scrapePageStrategy();
       } catch(err) {
           console.error("Scraping error:", err);
-          alert("❌ Error scraping page data. See console for details.");
           return;
       }
       
-      if (!data) { 
-          alert("❌ No valid video detected on this page. Check Console (F12) for 'PIRATE AI' logs."); 
-          return; 
-      }
+      if (!data) { return; }
       
-      const originalText = "Add";
       btnAdd.innerText = "Checking...";
       btnAdd.disabled = true;
-      btnAdd.style.backgroundColor = "#ff9800"; 
 
-      // --- TIMEOUT PROTECTION ---
-      let responseReceived = false;
-      const safetyTimeout = setTimeout(() => {
-          if (!responseReceived) {
-              console.warn("PIRATE AI: Whitelist check timed out. Forcing save.");
-              saveItem(data, originalText, btnAdd);
+      chrome.runtime.sendMessage({ 
+          action: 'checkWhitelist', 
+          platform: data.platform, 
+          handle: data.handle 
+      }, (response) => {
+          if (chrome.runtime.lastError) {
+              saveItem(data, btnAdd);
+              return;
           }
-      }, 4000);
 
-      try {
-          chrome.runtime.sendMessage({ 
-              action: 'checkWhitelist', 
-              platform: data.platform, 
-              handle: data.handle 
-          }, (response) => {
-              responseReceived = true;
-              clearTimeout(safetyTimeout);
-
-              if (chrome.runtime.lastError) {
-                  console.warn("Whitelist check warning/fail:", chrome.runtime.lastError);
-                  if (chrome.runtime.lastError.message && chrome.runtime.lastError.message.includes("context invalidated")) {
-                      handleContextInvalidated();
-                      return;
-                  }
-                  saveItem(data, originalText, btnAdd);
-                  return;
-              }
-
-              if (response && response.authorized) {
-                  alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
-                  btnAdd.innerText = "Whitelisted";
-                  btnAdd.style.backgroundColor = "#666"; 
-                  
-                  setTimeout(() => {
-                      btnAdd.innerText = "+ Add";
-                      btnAdd.disabled = false;
-                      btnAdd.style.backgroundColor = "#ce0e2d"; 
-                  }, 2000);
-              } else {
-                  saveItem(data, originalText, btnAdd);
-              }
-          });
-      } catch (e) {
-          responseReceived = true;
-          clearTimeout(safetyTimeout);
-          console.error("PIRATE AI: Message Sending Error", e);
-          handleContextInvalidated();
-      }
+          if (response && response.authorized) {
+              alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.`);
+              btnAdd.innerText = "+ Add";
+              btnAdd.disabled = false;
+          } else {
+              saveItem(data, btnAdd);
+          }
+      });
   }
 
-  function saveItem(data, originalText, btnAdd) {
-      btnAdd.innerText = "Saving...";
-      
-      try {
-          chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
-              if (chrome.runtime.lastError) { 
-                  console.error("Save error:", chrome.runtime.lastError);
-                  handleContextInvalidated(); 
-                  return; 
-              }
-              if (res && res.success) {
-                  btnAdd.innerText = "Saved!"; 
-                  btnAdd.style.backgroundColor = "#4CAF50";
-                  setTimeout(() => { 
-                      btnAdd.innerText = "+ Add"; 
-                      btnAdd.disabled = false; 
-                      btnAdd.style.backgroundColor = "#ce0e2d";
-                  }, 1500);
-              } else {
-                  btnAdd.innerText = "Error";
-                  console.error("Save Response Error:", res);
-                  setTimeout(() => { 
-                      btnAdd.innerText = "+ Add"; 
-                      btnAdd.disabled = false; 
-                      btnAdd.style.backgroundColor = "#ce0e2d";
-                  }, 1500);
-              }
-          });
-      } catch(e) {
-          handleContextInvalidated();
-      }
+  function saveItem(data, btnAdd) {
+      chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
+          if (res && res.success) {
+              btnAdd.innerText = "Saved!"; 
+              btnAdd.style.backgroundColor = "#4CAF50";
+              setTimeout(() => { 
+                  btnAdd.innerText = "+ Add"; 
+                  btnAdd.disabled = false; 
+                  btnAdd.style.backgroundColor = "#ce0e2d";
+              }, 1500);
+          }
+      });
   }
 
   async function initOverlay() {
     if (document.getElementById('flo-overlay')) return;
-    if (!isExtensionValid()) {
-        return;
-    }
+    if (!isExtensionValid()) return;
 
     const overlay = document.createElement('div');
     overlay.id = 'flo-overlay';
@@ -463,7 +332,7 @@
       <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move;">
         PIRATE AI HELPER ✥
       </div>
-      <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s; pointer-events: none;">...</div>
+      <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; pointer-events: none;">...</div>
       
       <div style="display: flex; gap: 8px; margin-bottom: 10px;">
         <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
@@ -475,104 +344,41 @@
 
     document.body.appendChild(overlay);
 
-    const btnAdd = document.getElementById('flo-add');
-    if (btnAdd) {
-        btnAdd.addEventListener('click', () => handleAddToQueue(btnAdd));
-    }
-
-    document.getElementById('flo-report').addEventListener('click', () => {
-      if (!isExtensionValid()) { handleContextInvalidated(); return; }
-      try { chrome.runtime.sendMessage({ action: 'openPopup' }); } 
-      catch(e) { handleContextInvalidated(); }
-    });
-
+    document.getElementById('flo-add').addEventListener('click', (e) => handleAddToQueue(e.target));
+    document.getElementById('flo-report').addEventListener('click', () => chrome.runtime.sendMessage({ action: 'openPopup' }));
     document.getElementById('flo-reset').addEventListener('click', () => {
-      if (!isExtensionValid()) { handleContextInvalidated(); return; }
-      if (currentCount > 0 && !confirm(`Delete ${currentCount} items from cart?`)) return;
-      try { chrome.runtime.sendMessage({ action: 'clearCart' }); } 
-      catch(e) { handleContextInvalidated(); }
+      if (confirm(`Clear cart?`)) chrome.runtime.sendMessage({ action: 'clearCart' });
     });
 
-    let isDragging = false;
-    let startX, startY, initialLeft, initialTop;
-
+    let isDragging = false, startX, startY, initialLeft, initialTop;
     overlay.addEventListener('mousedown', (e) => {
-        if (['BUTTON', 'INPUT', 'A', 'SELECT'].includes(e.target.tagName)) return;
-
-        isDragging = true;
-        startX = e.clientX;
-        startY = e.clientY;
-        
-        const rect = overlay.getBoundingClientRect();
-        initialLeft = rect.left;
-        initialTop = rect.top;
-        
-        overlay.style.right = 'auto';
-        overlay.style.left = `${initialLeft}px`;
-        overlay.style.top = `${initialTop}px`;
-        
+        if (['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) return;
+        isDragging = true; startX = e.clientX; startY = e.clientY;
+        const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
+        overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
         e.preventDefault();
     });
-
     document.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        overlay.style.left = `${initialLeft + dx}px`;
-        overlay.style.top = `${initialTop + dy}px`;
+        overlay.style.left = `${initialLeft + (e.clientX - startX)}px`;
+        overlay.style.top = `${initialTop + (e.clientY - startY)}px`;
     });
+    document.addEventListener('mouseup', () => isDragging = false);
 
-    document.addEventListener('mouseup', () => {
-        isDragging = false;
-    });
-
-    try {
-      const storage = await new Promise((resolve, reject) => {
-        chrome.storage.local.get('piracy_cart', (items) => {
-          if (chrome.runtime.lastError) resolve({ piracy_cart: [] });
-          else resolve(items);
-        });
-      });
-      const cart = storage.piracy_cart || [];
-      updateCount(cart.length);
-    } catch (e) {
-      console.error("Storage load error:", e);
-      updateCount(0); 
-    }
+    const storage = await chrome.storage.local.get('piracy_cart');
+    updateCount((storage.piracy_cart || []).length);
   }
 
   function updateCount(n) {
-    currentCount = n;
     const el = document.getElementById('flo-count');
-    if (el) {
-      el.innerText = n;
-      if (n === 0) {
-          el.style.color = "#4CAF50"; 
-          setTimeout(() => el.style.color = "#ce0e2d", 1000);
-      } else {
-          el.style.color = "#ce0e2d"; 
+    if (el) el.innerText = n;
+  }
+
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace === 'local' && changes.piracy_cart) {
+          updateCount((changes.piracy_cart.newValue || []).length);
       }
-    }
-  }
-
-  if (isExtensionValid()) {
-      try {
-          chrome.storage.onChanged.addListener((changes, namespace) => {
-              if (namespace === 'local' && changes.piracy_cart) {
-                  const newValue = changes.piracy_cart.newValue || [];
-                  updateCount(newValue.length);
-              }
-          });
-      } catch (e) { console.warn("Could not attach storage listener"); }
-  }
-
-  let lastUrl = location.href; 
-  new MutationObserver(() => {
-    if (location.href !== lastUrl) {
-      lastUrl = location.href;
-      if (!document.getElementById('flo-overlay')) initOverlay();
-    }
-  }).observe(document, {subtree: true, childList: true});
+  });
 
   setTimeout(initOverlay, 1500);
 
