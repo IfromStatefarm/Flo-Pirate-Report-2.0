@@ -6,8 +6,6 @@
   if (window.hasFloScraperRun) return;
   window.hasFloScraperRun = true;
 
-  let currentCount = 0;
-
   // DEFAULT SELECTORS (Robust Fallbacks)
   let SCRAPER_CONFIG = {
     tiktok: {
@@ -50,30 +48,91 @@
     }
   }
 
+  // --- ENGAGEMENT HELPERS ---
+  function parseEngagement(text) {
+    if (!text) return 0;
+    const clean = text.toString().toUpperCase().replace(/,/g, '').trim();
+    const match = clean.match(/([\d\.]+)([KMB]?)/);
+    if (!match) return 0;
+    
+    const num = parseFloat(match[1]);
+    const suffix = match[2];
+    let multiplier = 1;
+    
+    if (suffix === 'K') multiplier = 1000;
+    else if (suffix === 'M') multiplier = 1000000;
+    else if (suffix === 'B') multiplier = 1000000000;
+    
+    return num * multiplier;
+  }
+
+  function formatEngagement(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    return Math.floor(num).toString();
+  }
+
+  function scrapeEngagement(platform) {
+      let viewsStr = "";
+      let likesStr = "";
+      
+      try {
+          if (platform === "TikTok") {
+              const viewEl = document.querySelector('[data-e2e="video-views"]');
+              const likeEl = document.querySelector('[data-e2e="like-count"]');
+              if (viewEl) viewsStr = viewEl.innerText;
+              if (likeEl) likesStr = likeEl.innerText;
+          } 
+          else if (platform === "YouTube") {
+              const viewEl = document.querySelector('yt-view-count-renderer, span.view-count, #view-count, ytd-reel-player-overlay-renderer #view-count');
+              const likeEl = document.querySelector('ytd-toggle-button-renderer a[aria-label*="like"] yt-formatted-string, #top-level-buttons-computed yt-formatted-string, ytd-reel-player-overlay-renderer #like-button yt-formatted-string');
+              if (viewEl) viewsStr = viewEl.innerText;
+              if (likeEl) likesStr = likeEl.innerText;
+          }
+          else if (platform === "Instagram") {
+              const viewEl = document.querySelector('svg[aria-label="Play"]')?.closest('div')?.querySelector('span'); 
+              const likeEl = document.querySelector('a[href$="liked_by/"] span, section span > span, [aria-label*="Likes"]');
+              if (viewEl) viewsStr = viewEl.innerText;
+              if (likeEl) likesStr = likeEl.innerText;
+          }
+          else if (platform === "Twitter") {
+              const viewEl = document.querySelector('a[href*="/analytics"] span, [data-testid="app-text-transition-container"] span');
+              const likeEl = document.querySelector('[data-testid="like"] span');
+              if (viewEl) viewsStr = viewEl.innerText;
+              if (likeEl) likesStr = likeEl.innerText;
+          }
+      } catch(e) {
+          console.warn("Error scraping engagement:", e);
+      }
+      
+      return {
+          viewsRaw: viewsStr || "PENDING",
+          likesRaw: likesStr || "0",
+          views: parseEngagement(viewsStr),
+          likes: parseEngagement(likesStr)
+      };
+  }
+
   // ==========================================
-  // 1. THE STRATEGY SCRAPER (Simplified for Live Audit)
+  // 1. THE STRATEGY SCRAPER (Now Async)
   // ==========================================
-  function scrapePageStrategy() {
+  async function scrapePageStrategy() {
     const host = window.location.hostname;
     const url = window.location.href;
     const timestamp = new Date().toISOString();
     
-    // VIEWS are now "PENDING" at capture time. 
-    // They will be audited in the background during the 'Log to Sheet' phase.
-    let views = "PENDING"; 
+    let platform = "Unknown";
+    let handle = "Unknown";
 
-    // --- TIKTOK ---
+    // --- PLATFORM & HANDLE ROUTING ---
     if (host.includes('tiktok.com')) {
-      let handle = "Unknown";
-      let matched = false;
-
+      platform = "TikTok";
       const videoRegex = /@([^/?]+)\/video\/(\d+)/;
       const photoRegex = /@([^/?]+)\/photo\/(\d+)/;
       let match = url.match(videoRegex) || url.match(photoRegex);
 
       if (match) {
           handle = match[1];
-          matched = true;
       } else {
           try {
               const pattern = SCRAPER_CONFIG.tiktok.url_match;
@@ -81,70 +140,91 @@
               const customMatch = url.match(customRegex);
               if (customMatch) {
                   handle = customMatch[1] || customMatch[3] || "Unknown";
-                  matched = true;
               }
           } catch(e) {}
       }
 
-      if (!matched) {
+      if (handle === "Unknown") {
           if (url === "https://www.tiktok.com/" || url === "https://www.tiktok.com") return null;
           return null; 
       }
-
-      return { 
-        platform: "TikTok", 
-        url, 
-        handle: handle, 
-        views, 
-        timestamp 
-      };
     }
-
-    // --- YOUTUBE ---
     else if (host.includes('youtube.com')) {
+      platform = "YouTube";
       const params = new URLSearchParams(window.location.search);
       const videoId = params.get('v');
       
-      if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) {
-          return null;
-      }
+      if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) return null;
 
       const channelLink = document.querySelector(SCRAPER_CONFIG.youtube.channel_link);
-      let channel = "Unknown";
-      
       if (channelLink) {
           const href = channelLink.getAttribute('href') || "";
           if (href.includes('/@')) {
-              channel = href.split('/@')[1]; 
+              handle = href.split('/@')[1]; 
           } else {
-              channel = channelLink.innerText; 
+              handle = channelLink.innerText; 
           }
       }
-
-      return { 
-        platform: "YouTube", 
-        url, 
-        handle: channel, 
-        views, 
-        timestamp 
-      };
     }
-
-    // --- INSTAGRAM ---
     else if (host.includes('instagram.com')) {
+      platform = "Instagram";
       if (!url.includes('/p/') && !url.includes('/reel/')) return null;
-      const headerHandle = document.querySelector(SCRAPER_CONFIG.instagram.handle)?.innerText;
-      
-      return { 
-        platform: "Instagram", 
-        url, 
-        handle: headerHandle || "InstagramUser", 
-        views: "PENDING", 
-        timestamp 
-      };
+      handle = document.querySelector(SCRAPER_CONFIG.instagram.handle)?.innerText || "InstagramUser";
+    }
+    else if (host.includes('twitter.com') || host.includes('x.com')) {
+      platform = "Twitter";
+      if (!url.includes('/status/')) return null;
+      const match = url.match(/(?:twitter\.com|x\.com)\/([^/?]+)/);
+      if (match) handle = match[1];
     }
 
-    return null;
+    if (platform === "Unknown") return null;
+
+    // --- SCRAPE ENGAGEMENT ---
+    const engagement = scrapeEngagement(platform);
+    let finalViews = engagement.viewsRaw;
+    let finalParsedViews = engagement.views;
+
+    // --- DEDUPLICATION FALLBACK LOGIC ---
+    try {
+        const storage = await chrome.storage.local.get('piracy_cart');
+        const cart = storage.piracy_cart || [];
+        
+        // Find if this exact 'parsed' view count exists in the current session
+        const isDuplicateViews = cart.some(item => {
+            return item.parsedViews && item.parsedViews > 0 && item.parsedViews === engagement.views;
+        });
+
+        if (isDuplicateViews && engagement.views > 0) {
+            console.log(`🔄 Duplicate ${platform} views detected (${engagement.views}). Triggering fallback calculation...`);
+            
+            let multiplier = 1;
+            if (platform === "TikTok") multiplier = 20;
+            else if (platform === "Instagram") multiplier = 25;
+            else if (platform === "YouTube") multiplier = 15;
+            else if (platform === "Twitter") multiplier = 75;
+            
+            const estimatedViews = engagement.likes * multiplier;
+            
+            if (estimatedViews > 0) {
+                finalViews = `${formatEngagement(estimatedViews)} (Estimated)`;
+                finalParsedViews = estimatedViews;
+            } else {
+                finalViews = "PENDING";
+            }
+        }
+    } catch(e) {
+        console.error("Cart deduplication check failed:", e);
+    }
+
+    return { 
+      platform, 
+      url, 
+      handle, 
+      views: finalViews, 
+      parsedViews: finalParsedViews, // Tracked silently for future dedup checks
+      timestamp 
+    };
   }
 
   // ==========================================
@@ -152,35 +232,45 @@
   // ==========================================
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'addToCart') {
-      const data = scrapePageStrategy();
-      if (data) {
-          sendResponse({ success: true, item: data });
-      } else {
-          sendResponse({ success: false, error: "Not a valid content page." });
-      }
+      scrapePageStrategy().then(data => {
+          if (data) {
+              sendResponse({ success: true, item: data });
+          } else {
+              sendResponse({ success: false, error: "Not a valid content page." });
+          }
+      }).catch(err => {
+          console.error("Scraping runtime error:", err);
+          sendResponse({ success: false, error: "Scraping failed." });
+      });
+      return true; // Keep channel open for async response
     }
-    return true;
   });
 
   // ==========================================
   // 3. OVERLAY UI LOGIC
   // ==========================================
 
-  function handleAddToQueue(btnAdd) {
+  async function handleAddToQueue(btnAdd) {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
-      
-      let data = null;
-      try {
-          data = scrapePageStrategy();
-      } catch(err) {
-          console.error("Scraping error:", err);
-          return;
-      }
-      
-      if (!data) { return; }
       
       btnAdd.innerText = "Checking...";
       btnAdd.disabled = true;
+
+      let data = null;
+      try {
+          data = await scrapePageStrategy();
+      } catch(err) {
+          console.error("Scraping error:", err);
+          btnAdd.innerText = "+ Add";
+          btnAdd.disabled = false;
+          return;
+      }
+      
+      if (!data) { 
+          btnAdd.innerText = "Invalid URL";
+          setTimeout(() => { btnAdd.innerText = "+ Add"; btnAdd.disabled = false; }, 1500);
+          return; 
+      }
 
       chrome.runtime.sendMessage({ 
           action: 'checkWhitelist', 
