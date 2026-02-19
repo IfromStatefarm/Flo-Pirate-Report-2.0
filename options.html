@@ -3,48 +3,63 @@
 <head>
   <title>Piracy Report Options</title>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; width: 400px; }
-    h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; width: 450px; }
+    h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; color: #ce0e2d; }
     .form-group { margin-bottom: 15px; }
-    label { display: block; font-weight: bold; margin-bottom: 5px; }
+    label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; }
     input[type="text"] { 
       width: 100%; 
       padding: 8px; 
-      box-sizing: border-box; /* Ensures padding doesn't break width */
+      box-sizing: border-box; 
       border: 1px solid #ccc; 
       border-radius: 4px;
     }
+    .help-text { font-size: 11px; color: #666; margin-top: 4px; line-height: 1.3; }
     button {
-      background-color: #2563eb;
+      background-color: #ce0e2d;
       color: white;
       border: none;
       padding: 10px 20px;
       border-radius: 4px;
       cursor: pointer;
       font-size: 14px;
+      font-weight: bold;
+      width: 100%;
+      margin-top: 10px;
     }
-    button:hover { background-color: #1d4ed8; }
-    #status { margin-top: 10px; color: green; font-weight: bold; height: 20px; }
+    button:hover { opacity: 0.9; }
+    #status { margin-top: 10px; color: green; font-weight: bold; height: 20px; text-align: center; font-size: 12px; }
   </style>
 </head>
 <body>
 
-  <h2> Extension Setup</h2>
+  <h2>Extension Configuration</h2>
 
   <div class="form-group">
     <label for="piracy_folder_id">PIRACY FOLDER ID (Google Drive):</label>
-    <input type="text" id="piracy_folder_id" placeholder="Paste the ID here (e.g., 15J7gor-Z1mW...)">
-    <div style="font-size: 11px; color: #666; margin-top: 4px;">
-      This is the ID of the folder containing 'events_config.json'.
+    <input type="text" id="piracy_folder_id" placeholder="e.g. 15J7gor-Z1mW...">
+    <div class="help-text">
+      The ID of the parent Drive folder where reports and evidence are stored.
     </div>
   </div>
 
   <div class="form-group">
-    <label for="piracy_sheet_id">REPORT SHEET ID (Google Sheets):</label>
-    <input type="text" id="piracy_sheet_id" placeholder="Paste the Spreadsheet ID here">
+    <label for="piracy_sheet_id">FOUNDATION SHEET ID (Google Sheets):</label>
+    <input type="text" id="piracy_sheet_id" placeholder="e.g. 1A2B3C4D...">
+    <div class="help-text">
+      The ID of the Master Foundation spreadsheet where reports are logged.
+    </div>
   </div>
 
-  <button id="save">Save Settings</button>
+  <div class="form-group">
+    <label for="event_sheet_id">EVENT SOURCE SHEET ID (Google Sheets):</label>
+    <input type="text" id="event_sheet_id" placeholder="e.g. 1XyZ9876...">
+    <div class="help-text">
+      The ID of the spreadsheet containing Vertical tabs and Event URLs (for dynamic search).
+    </div>
+  </div>
+
+  <button id="save">Save All Settings</button>
   <div id="status"></div>
 
   <script src="options.js"></script>

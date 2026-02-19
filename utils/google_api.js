@@ -181,6 +181,7 @@ export async function addNewEventToSheet(vertical, eventName, eventUrl, platform
 // 2. DRIVE & FOLDER MANAGEMENT
 // ==========================================
 
+// UPDATED: Finds or Creates the "Pirated Reports for 20xx" folder
 export async function ensureYearlyReportFolder(token, year) {
   const { driveRootId } = await getOptions();
   if (!driveRootId) throw new Error("Drive Root ID not configured.");
@@ -189,6 +190,7 @@ export async function ensureYearlyReportFolder(token, year) {
   return await findOrCreateFolder(token, driveRootId, folderName);
 }
 
+// Kept for backward compatibility if needed, but primarily using the Yearly folder now
 export async function ensureDailyScreenshotFolder(token, dateStr) {
   const { driveRootId } = await getOptions();
   if (!driveRootId) throw new Error("Drive Root ID not configured.");

@@ -1,0 +1,30 @@
+{
+  "dependencies": {
+    "@playwright/test": "^1.58.2",
+    "body-parser": "^2.2.2",
+    "express": "^5.2.1",
+    "playwright": "^1.58.2"
+  },
+  "name": "flo-pirate-report-2.0",
+  "version": "1.0.0",
+  "description": "Flo pirates extension",
+  "main": "automation_server.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IvanfromFlo/Flo-Pirate-Report-2.0.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/IvanfromFlo/Flo-Pirate-Report-2.0/issues"
+  },
+  "homepage": "https://github.com/IvanfromFlo/Flo-Pirate-Report-2.0#readme"
+}

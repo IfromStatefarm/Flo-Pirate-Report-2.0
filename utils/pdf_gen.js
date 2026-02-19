@@ -3,18 +3,13 @@ import * as jsPDFModule from '../lib/jspdf.umd.min.js';
 
 export async function generatePDF(data) {
   try {
-    // 3. FIX: Robust Constructor Resolution for UMD/ESM compatibility
-    // The previous check failed because jsPDFModule was [object Module].
-    // We now strictly check for the constructor presence.
+    // Robust Constructor Resolution for UMD in ESM:
+    // 1. Check if the module itself is the constructor (rare but possible in some bundlers)
+    // 2. Check for .jsPDF property (common named export)
+    // 3. Check for .default (common default export)
+    // 4. Check for .default.jsPDF (nested default object)
     
-    // Attempt 1: Default export might contain jsPDF
-    let jsPDF = jsPDFModule.default ? (jsPDFModule.default.jsPDF || jsPDFModule.default) : null;
-    
-    // Attempt 2: Named export
-    if (!jsPDF) jsPDF = jsPDFModule.jsPDF;
-    
-    // Attempt 3: Direct module (rare)
-    if (!jsPDF && typeof jsPDFModule === 'function') jsPDF = jsPDFModule;
+    let jsPDF = jsPDFModule.jsPDF || jsPDFModule.default?.jsPDF || jsPDFModule.default || jsPDFModule;
 
     // Sanity check: Ensure it's a function (constructor)
     if (typeof jsPDF !== 'function') {
@@ -88,7 +83,7 @@ export async function generatePDF(data) {
         data.items.forEach((item, index) => {
             // Parse views for total
             let viewCount = 0;
-            if (item.views && item.views !== "N/A" && item.views !== "PENDING" && item.views !== "DELETED") {
+            if (item.views && item.views !== "N/A") {
                 const v = item.views.toLowerCase();
                 if(v.includes('k')) viewCount = parseFloat(v) * 1000;
                 else if(v.includes('m')) viewCount = parseFloat(v) * 1000000;
