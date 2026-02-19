@@ -1,170 +1,95 @@
 // content_autofill.js
 
-// 1. DEFAULT CONFIGURATION (Robust Fallback)
-if (typeof AUTOFILL_CONFIG === 'undefined') {
-  var AUTOFILL_CONFIG = {}; 
-}
+(function() { // 1. Wrap in IIFE to prevent 'sleep' redeclaration errors
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-let configLoaded = false;
-
-// --- LOAD REMOTE CONFIG HELPER ---
-async function loadConfig() {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
-    if (response && response.success && response.config && response.config.platform_selectors) {
-      console.log("✅ Remote Config Loaded");
-      AUTOFILL_CONFIG = response.config.platform_selectors;
-      configLoaded = true;
-    } else {
-      console.warn("⚠️ Remote Config empty or invalid.");
+    // 2. DEFAULT CONFIGURATION (Robust Fallback)
+    if (typeof AUTOFILL_CONFIG === 'undefined') {
+      var AUTOFILL_CONFIG = {}; 
     }
-  } catch(e) { 
-      console.warn("⚠️ Using default local strategies (Config load failed).", e); 
-  }
-}
-
-// ==========================================
-// 2. LISTENERS & AUTO-RUN
-// ==========================================
-
-if (!window.hasFloAutofillListener) {
-  window.hasFloAutofillListener = true;
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "startFullAutomation") {
-        // Force wait for config on manual trigger
-        (async () => {
-            if (!configLoaded) await loadConfig();
-            await routeAutofill(request.data);
-            sendResponse({ success: true });
-        })();
-        return true; 
-    }
-  });
-}
-
-(async function init() {
-    console.log("🔄 Flo Autofill Script Injected/Re-loaded");
     
-    // Always reset running flag on new injection/page load
-    window.floAutofillRunning = true;
-
-    if (document.readyState === 'loading') {
-        await new Promise(r => document.addEventListener('DOMContentLoaded', r));
-    }
-
-    const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
-    const cart = res.piracy_cart || [];
-    const info = res.reporterInfo;
-
-    if (cart.length === 0 || !info) {
-        console.log("ℹ️ No active report data found in storage.");
-        return;
-    }
-
-    const host = window.location.hostname;
-    const platform = cart[0].platform || "TikTok";
-
-    // Basic Host Safety Checks
-    if (platform === "TikTok" && !host.includes("tiktok")) return;
-    if (platform === "YouTube" && !host.includes("youtube")) return;
-    if (platform === "Instagram" && !host.includes("instagram")) return;
-    if (platform === "Twitter" && !host.includes("x.com") && !host.includes("twitter")) return;
-
-    const data = {
-        fullName: info.name,
-        email: info.email || "copyright@flosports.tv",
-        urls: cart.map(c => c.url),
-        platform: platform,
-        eventName: info.eventName,
-        vertical: info.vertical,
-        sourceUrl: info.sourceUrl
-    };
-
-    console.log("🚀 Starting Flo Autofill for:", platform);
+    // Define sleep inside the scope
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    let configLoaded = false;
     
-    // START CONFIG LOAD
-    loadConfig();
-
-    // STRICT WAIT LOOP
-    let retries = 0;
-    while (!configLoaded && retries < 50) { 
-        if (retries % 10 === 0) console.log("⏳ Waiting for config...");
-        await sleep(100);
-        retries++;
-    }
-
-    if (!configLoaded) console.warn("⚠️ Timed out waiting for config. Strategies may fail.");
-
-    await sleep(500); 
-    routeAutofill(data);
-})();
-
-async function routeAutofill(data) {
-    const host = window.location.hostname;
-    if (host.includes('tiktok')) await fillTikTok(data);
-    else if (host.includes('youtube')) await fillYouTube(data);
-    else if (host.includes('instagram')) await fillInstagram(data);
-    else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
-    
-    if(data.eventName) createUploadOverlay(data);
-}
-
-// ==========================================
-// 3. TIKTOK ROBUST AUTOMATION
-// ==========================================
-async function fillTikTok(data) {
-    const conf = AUTOFILL_CONFIG.tiktok?.autofill || {};
-    const defaults = {
-        company: "FloSports",
-        phone: "5122702356",
-        address: "301 Congress ave #1500 Austin Tx 78701",
-        email: data.email || "copyright@flosports.tv",
-        name: data.fullName
-    };
-
-    console.log("🎵 Running Bullet-Proof TikTok Strategy...");
-
-    // --- STEP 0: BYPASS WIZARD VIA URL ---
-    const currentUrl = new URL(window.location.href);
-    const hasIssueType = currentUrl.searchParams.get("issueType");
-    const hasAffected = currentUrl.searchParams.get("affected");
-
-    if ((!hasIssueType || !hasAffected) && conf.prefill_params) {
-        console.log("⚡ Redirecting to pre-filled URL to skip wizard...");
-        const newUrl = new URL(currentUrl.origin + currentUrl.pathname);
-        for (const [key, val] of Object.entries(conf.prefill_params)) {
-            newUrl.searchParams.set(key, val);
+    // --- LOAD REMOTE CONFIG HELPER ---
+    async function loadConfig() {
+      try {
+        // Check if extension context is valid before messaging
+        if (!chrome.runtime?.id) return;
+        
+        const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
+        if (response && response.success && response.config && response.config.platform_selectors) {
+          console.log("✅ Remote Config Loaded");
+          AUTOFILL_CONFIG = response.config.platform_selectors;
+          configLoaded = true;
+        } else {
+          console.warn("⚠️ Remote Config empty or invalid.");
         }
-        newUrl.searchParams.set("email", defaults.email);
-        window.location.href = newUrl.toString();
-        return; 
+      } catch(e) { 
+          console.warn("⚠️ Using default local strategies (Config load failed).", e); 
+      }
     }
-
-    // --- HELPER: ROBUST FINDER ---
-    const findElement = (selector) => {
-        if (!selector) return null;
+    
+    // ==========================================
+    // 2. LISTENERS & AUTO-RUN
+    // ==========================================
+    
+    if (!window.hasFloAutofillListener) {
+      window.hasFloAutofillListener = true;
+      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === "startFullAutomation") {
+            // Force wait for config on manual trigger
+            (async () => {
+                if (!configLoaded) await loadConfig();
+                await routeAutofill(request.data);
+                sendResponse({ success: true });
+            })();
+            return true; 
+        }
+      });
+    }
+    
+    (async function init() {
+        console.log("🔄 Flo Autofill Script Injected/Re-loaded");
+        
+        // Always reset running flag on new injection/page load
+        window.floAutofillRunning = true;
+    
+        if (document.readyState === 'loading') {
+            await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+        }
+    
+        // Safety check for extension context
         try {
-            if (selector.startsWith('//') || selector.startsWith('(')) {
-                const res = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                return res.singleNodeValue;
-            } else {
-                return document.querySelector(selector);
+            const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
+            const cart = res.piracy_cart || [];
+            const info = res.reporterInfo;
+        
+            if (cart.length === 0 || !info) {
+                console.log("ℹ️ No active report data found in storage.");
+                return;
             }
-        } catch (e) { return null; }
-    };
-
-    // --- HELPER: SIMULATE HUMAN TYPING ---
-    const simulateTyping = (el, val) => {
-        if (!el) return false;
-
-        el.focus();
-        el.click();
-
-        // Standard React Setter Hack
-        // Wrapped in try/catch to handle "Illegal invocation" robustly
-        try {
-            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        
+            const host = window.location.hostname;
+            const platform = cart[0].platform || "TikTok";
+        
+            // Basic Host Safety Checks
+            if (platform === "TikTok" && !host.includes("tiktok")) return;
+            if (platform === "YouTube" && !host.includes("youtube")) return;
+            if (platform === "Instagram" && !host.includes("instagram")) return;
+            if (platform === "Twitter" && !host.includes("x.com") && !host.includes("twitter")) return;
+        
+            const data = {
+                fullName: info.name,
+                email: info.email || "copyright@flosports.tv",
+                urls: cart.map(c => c.url),
+                platform: platform,
+                eventName: info.eventName,
+                vertical: info.vertical,
+                sourceUrl: info.sourceUrl
+            };
+        
+            console.log("🚀 Starting Flo Autofill for:", platform);
             
             // 1. Clear first (using native setter)
             if (nativeInputValueSetter) {

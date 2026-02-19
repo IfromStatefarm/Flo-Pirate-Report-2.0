@@ -1,3 +1,8 @@
+/**
+ * Flo Pirate Report - Playwright Automation Server
+ * This script runs locally (Node.js) and automates the reporting flow.
+ */
+
 const { chromium } = require('playwright');
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -6,9 +11,8 @@ const path = require('path');
 const app = express();
 const PORT = 3001;
 
-// POINT THIS TO YOUR EXTENSION FOLDER NAME
-// Based on your file structure, it seems to be this:
-const EXTENSION_PATH = path.resolve(__dirname, './ivanfromflo/flo-pirate-report-2.0/Flo-Pirate-Report-2.0-IvanfromFlo-config-build');
+// Path to your extension folder (ensure this is correct relative to where you run node)
+const EXTENSION_PATH = path.resolve(__dirname, './Flo-Pirate-Report-2.0-IvanfromFlo-config-build');
 
 app.use(bodyParser.json());
 
@@ -23,7 +27,7 @@ async function reportOnTikTok(payload) {
     // Launching with persistent context to keep logins/cookies active
     const userDataDir = './playwright-user-data';
     const context = await chromium.launchPersistentContext(userDataDir, {
-        headless: false, // Must be FALSE to see the browser and bypass bots
+        headless: false, // Headed mode is required for extension & anti-bot
         args: [
             `--disable-extensions-except=${EXTENSION_PATH}`,
             `--load-extension=${EXTENSION_PATH}`,
@@ -35,40 +39,72 @@ async function reportOnTikTok(payload) {
     const page = await context.newPage();
     
     try {
+        // 1. Navigate to the infringing video
         console.log(`🔗 Navigating to: ${payload.url}`);
         await page.goto(payload.url, { waitUntil: 'networkidle' });
         await humanDelay(2000, 4000);
 
-        console.log("🚩 Initiating Report Flow...");
-        // Fallback selector for report button if specific ID changes
-        // TikTok usually hides report under the 'Share' arrow -> 'Report'
-        // This logic handles the generic case; might need tweaking for specific UI updates
-        const shareBtn = await page.waitForSelector('[data-e2e="share-icon"]', { timeout: 5000 }).catch(() => null);
-        if (shareBtn) {
-            await shareBtn.click();
-            await humanDelay();
-            await page.click('text="Report"');
-        } else {
-            console.log("Could not find standard share/report button");
-        }
-
-        // Example: Selecting "Intellectual Property"
-        // await page.click('text="Intellectual property infringement"');
+        // 2. Extract Data (Hydration Check)
+        console.log("🧬 Extracting Engagement Data...");
+        await page.waitForSelector('#__UNIVERSAL_DATA_FOR_REHYDRATION__', { timeout: 10000 });
         
-        console.log("✅ Automation flow finished (Submission paused for safety).");
+        const playCount = await page.evaluate(() => {
+            try {
+                const script = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
+                const data = JSON.parse(script.textContent);
+                // Navigating the JSON tree as requested
+                return data.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemStruct?.stats?.playCount || "N/A";
+            } catch (e) {
+                // HTML Fallback if JSON fails
+                const viewsEl = document.querySelector('[data-e2e="video-views"]');
+                return viewsEl ? viewsEl.innerText : "N/A";
+            }
+        });
+        
+        console.log(`📊 Play Count Extracted: ${playCount}`);
+        payload.playCount = playCount;
+
+        // 3. Initiate Reporting Flow
+        console.log("🚩 Initiating Report Flow...");
+        // TikTok Reporting URLs usually follow a specific pattern or need to be clicked via UI
+        const reportBtn = await page.waitForSelector('[data-e2e="report-button"]');
+        await humanDelay();
+        await reportBtn.click();
+
+        // 4. Fill Form (Simulating human interaction)
+        // Note: The specific selectors for TikTok's report reason tree change frequently
+        // This is a generalized flow based on standard platform UX
+        console.log("📝 Filling out report reasons...");
+        await page.click('text="Intellectual property infringement"');
+        await humanDelay(1500, 2500);
+        
+        await page.click('text="Copyright infringement"');
+        await humanDelay();
+
+        // Use the extension ID dynamically for any cross-talk if needed
+        const extensionId = await page.evaluate(async () => {
+            // Service worker URL check
+            const res = await fetch('chrome-extension://'); // Placeholder to trigger id extraction in actual browser
+            return "dynamic-id-check"; 
+        });
+
+        // Final Submission (Safety: Commented out for initial testing)
+        // await page.click('button:has-text("Submit")');
+        console.log("✅ Automation reached the submission step.");
 
     } catch (err) {
         console.error("❌ Automation Failed:", err);
     } finally {
-        // Keep browser open for a moment so you can see what happened
-        await humanDelay(5000); 
+        await humanDelay(5000); // Leave open for inspection
         await context.close();
     }
 }
 
+// REST API for the Extension to trigger
 app.post('/report/tiktok', async (req, res) => {
     try {
-        reportOnTikTok(req.body); // Triggers the browser
+        // Trigger non-blocking automation
+        reportOnTikTok(req.body);
         res.json({ success: true, message: "Automation started" });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
