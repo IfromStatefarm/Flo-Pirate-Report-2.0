@@ -113,12 +113,17 @@
     
     async function routeAutofill(data) {
         const host = window.location.hostname;
-        if (host.includes('tiktok')) await fillTikTok(data);
-        else if (host.includes('youtube')) await fillYouTube(data);
-        else if (host.includes('instagram')) await fillInstagram(data);
-        else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
+        let success = true;
+
+        if (host.includes('tiktok')) success = await fillTikTok(data);
+        else if (host.includes('youtube')) success = await fillYouTube(data);
+        else if (host.includes('instagram')) success = await fillInstagram(data);
+        else if (host.includes('twitter') || host.includes('x.com')) success = await fillTwitter(data);
         
-        if(data.eventName) createUploadOverlay(data);
+        // ONLY spawn the log sheet if the script successfully completed its forms
+        if(success !== false && data.eventName) {
+            createUploadOverlay(data);
+        }
     }
     
     // ==========================================
@@ -136,22 +141,6 @@
     
         console.log("🎵 Running Bullet-Proof TikTok Strategy...");
     
-        // --- STEP 0: BYPASS WIZARD VIA URL ---
-        const currentUrl = new URL(window.location.href);
-        const hasIssueType = currentUrl.searchParams.get("issueType");
-        const hasAffected = currentUrl.searchParams.get("affected");
-    
-        if ((!hasIssueType || !hasAffected) && conf.prefill_params) {
-            console.log("⚡ Redirecting to pre-filled URL to skip wizard...");
-            const newUrl = new URL(currentUrl.origin + currentUrl.pathname);
-            for (const [key, val] of Object.entries(conf.prefill_params)) {
-                newUrl.searchParams.set(key, val);
-            }
-            newUrl.searchParams.set("email", defaults.email);
-            window.location.href = newUrl.toString();
-            return; 
-        }
-    
         // --- HELPER: ROBUST FINDER ---
         const findElement = (selector) => {
             if (!selector) return null;
@@ -164,71 +153,125 @@
                 }
             } catch (e) { return null; }
         };
+
+        // --- HELPER: PAGE IDENTIFICATION ---
+        const isMainFormPage = () => {
+            return !!findElement(conf.field_strategies?.name?.[0] || "input[name='i.EP.name']") || !!document.querySelector("input[name='name']");
+        };
+
+        const isEmailPage = () => {
+            const text = document.body.textContent.toLowerCase();
+            return text.includes("verify your email") || 
+                   text.includes("email address before you make a report") || 
+                   !!document.getElementById('email') || 
+                   new URL(window.location.href).searchParams.has("email");
+        };
+
+        // --- STEP 0: PROGRESS THROUGH WIZARD NATURALLY ---
+        console.log("⏳ Checking for wizard steps...");
+        
+        for (let stepAttempt = 0; stepAttempt < 10; stepAttempt++) {
+            // If we've reached the email page or the main form, break out of the wizard loop
+            if (isMainFormPage() || isEmailPage()) {
+                console.log("✅ Target form page reached. Exiting wizard navigation.");
+                break; 
+            }
+
+            let clickedOption = false;
+            // Use config wizard steps or reliable fallbacks
+            const wizardOptions = conf.wizard_steps || [
+                "Copyright",
+                "I am the copyright owner",
+                "Authorized representative"
+            ];
+
+            for (const optionText of wizardOptions) {
+                // Find element by exact or partial text match
+                const xpath = `//span[contains(text(), '${optionText}')] | //div[contains(text(), '${optionText}')]`;
+                const el = findElement(xpath);
+                
+                if (el && el.offsetParent !== null) {
+                    console.log(`🔘 Clicking wizard option: "${optionText}"`);
+                    // Try to click the label or container wrapping the radio button
+                    const clickableTarget = el.closest('label') || el.closest('[role="radio"]') || el;
+                    clickableTarget.click();
+                    
+                    // Also try to check the raw radio button if available
+                    const radio = clickableTarget.querySelector('input[type="radio"]');
+                    if (radio && !radio.checked) radio.click();
+                    
+                    clickedOption = true;
+                    await sleep(500);
+                    break; // Only click one option per page/step
+                }
+            }
+
+            const nextBtn = await waitForButton(conf.buttons?.next || ['Next', 'Continue'], 1000);
+            if (nextBtn && !nextBtn.disabled) {
+                console.log("➡️ Clicking Next to progress wizard...");
+                nextBtn.click();
+                await sleep(2000); // Wait for React to transition to the next step
+            } else if (!clickedOption) {
+                // Couldn't find anything to click and no active Next button, pause and wait for user
+                await sleep(1000);
+            } else {
+                // Option clicked but Next button not ready, wait a bit
+                await sleep(1000);
+            }
+        }
     
-        // --- HELPER: SIMULATE HUMAN TYPING ---
-        const simulateTyping = (el, val) => {
+        // --- HELPER: SIMULATE HUMAN TYPING (REACT BYPASS) ---
+        const simulateTyping = async (el, val) => {
             if (!el) return false;
     
             el.focus();
             el.click();
+            await sleep(100);
     
-            // 3. FIX: TypeError: Illegal invocation
-            // Dynamically get the correct prototype (HTMLInputElement vs HTMLTextAreaElement)
             try {
-                const proto = Object.getPrototypeOf(el);
-                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(proto, "value").set;
+                el.select();
                 
-                // 1. Clear first (using native setter)
-                if (nativeInputValueSetter) {
-                    nativeInputValueSetter.call(el, "");
-                } else {
-                    el.value = "";
-                }
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-    
-                // 2. Try execCommand (Human Simulation)
-                let success = false;
-                try {
-                    success = document.execCommand('insertText', false, val);
-                } catch (err) {
-                    // Ignore execCommand errors
-                }
-    
-                // 3. Fallback if execCommand failed
-                if (!success) {
-                    if (nativeInputValueSetter) {
-                        nativeInputValueSetter.call(el, val);
+                let execSuccess = false;
+                try { execSuccess = document.execCommand('insertText', false, val); } catch(e) {}
+
+                // Fallback: React 16+ Value Setter Bypass
+                if (!execSuccess || el.value !== val) {
+                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                    const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                    const setter = el.tagName === 'TEXTAREA' ? nativeTextAreaValueSetter : nativeInputValueSetter;
+
+                    if (setter) {
+                        setter.call(el, val);
                     } else {
                         el.value = val;
                     }
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
                 }
+
+                // Fire comprehensive event chain
+                el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter', keyCode: 13 }));
+                el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Enter', keyCode: 13 }));
+                el.dispatchEvent(new Event('blur', { bubbles: true, composed: true }));
+    
             } catch (e) {
                 console.warn("React setter hack failed, using standard value assignment:", e);
-                // Absolute last resort: Standard DOM value setting
                 el.value = val;
                 el.dispatchEvent(new Event('input', { bubbles: true }));
             }
-    
-            // Finalize events
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-            el.dispatchEvent(new Event('blur', { bubbles: true })); 
-    
             return true;
         };
     
-        const typeValue = (el, val) => {
+        const typeValue = async (el, val) => {
             if (!el) return false;
-            
             if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') {
                 const inner = el.querySelector('input, textarea');
                 if (inner) el = inner;
             }
-    
             if (!el) return false;
     
             el.scrollIntoView({block: "center", behavior: "smooth"});
-            return simulateTyping(el, val);
+            return await simulateTyping(el, val);
         };
     
         const applyFieldStrategy = async (strategies, value) => {
@@ -237,51 +280,120 @@
                 const el = findElement(strat);
                 if (el) {
                     console.log(`   ✅ Found field via: ${strat}`);
-                    return typeValue(el, value);
+                    return await typeValue(el, value);
                 }
             }
             return false;
         };
+
+        // --- DOM RENDER WAIT LOOP ---
+        console.log("⏳ Waiting for TikTok form to render...");
+        let formType = "none"; 
+
+        for (let i = 0; i < 40; i++) { // Wait up to 20 seconds for the DOM
+            if (isMainFormPage()) {
+                formType = "main";
+                break;
+            }
+            if (isEmailPage()) {
+                formType = "email";
+                break;
+            }
+            await sleep(500);
+        }
+
+        if (formType === "none") {
+            console.warn("❌ TikTok form never rendered. Halting autofill.");
+            return false; // Return false to abort log sheet
+        }
     
         // --- STEP 1: VERIFY EMAIL STEP ---
-        const nameInput = findElement(conf.field_strategies?.name?.[0]);
-        
-        const isIntermediatePage = !nameInput && (
-            document.body.innerText.includes("Verify your email") || 
-            currentUrl.searchParams.has("email")
-        );
-        
-        if (isIntermediatePage) {
+        if (formType === "email") {
             console.log("🔹 Intermediate Step Detected (Email Verification)...");
             
-            const emailStrat = [
-                "input[id^='tux-']", 
-                ...(conf.field_strategies?.email || []),
-                "input[type='text']"
-            ];
-            
-            await applyFieldStrategy(emailStrat, defaults.email);
-            await sleep(500);
-    
-            const nextVariants = conf.buttons?.next || ['Next'];
-            const btn = await waitForButton(nextVariants, 2000);
-            
-            if (btn) {
-                 if (btn.disabled) {
-                     console.log("⚠️ Next button disabled. Retrying input trigger...");
-                     await applyFieldStrategy(emailStrat, defaults.email + " "); 
-                     await sleep(200);
-                     await applyFieldStrategy(emailStrat, defaults.email); 
-                 }
-                 
-                 if (!btn.disabled) {
-                     console.log("➡️ Clicking Next...");
-                     btn.click();
-                     await sleep(3000); 
-                 } else {
-                     console.warn("❌ Next button still disabled.");
-                 }
+            await new Promise((resolve) => {
+                console.log("⏳ Waiting for user to click the email box...");
+                
+                // Visual prompt loop (keeps re-applying if React erases it)
+                const promptInterval = setInterval(() => {
+                    const emailInput = document.querySelector('input[placeholder*="email" i], input[id^="tux-"], #email input');
+                    if (emailInput && (!emailInput.placeholder || !emailInput.placeholder.includes("CLICK"))) {
+                        emailInput.style.border = "3px solid #ce0e2d";
+                        emailInput.style.backgroundColor = "#ffeaee";
+                        emailInput.placeholder = "👉 CLICK TO AUTOFILL 👈";
+                    }
+                }, 1000);
+
+                // Global event listener to catch the interaction
+                const interactionHandler = async (e) => {
+                    const target = e.target;
+                    // Verify they clicked our input box or the wrapper
+                    if (target.tagName === 'INPUT' && (target.id.startsWith('tux-') || target.closest('#email') || (target.placeholder && target.placeholder.includes('CLICK')))) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // Remove listeners immediately so it doesn't fire twice
+                        document.removeEventListener('focusin', interactionHandler, true);
+                        document.removeEventListener('click', interactionHandler, true);
+                        clearInterval(promptInterval);
+                        
+                        console.log("🖱️ User interacted! Autofilling email...");
+                        
+                        // Revert visual styles
+                        target.style.border = "";
+                        target.style.backgroundColor = "";
+                        target.placeholder = "Enter your email address";
+                        
+                        // Fill the email
+                        await typeValue(target, defaults.email);
+                        await sleep(1000); // Give React state time to catch up
+                
+                        const nextVariants = conf.buttons?.next || ['Next', 'Continue'];
+                        let btn = await waitForButton(nextVariants, 2000);
+                        
+                        // If standard flow didn't unlock button, try robust retry
+                        if (btn && btn.disabled) {
+                             console.log("⚠️ Next button disabled. Retrying robust input trigger...");
+                             await typeValue(target, " "); // trigger change
+                             await sleep(200);
+                             await typeValue(target, defaults.email); // re-type
+                             await sleep(1000);
+                             btn = await waitForButton(nextVariants, 1000);
+                        }
+                        
+                        if (btn && !btn.disabled) {
+                             console.log("➡️ Clicking Next...");
+                             btn.click();
+                        } else {
+                             console.warn("❌ Next button still disabled. You may need to click it manually.");
+                        }
+                        resolve();
+                    }
+                };
+
+                // Listen in the capture phase (true) so React doesn't swallow the event!
+                document.addEventListener('focusin', interactionHandler, true);
+                document.addEventListener('click', interactionHandler, true);
+            });
+
+            // --- HARD GATE ---
+            console.log("⏳ Waiting for main form to load...");
+            let mainLoaded = false;
+            for (let i = 0; i < 30; i++) { // Wait up to 15s for the next page
+                if (isMainFormPage()) {
+                    mainLoaded = true;
+                    break;
+                }
+                await sleep(500);
             }
+            
+            if (!mainLoaded) {
+                console.error("❌ Main form never loaded. Halting autofill.");
+                return false; // Return false to abort log sheet
+            }
+            
+            console.log("✅ Main form loaded!");
+            await sleep(1000); // Brief pause before continuing
         }
     
         // --- STEP 2: FULL FORM FILL ---
@@ -302,6 +414,7 @@
     
             if (strategies) {
                 await applyFieldStrategy(strategies, value);
+                await sleep(200); // Brief pause between fields to avoid overwhelming the DOM
             }
         }
     
@@ -356,6 +469,8 @@
             sendBtn.scrollIntoView({block: 'center'});
             sendBtn.style.border = "4px solid #ce0e2d"; 
         }
+
+        return true; // Successfully finished
     }
     
     // ==========================================
@@ -392,6 +507,8 @@
             await waitAndClick(conf.buttons?.save || "#save-button", 3000);
             await sleep(2000);
         }
+
+        return true;
     }
     
     async function fillInstagram(data) {
@@ -400,6 +517,7 @@
             const el = document.querySelector(`[name="${conf.name}"]`);
             if(el) el.value = data.fullName;
         }
+        return true;
     }
     
     async function fillTwitter(data) {
@@ -408,6 +526,7 @@
             const el = document.querySelector(`[name="${conf.name}"]`);
             if(el) el.value = data.fullName;
         }
+        return true;
     }
     
     async function waitForButton(variants, timeout) {
