@@ -1,16 +1,33 @@
-//google_api.js
 import { getAuthToken } from './auth.js';
 
-// --- CONSTANTS ---
-const EVENT_SHEET_ID = '1K9QigjjGPexSIW3hsc2WQNjJvz9anT6_WfyTdPfiflE'; 
+// REMOVED: Hardcoded EVENT_SHEET_ID
+const WHITELIST_TAB = 'Handles White List';
 
 // --- HELPER: GET USER OPTIONS ---
-const getOptions = () => {
-  return chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id']).then(data => ({
+const getOptions = async () => {
+  const data = await chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id']);
+  return {
     driveRootId: data.piracy_folder_id,
-    reportSheetId: data.piracy_sheet_id
-  }));
+    reportSheetId: data.piracy_sheet_id,
+    eventSheetId: data.event_sheet_id
+  };
 };
+
+// --- HELPER: VALIDATE CONFIG ---
+export async function isConfigComplete() {
+    const { driveRootId, reportSheetId, eventSheetId } = await getOptions();
+    return !!(driveRootId && reportSheetId && eventSheetId);
+}
+
+// --- HELPER: CLEAN HANDLES FOR COMPARISON ---
+function normalizeHandle(input) {
+  if (!input) return "";
+  let clean = input.toString().toLowerCase().trim();
+  clean = clean.replace(/^(https?:\/\/)?(www\.)?/, "");
+  clean = clean.replace(/^(tiktok\.com\/|instagram\.com\/|twitter\.com\/|x\.com\/|youtube\.com\/|facebook\.com\/)/, "");
+  clean = clean.replace(/^@/, "").replace(/\/$/, "");
+  return clean;
+}
 
 // --- HELPER: FIND FILE BY NAME ---
 export async function findFileId(name, mimeType, parentId = null) {
@@ -31,13 +48,14 @@ export async function findFileId(name, mimeType, parentId = null) {
 // 1. EVENT URL MANAGER (Dynamic Search)
 // ==========================================
 
-// READ: Fetches Search URL (Cell B1) and Platform Links (Columns A-H, Rows 3+)
 export async function getEventData(vertical) {
   const token = await getAuthToken();
+  const { eventSheetId } = await getOptions();
   
-  // CHANGED: Range expanded from A1:B to A1:H to capture all 7 platforms
-  const range = `${vertical}!A1:H`; 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
+  if (!eventSheetId) throw new Error("Event Sheet ID not configured.");
+  
+  const range = `${vertical}!A1:I`; 
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}`;
   
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
@@ -46,11 +64,7 @@ export async function getEventData(vertical) {
     return { searchUrl: null, eventMap: {} };
   }
 
-  // A. Get Search URL from Cell B1 (Preserves existing search functionality)
   const searchUrl = (data.values[0] && data.values[0][1]) ? data.values[0][1] : null;
-
-  // B. Process Events starting at Row 3 (Index 2)
-  // Rows 1 & 2 are headers/config. Data starts at Row 3.
   const eventRows = data.values.length > 2 ? data.values.slice(2) : []; 
 
   const eventMap = {};
@@ -58,20 +72,9 @@ export async function getEventData(vertical) {
     if (row[0]) {
       const originalName = row[0].trim();
       const cleanName = originalName.toLowerCase(); 
-      
-      // MAPPING: Based on your request
-      // Col A [0]: Event Name
-      // Col B [1]: TikTok
-      // Col C [2]: Instagram
-      // Col D [3]: YouTube
-      // Col E [4]: Twitter (X)
-      // Col F [5]: Twitch
-      // Col G [6]: Facebook
-      // Col H [7]: Discord
-
       eventMap[cleanName] = {
         name: originalName,
-        rowIndex: index + 3, // +3 because we skipped 2 header rows and index is 0-based
+        rowIndex: index + 3,
         urls: {
             tiktok:    row[1] || null,
             instagram: row[2] || null,
@@ -79,7 +82,8 @@ export async function getEventData(vertical) {
             twitter:   row[4] || null,
             twitch:    row[5] || null,
             facebook:  row[6] || null,
-            discord:   row[7] || null
+            discord:   row[7] || null,
+            rumble:    row[8] || null
         }
       };
     }
@@ -88,46 +92,31 @@ export async function getEventData(vertical) {
   return { searchUrl, eventMap };
 }
 
-// --- HELPER: Map Platform to Column Letter ---
 function getColumnLetter(platform) {
-  // A=Event, B=TikTok, C=Instagram, D=YouTube, E=Twitter, F=Twitch, G=Facebook, H=Discord
   const map = {
-    'tiktok': 'B',
-    'instagram': 'C',
-    'youtube': 'D',
-    'twitter': 'E',
-    'twitch': 'F',
-    'facebook': 'G',
-    'discord': 'H'
+    'tiktok': 'B', 'instagram': 'C', 'youtube': 'D', 'twitter': 'E',
+    'twitch': 'F', 'facebook': 'G', 'discord': 'H', 'rumble': 'I'
   };
-  // Default to B (TikTok) if platform is missing or typo
   return map[platform?.toLowerCase()] || 'B'; 
 }
+
 export async function checkIfAuthorized(platform, handle) {
   if (!handle) return false;
   const token = await getAuthToken();
+  const { eventSheetId } = await getOptions();
   
-  // Mapping based on your 'Handles White List' tab layout starting at B2
-  // B: Tiktok, C: Instagram, D: Twitter, E: Discord, F: Youtube, G: Facebook, H: Reddit
-  const platformIndexMap = {
-    'tiktok': 0,    // Col B
-    'instagram': 1, // Col C
-    'twitter': 2,   // Col D
-    'x': 2,         // Col D (Handle X same as Twitter)
-    'discord': 3,   // Col E
-    'youtube': 4,   // Col F
-    'facebook': 5,  // Col G
-    'reddit': 6     // Col H
-  };
+  if (!eventSheetId) return false;
 
+  const platformIndexMap = {
+    'tiktok': 0, 'instagram': 1, 'twitter': 2, 'x': 2, 'discord': 3,
+    'youtube': 4, 'facebook': 5, 'reddit': 6, 'rumble': 7     
+  };
   const targetIndex = platformIndexMap[platform?.toLowerCase()];
   
-  // If platform isn't in our whitelist map, skip check (return false) or default to false
   if (targetIndex === undefined) return false;
 
-  // Fetch all columns B through H from row 3 downwards (skipping headers)
-  const range = `${WHITELIST_TAB}!B3:H`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}`;
+  const range = `${WHITELIST_TAB}!B2:I`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}`;
 
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -135,59 +124,45 @@ export async function checkIfAuthorized(platform, handle) {
 
     if (!data.values || data.values.length === 0) return false;
 
-    // Normalize the handle for comparison (remove '@', lowercase, trim)
-    const cleanHandle = handle.replace('@', '').trim().toLowerCase();
-
-    // Check if the handle exists in the specific column for that platform
-    // Row is an array of columns [Tiktok, Insta, Twitter, Discord, YT, FB, Reddit]
-    const isAuthorized = data.values.some(row => {
-      // Check if the cell exists and matches the handle
-      const cellValue = row[targetIndex];
-      return cellValue && cellValue.trim().toLowerCase().replace('@', '') === cleanHandle;
+    const targetHandle = normalizeHandle(handle);
+    return data.values.some(row => {
+      if (row.length <= targetIndex) return false;
+      const rawCellValue = row[targetIndex];
+      const normalizedCell = normalizeHandle(rawCellValue);
+      return normalizedCell === targetHandle;
     });
 
-    return isAuthorized;
-
   } catch (e) {
-    console.error("Error checking whitelist:", e);
-    return false; // Fail safe: allow if check fails, or return true to block if you want strict safety
+    console.error("❌ Error checking whitelist:", e);
+    return false;
   }
 }
 
-// UPDATE: Writes a URL to the specific column for that platform
-export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
-// UPDATE: Writes a URL to the specific column for that platform
 export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
   const token = await getAuthToken();
+  const { eventSheetId } = await getOptions();
   const colLetter = getColumnLetter(platform);
-  
-  // Example Range: "FloGrappling!D5" (Update YouTube URL for Event on Row 5)
   const range = `${vertical}!${colLetter}${rowIndex}`;
-  
   const body = { values: [[newUrl]] };
   
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`, {
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
 }
 
-// CREATE: Appends a new event, placing the URL in the correct column
 export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
   const token = await getAuthToken();
-  const range = `${vertical}!A:H`; // We are appending a row that spans A to H
+  const { eventSheetId } = await getOptions();
+  const range = `${vertical}!A:I`; 
   
-  // Create an array of 8 items (Columns A-H)
-  // [EventName, TikTok, Instagram, YouTube, Twitter, Twitch, Facebook, Discord]
-  const row = new Array(8).fill(""); 
-  row[0] = eventName; // Col A is always Event Name
+  const row = new Array(9).fill(""); 
+  row[0] = eventName;
 
-  // Map platform to array index (0-based)
-  // A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7
   const colMap = {
     'tiktok': 1, 'instagram': 2, 'youtube': 3, 'twitter': 4, 
-    'twitch': 5, 'facebook': 6, 'discord': 7
+    'twitch': 5, 'facebook': 6, 'discord': 7, 'rumble': 8
   };
   
   const targetIndex = colMap[platform?.toLowerCase()] || 1;
@@ -195,14 +170,25 @@ export async function addNewEventToSheet(vertical, eventName, eventUrl, platform
 
   const body = { values: [row] };
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${EVENT_SHEET_ID}/values/${range}:append?valueInputOption=USER_ENTERED`, {
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
 }
 
-// --- NEW: Handle Centralized Screenshot Folders ---
+// ==========================================
+// 2. DRIVE & FOLDER MANAGEMENT
+// ==========================================
+
+export async function ensureYearlyReportFolder(token, year) {
+  const { driveRootId } = await getOptions();
+  if (!driveRootId) throw new Error("Drive Root ID not configured.");
+  
+  const folderName = `Pirated Reports for ${year}`;
+  return await findOrCreateFolder(token, driveRootId, folderName);
+}
+
 export async function ensureDailyScreenshotFolder(token, dateStr) {
   const { driveRootId } = await getOptions();
   if (!driveRootId) throw new Error("Drive Root ID not configured.");
@@ -211,10 +197,6 @@ export async function ensureDailyScreenshotFolder(token, dateStr) {
   const dailyFolderId = await findOrCreateFolder(token, masterScreenshotFolderId, dateStr);
   return dailyFolderId;
 }
-
-// ==========================================
-// 2. DRIVE & FOLDER MANAGEMENT
-// ==========================================
 
 export async function ensureFolderHierarchy(token, eventName, date) {
   const { driveRootId } = await getOptions();
@@ -249,11 +231,13 @@ export async function uploadToDrive(token, folderId, name, blob, mimeType) {
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', blob);
+  
   const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
     method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form
   });
   const data = await res.json();
   
+  // Fetch folder link for the sheet log
   const folderRes = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=webViewLink`, {
      headers: { Authorization: `Bearer ${token}` }
   });
@@ -267,19 +251,10 @@ export async function uploadToDrive(token, folderId, name, blob, mimeType) {
 
 export async function fetchConfig() {
   const { driveRootId } = await getOptions();
-  console.log(`🕵️ Looking in Folder ID: "${driveRootId}"`);
-
   if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
 
   const token = await getAuthToken();
   
-  // DEBUG: List ALL files in this folder to see what is visible
-  const debugUrl = `https://www.googleapis.com/drive/v3/files?q='${driveRootId}' in parents&fields=files(name,id)`;
-  const debugRes = await fetch(debugUrl, { headers: { Authorization: `Bearer ${token}` } });
-  const debugData = await debugRes.json();
-  console.log("📂 Files found in this folder:", debugData.files);
-
-  // ORIGINAL QUERY
   const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
      headers: { Authorization: `Bearer ${token}` }
@@ -287,12 +262,6 @@ export async function fetchConfig() {
   const data = await res.json();
   
   if (!data.files || data.files.length === 0) {
-    // If we found OTHER files, but not the config, it's a naming issue.
-    if (debugData.files && debugData.files.length > 0) {
-        const names = debugData.files.map(f => f.name).join(", ");
-        throw new Error(`Config missing. Found these instead: ${names}`);
-    }
-    // If we found NOTHING, it's a permission or ID issue.
     throw new Error("Config file not found. Folder appears empty or inaccessible.");
   }
 
@@ -308,20 +277,17 @@ export async function appendToSheet(token, logData) {
   
   let values;
 
-  // 1. Check if background.js sent us a pre-built row (The new way)
+  // Supports both explicit row array (used by batch report) and object (fallback)
   if (logData.values && Array.isArray(logData.values)) {
-      // The Sheets API expects an array of arrays (rows), so we wrap our single row
       values = [logData.values];
   } 
-  // 2. Fallback (The old way, just in case)
   else {
-      console.warn("⚠️ Received legacy data format in appendToSheet. Using fallback.");
       const now = new Date();
       values = [[
         now.toLocaleDateString(),
         logData.vertical || "Unknown",
         logData.eventName || "Unknown",
-        "TikTok", // Default if not provided
+        "TikTok", 
         "VOD",
         "N/A",
         logData.reporterName || "Unknown",
@@ -330,11 +296,9 @@ export async function appendToSheet(token, logData) {
         "Reported",
         "",
         logData.reporterName || "Unknown",
-        // ... (remaining empty columns)
       ]];
   }
 
-  // 3. Send to Google Sheets
   await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/A1:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -370,4 +334,110 @@ export async function fetchRightsPdf(token, eventName) {
   
   const blob = await fileRes.blob();
   return { blob, name: fileName };
+}
+
+// ==========================================
+// 6. THE CLOSER: STATUS UPDATE
+// ==========================================
+
+export async function getColumnHData() {
+  const { reportSheetId } = await getOptions();
+  if (!reportSheetId) return [];
+  const token = await getAuthToken();
+  const range = "H:H"; 
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${range}`;
+  
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  return data.values || [];
+}
+
+export async function updateRowStatus(rowIndex, status) {
+  const { reportSheetId } = await getOptions();
+  const token = await getAuthToken();
+
+  const range = `J${rowIndex + 1}`; 
+  const valueBody = { values: [[status]] };
+  
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(valueBody)
+  });
+
+  if (status === "Resolved") {
+      await formatCellAsTakenDown(rowIndex);
+  }
+}
+
+export async function formatCellAsTakenDown(rowIndex) {
+  const { reportSheetId } = await getOptions();
+  const token = await getAuthToken();
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
+      headers: { Authorization: `Bearer ${token}` }
+  });
+  const metaData = await metaRes.json();
+  const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
+
+  const requests = [{
+      repeatCell: {
+          range: {
+              sheetId: sheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 7, 
+              endColumnIndex: 8
+          },
+          cell: {
+              userEnteredFormat: {
+                  textFormat: {
+                      strikethrough: true,
+                      foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }
+                  }
+              }
+          },
+          fields: "userEnteredFormat(textFormat)"
+      }
+  }];
+
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
+  });
+}
+
+export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns) {
+  const { reportSheetId } = await getOptions();
+  const token = await getAuthToken();
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
+      headers: { Authorization: `Bearer ${token}` }
+  });
+  const metaData = await metaRes.json();
+  const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
+
+  const requests = [{
+      updateCells: {
+          rows: [{
+              values: [{
+                  userEnteredValue: { stringValue: cellValue },
+                  textFormatRuns: textFormatRuns
+              }]
+          }],
+          range: {
+              sheetId: sheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 7, 
+              endColumnIndex: 8
+          },
+          fields: "userEnteredValue,textFormatRuns"
+      }
+  }];
+
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
+  });
 }
