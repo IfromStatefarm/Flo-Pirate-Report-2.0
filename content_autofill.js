@@ -13,6 +13,9 @@
     let configLoaded = false;
     let isAutofilling = false; 
     let lastReportData = null; // Cache data for SPA navigation
+    let cachedOverlay = null;  // Caches the overlay element to preserve its state
+    let hasRunAutomatedFill = false; // Prevents Youtube/Twitter loops on SPA wake-up
+    let isTransitioning = false; // Prevents SPA wake-up from firing while we wait for a page transition
     
     async function loadConfig() {
       try {
@@ -32,26 +35,36 @@
         }
     
         try {
+            const host = window.location.hostname;
+            const isTikTok = host.includes('tiktok.com') || host.includes('tiktokforbusiness.com');
+
             const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
             const cart = res.piracy_cart || [];
-            const info = res.reporterInfo;
+            const info = res.reporterInfo || {};
         
-            if (cart.length === 0 || !info) return;
-        
-            const host = window.location.hostname;
-            const platform = cart[0].platform || "TikTok";
+            const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : "Unknown");
         
             const data = {
-                fullName: info.name,
+                fullName: info.name || "",
                 email: info.email || "copyright@flosports.tv",
                 urls: cart.map(c => c.url),
                 platform: platform,
-                eventName: info.eventName,
-                vertical: info.vertical,
-                sourceUrl: info.sourceUrl
+                eventName: info.eventName || "",
+                vertical: info.vertical || "",
+                sourceUrl: info.sourceUrl || ""
             };
             
             lastReportData = data; // Save for SPA wake-up
+        
+            // 🔹 Always create the Launcher Tab fallback on TikTok
+            if (isTikTok) {
+                createLauncherTab(data);
+            }
+
+            // Only auto-open the full wizard if we actually have data in the cart
+            if (cart.length === 0 || !info.name) {
+                return;
+            }
         
             loadConfig();
             let retries = 0;
@@ -71,9 +84,12 @@
             if (host.includes('tiktok')) {
                 createTikTokOverlay(data);
             } else {
-                if (host.includes('youtube')) await fillYouTube(data);
-                else if (host.includes('instagram')) await fillInstagram(data);
-                else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
+                if (!hasRunAutomatedFill) {
+                    hasRunAutomatedFill = true;
+                    if (host.includes('youtube')) await fillYouTube(data);
+                    else if (host.includes('instagram')) await fillInstagram(data);
+                    else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
+                }
                 
                 if (data.eventName) createStandardOverlay(data);
             }
@@ -281,7 +297,9 @@
             nextBtn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
             nextBtn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
             nextBtn.click();
+            return true; // Successfully moved to the next page
         }
+        return false;
     }
 
     async function runStep2(data) {
@@ -304,7 +322,9 @@
             nextBtn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
             nextBtn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
             nextBtn.click();
+            return true; // Successfully moved to the next page
         }
+        return false;
     }
 
     async function runStep3(data) {
@@ -381,10 +401,50 @@
 
 
     // ==========================================
-    // 3. UI OVERLAYS (WITH MINIMIZE SUPPORT)
+    // 3. UI OVERLAYS & LAUNCHER TAB
     // ==========================================
 
+    function createLauncherTab(data) {
+        if (document.getElementById('flo-wiz-launcher')) return;
+        const launcher = document.createElement('div');
+        launcher.id = 'flo-wiz-launcher';
+        launcher.style.cssText = `
+            position: fixed; top: 40%; right: -50px; transform: translateY(-50%);
+            background: #0288d1; color: white; padding: 12px 6px; border-radius: 8px 0 0 8px;
+            cursor: pointer; z-index: 2147483646; font-family: sans-serif; font-weight: bold; font-size: 14px;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.2); writing-mode: vertical-rl; text-orientation: mixed;
+            transition: right 0.3s ease;
+        `;
+        launcher.innerText = "Wizard ✥";
+        
+        launcher.addEventListener('click', async () => {
+            // Fetch fresh data in case the user added things while the wizard was closed
+            const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
+            const cart = res.piracy_cart || [];
+            const info = res.reporterInfo || {};
+            const freshData = {
+                fullName: info.name || data?.fullName || "",
+                email: info.email || data?.email || "copyright@flosports.tv",
+                urls: cart.map(c => c.url),
+                platform: cart[0]?.platform || data?.platform || "TikTok",
+                eventName: info.eventName || data?.eventName || "",
+                vertical: info.vertical || data?.vertical || "",
+                sourceUrl: info.sourceUrl || data?.sourceUrl || ""
+            };
+            createTikTokOverlay(freshData);
+        });
+        document.body.appendChild(launcher);
+    }
+
     function createTikTokOverlay(data) {
+        // USE CACHED OVERLAY IF AVAILABLE TO PRESERVE BUTTON STATE
+        if (cachedOverlay && cachedOverlay.id === "flo-upload-overlay") {
+            if (!document.getElementById("flo-upload-overlay")) {
+                document.body.appendChild(cachedOverlay);
+            }
+            return;
+        }
+
         const existing = document.getElementById("flo-upload-overlay");
         if (existing) existing.remove();
       
@@ -399,7 +459,10 @@
         overlay.innerHTML = `
           <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
             <h3 id="flo-wiz-title" style="margin:0; color:#0288d1; font-size:16px; pointer-events:none;">FloSports Wizard ✥</h3>
-            <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
+            <div>
+                <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
+                <button id="flo-wiz-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">×</button>
+            </div>
           </div>
           
           <div id="flo-wiz-main-content">
@@ -423,12 +486,14 @@
           </div>
         `;
       
+        cachedOverlay = overlay; // Cache it!
         document.body.appendChild(overlay);
         setupDrag(overlay);
   
         // Minimize Logic
         let isWizMinimized = false;
         const minBtn = document.getElementById('flo-wiz-min-btn');
+        const closeBtn = document.getElementById('flo-wiz-close-btn');
         const mainContent = document.getElementById('flo-wiz-main-content');
         const title = document.getElementById('flo-wiz-title');
         const topBar = document.getElementById('flo-wiz-top-bar');
@@ -466,6 +531,10 @@
             }
         });
 
+        closeBtn.addEventListener('click', () => {
+            overlay.remove(); // Removing triggers the launcher tab to slide in via the interval
+        });
+
         // Step Buttons Logic
         const btn1 = document.getElementById('flo-btn-step1');
         const btn2 = document.getElementById('flo-btn-step2');
@@ -475,24 +544,54 @@
   
         btn1.addEventListener('click', async () => {
             btn1.innerText = "Running...";
-            await runStep1(data);
+            const transitioned = await runStep1(data);
+            
             btn1.innerText = "Step 1: Done";
             btn1.style.background = "#ccc"; btn1.style.color = "#333";
             btn2.style.background = "#0288d1"; btn2.style.color = "white";
+            
+            if (transitioned) {
+                isTransitioning = true;
+                overlay.style.display = 'none';
+                setTimeout(() => {
+                    isTransitioning = false;
+                    if (cachedOverlay) cachedOverlay.style.display = 'block';
+                    if (!document.getElementById("flo-upload-overlay") && cachedOverlay) {
+                        document.body.appendChild(cachedOverlay);
+                    }
+                }, 2500); // 2.5 second pause for the page to load
+            }
         });
   
         btn2.addEventListener('click', async () => {
             btn2.innerText = "Running...";
-            await runStep2(data);
+            const transitioned = await runStep2(data);
+            
             btn2.innerText = "Step 2: Done";
             btn2.style.background = "#ccc"; btn2.style.color = "#333";
             btn3.style.background = "#0288d1"; btn3.style.color = "white";
+
+            if (transitioned) {
+                isTransitioning = true;
+                overlay.style.display = 'none';
+                setTimeout(() => {
+                    isTransitioning = false;
+                    if (cachedOverlay) cachedOverlay.style.display = 'block';
+                    if (!document.getElementById("flo-upload-overlay") && cachedOverlay) {
+                        document.body.appendChild(cachedOverlay);
+                    }
+                }, 2500); // 2.5 second pause for the page to load
+            }
         });
   
         btn3.addEventListener('click', async () => {
             btn3.innerText = "Running...";
             await runStep3(data);
-            stepContainer.style.display = "none";
+            btn3.innerText = "Step 3: Done";
+            btn3.style.background = "#ccc"; 
+            btn3.style.color = "#333";
+            
+            // Show the log container, but DO NOT hide the step buttons
             logContainer.style.display = "block";
             overlay.style.borderColor = "#ce0e2d"; 
         });
@@ -503,7 +602,11 @@
           chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
             if (response && response.success) {
               status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
-              setTimeout(() => overlay.remove(), 2000);
+              setTimeout(() => {
+                  lastReportData = null; // Clear so the interval stops re-triggering
+                  cachedOverlay = null;  // Clear cache memory
+                  overlay.remove();
+              }, 2000);
             } else {
               status.innerText = "❌ Failed."; status.style.color = "red";
             }
@@ -512,6 +615,13 @@
     }
 
     function createStandardOverlay(data) {
+      if (cachedOverlay && cachedOverlay.id === "flo-upload-overlay") {
+          if (!document.getElementById("flo-upload-overlay")) {
+              document.body.appendChild(cachedOverlay);
+          }
+          return;
+      }
+
       const existing = document.getElementById("flo-upload-overlay");
       if (existing) existing.remove();
     
@@ -526,7 +636,10 @@
       overlay.innerHTML = `
         <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
           <h3 id="flo-wiz-title" style="margin:0; color:#ce0e2d; font-size:16px; pointer-events:none;">FloSports Helper ✥</h3>
-          <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
+          <div>
+              <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
+              <button id="flo-wiz-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">×</button>
+          </div>
         </div>
         
         <div id="flo-wiz-main-content">
@@ -539,12 +652,14 @@
         </div>
       `;
     
+      cachedOverlay = overlay; // Cache it
       document.body.appendChild(overlay);
       setupDrag(overlay);
 
       // Minimize Logic
       let isWizMinimized = false;
       const minBtn = document.getElementById('flo-wiz-min-btn');
+      const closeBtn = document.getElementById('flo-wiz-close-btn');
       const mainContent = document.getElementById('flo-wiz-main-content');
       const title = document.getElementById('flo-wiz-title');
       const topBar = document.getElementById('flo-wiz-top-bar');
@@ -581,6 +696,10 @@
               }
           }
       });
+      
+      closeBtn.addEventListener('click', () => {
+          overlay.remove();
+      });
     
       document.getElementById("flo-log-btn").addEventListener("click", () => {
         const status = document.getElementById("flo-log-status");
@@ -588,7 +707,11 @@
         chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
           if (response && response.success) {
             status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
-            setTimeout(() => overlay.remove(), 2000);
+            setTimeout(() => {
+                lastReportData = null; // Clear so the interval stops
+                cachedOverlay = null;  // Clear cache memory
+                overlay.remove();
+            }, 2000);
           } else {
             status.innerText = "❌ Failed."; status.style.color = "red";
           }
@@ -601,7 +724,7 @@
       overlay.addEventListener('mousedown', (e) => {
           // Ignore drag on interactive elements to allow clicking
           if (['BUTTON', 'INPUT', 'A', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-          if (e.target.id === 'flo-wiz-min-btn') return;
+          if (e.target.id === 'flo-wiz-min-btn' || e.target.id === 'flo-wiz-close-btn') return;
 
           isDragging = true; startX = e.clientX; startY = e.clientY;
           const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
@@ -669,15 +792,23 @@
     }
 
     // 5. SPA WAKE-UP LISTENER
-    // Re-triggers the script automatically if the user navigates around via React/SPA routing
-    document.addEventListener('click', (e) => {
-        setTimeout(() => {
-            if (lastReportData && !isAutofilling && !document.getElementById("flo-upload-overlay")) {
-                console.log("🖱️ User interaction detected. Waking up AutoFill script...");
-                routeAutofill(lastReportData);
+    // Automatically re-injects the widget or toggles the launcher tab if TikTok's React routing destroys the DOM node.
+    setInterval(() => {
+        const isReportPage = window.location.href.toLowerCase().includes('tiktok.com/legal/report') || window.location.href.toLowerCase().includes('ipr.tiktokforbusiness');
+        const launcher = document.getElementById('flo-wiz-launcher');
+        const wiz = document.getElementById('flo-upload-overlay');
+
+        if (launcher) {
+            // Hide launcher if wizard is open OR we are not on the report page
+            if (wiz || !isReportPage) {
+                launcher.style.right = '-50px';
+            } else {
+                launcher.style.right = '0px';
             }
-        }, 1000); 
-    }, true);
+        } else if (isReportPage && !wiz && lastReportData) {
+            createLauncherTab(lastReportData);
+        }
+    }, 1000);
 
     // Call init on load
     init();
