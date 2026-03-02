@@ -404,9 +404,13 @@
 
   async function initOverlay() {
     if (document.getElementById('flo-overlay')) return;
-    if (!isExtensionValid()) {
-        return;
-    }
+    if (!isExtensionValid()) return;
+
+    // Auto-minimize if we are on a reporting/legal page
+    const currentUrl = window.location.href.toLowerCase();
+    const isReportingPage = currentUrl.includes('/legal/report') || 
+                            currentUrl.includes('copyright_complaint_form') || 
+                            currentUrl.includes('ipr.tiktokforbusiness');
 
     const overlay = document.createElement('div');
     overlay.id = 'flo-overlay';
@@ -415,21 +419,24 @@
       background: white; padding: 15px; border-radius: 12px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.15); width: 220px;
       border: 1px solid #e0e0e0; text-align: center;
-      font-family: sans-serif; transition: opacity 0.3s; cursor: move; user-select: none;
+      font-family: sans-serif; transition: all 0.3s ease; cursor: move; user-select: none;
     `;
 
     overlay.innerHTML = `
-      <div id="flo-drag-handle" style="font-size: 12px; color: #666; margin-bottom: 5px; cursor: move;">
-        PIRATE AI HELPER ✥
+      <div id="flo-top-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+        <div id="flo-drag-handle" style="font-size: 12px; color: #666; cursor: move; flex-grow: 1; text-align: left; font-weight:bold;">PIRATE AI ✥</div>
+        <button id="flo-min-btn" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #999; line-height: 1; padding: 0 5px;">−</button>
       </div>
-      <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s; pointer-events: none;">...</div>
-      
-      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-        <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
-        <button id="flo-report" style="flex: 1; background: #333; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">Panel</button>
-      </div>
+      <div id="flo-main-content">
+        <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s; pointer-events: none;">...</div>
+        
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
+          <button id="flo-report" style="flex: 1; background: #333; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">Panel</button>
+        </div>
 
-      <button id="flo-reset" style="background: none; border: none; color: #999; font-size: 11px; text-decoration: underline; cursor: pointer;">Reset Queue</button>
+        <button id="flo-reset" style="background: none; border: none; color: #999; font-size: 11px; text-decoration: underline; cursor: pointer;">Reset Queue</button>
+      </div>
     `;
 
     document.body.appendChild(overlay);
@@ -452,11 +459,53 @@
       catch(e) { handleContextInvalidated(); }
     });
 
+    // Minimize Logic
+    let isMinimized = isReportingPage;
+    const minBtn = document.getElementById('flo-min-btn');
+    const mainContent = document.getElementById('flo-main-content');
+    const dragHandle = document.getElementById('flo-drag-handle');
+
+    const toggleMinimize = () => {
+        if (isMinimized) {
+            mainContent.style.display = 'none';
+            minBtn.innerHTML = '+';
+            dragHandle.innerText = '✥';
+            overlay.style.width = 'auto';
+            overlay.style.padding = '8px';
+            overlay.style.left = 'auto'; 
+            overlay.style.right = '0px'; // Snap to right edge as a tab
+            overlay.style.borderTopRightRadius = '0';
+            overlay.style.borderBottomRightRadius = '0';
+        } else {
+            mainContent.style.display = 'block';
+            minBtn.innerHTML = '−';
+            dragHandle.innerText = 'PIRATE AI ✥';
+            overlay.style.width = '220px';
+            overlay.style.padding = '15px';
+            overlay.style.borderRadius = '12px';
+            
+            // Adjust position if it was snapped to the edge
+            const rect = overlay.getBoundingClientRect();
+            if (window.innerWidth - rect.right < 10) {
+                overlay.style.right = '20px';
+                overlay.style.left = 'auto';
+            }
+        }
+    };
+
+    minBtn.addEventListener('click', () => {
+        isMinimized = !isMinimized;
+        toggleMinimize();
+    });
+
+    if (isMinimized) toggleMinimize(); // Enforce immediately if on reporting page
+
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
 
     overlay.addEventListener('mousedown', (e) => {
         if (['BUTTON', 'INPUT', 'A', 'SELECT'].includes(e.target.tagName)) return;
+        if (e.target.id === 'flo-min-btn') return; // Prevent drag trigger on minimize btn
 
         isDragging = true;
         startX = e.clientX;
