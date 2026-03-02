@@ -2,97 +2,81 @@
 <html>
 <head>
   <style>
-    body { padding: 15px; font-family: sans-serif; color: #333; }
-    h2 { color: #ce0e2d; margin-top:0; }
+    body { padding: 15px; font-family: sans-serif; color: #333; background: #fdfdfd; }
+    h2 { color: #ce0e2d; margin-top:0; font-size: 18px; }
     
     /* Input Styling */
     input, select { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
     label { font-size: 12px; font-weight: bold; display: block; margin-top: 10px; }
     
-    /* Highlight the Source URL box so you know where to paste */
     #sourceUrlDisplay { border: 2px solid #2563eb; background-color: #f0f9ff; }
     
-    /* Main Submit Button */
-    .btn { width: 100%; padding: 12px; margin-top: 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background: #ce0e2d; color: white; }
+    .btn { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background: #ce0e2d; color: white; transition: opacity 0.2s; }
     .btn:disabled { background: #ccc; cursor: not-allowed; }
     .btn:hover:not(:disabled) { opacity: 0.9; }
     
-    /* New Style for the 'Grab URL' button to clean up the code */
-    .grab-btn {
-      width: 100%; 
-      padding: 8px; 
-      margin-bottom: 5px; 
-      background-color: #28a745; /* Green */
-      color: white; 
-      border: none; 
-      border-radius: 4px; 
-      cursor: pointer; 
-      font-size: 12px;
-      font-weight: bold;
-    }
-    .grab-btn:hover { background-color: #218838; }
+    .grab-btn { width: 100%; padding: 8px; margin-bottom: 5px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
 
-    #loading { color: blue; font-weight: bold; margin-bottom: 10px; }
-    
-    /* Utility Link */
+    #loading { color: blue; font-weight: bold; margin-bottom: 10px; display: none; }
     .link-btn { background:none; border:none; color:#666; font-size:10px; cursor:pointer; text-decoration:underline; float: right; }
 
-    /* Closer Status */
-    #closerStatus {
-        margin-top: 5px;
-        font-size: 11px;
-        color: #555;
-        background: #eee;
-        padding: 5px;
-        border-radius: 4px;
-        display: none; /* Hidden by default */
-    }
+    /* Wizard Styling */
+    #wizardView { display: none; background: #fff; border: 2px solid #0288d1; border-radius: 8px; padding: 15px; margin-top: 10px; }
+    .wizard-title { color: #0288d1; margin-top: 0; font-size: 16px; margin-bottom: 10px; }
+    .step-btn { background: #0288d1; color: white; margin-bottom: 8px; font-size: 13px; text-align: left; padding: 10px; width: 100%; }
+    .step-btn.done { background: #e0e0e0 !important; color: #666 !important; }
+    .step-btn.active { border-left: 4px solid #01579b; }
+
+    #closerStatus { margin-top: 5px; font-size: 11px; color: #555; background: #eee; padding: 5px; border-radius: 4px; display: none; }
+    
+    .status-msg { font-size: 11px; margin-top: 10px; text-align: center; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h2>FloSports Reporter</h2>
-  
-  <div id="loading">Connecting...</div>
+  <div id="mainView">
+    <h2>FloSports Reporter</h2>
+    <div id="loading">Connecting...</div>
 
-  <label>Reporter Name</label>
-  <input type="text" id="reporterName" placeholder="John Doe">
-  
-  <label>Vertical</label>
-  <select id="verticalSelect"><option value="">Loading...</option></select>
-  
-  <label>Event Name (Type to Search)</label>
-  <input type="text" id="eventInput" list="eventList" placeholder="Select or Type...">
-  <datalist id="eventList"></datalist>
-
-  <label>Source URL</label>
-  
-  <button id="btn-grab-flo" class="grab-btn">
-    Use Flosports Event and url
-  </button>
-
-  <input type="text" id="sourceUrlDisplay" placeholder="Paste URL or Click Above...">
-  
-  <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" Text</button>
-  <button id="searchEventBtn" class="link-btn" style="margin-right: 10px;"> Search Event</button>
-  <div style="clear:both;"></div>
-
-  <button id="startBtn" class="btn" disabled>Start Report</button>
-
-  <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; background-color: #f9f9f9; padding: 10px; border-radius: 4px;">
-    <label style="color: #333; margin-top:0;">Automation Tools</label>
+    <label>Reporter Name</label>
+    <input type="text" id="reporterName" placeholder="John Doe">
     
-    <!-- Auto Crawl -->
-    <button id="autoCrawlBtn" class="btn" style="background-color: #f39c12; margin-top: 5px; font-size: 12px; padding: 10px;">Start Auto-Crawl (TikTok)</button>
-    <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
+    <label>Vertical</label>
+    <select id="verticalSelect"><option value="">Loading...</option></select>
+    
+    <label>Event Name</label>
+    <input type="text" id="eventInput" list="eventList" placeholder="Select or Type...">
+    <datalist id="eventList"></datalist>
 
-    <!-- The Closer -->
-    <label style="margin-top: 15px;">Sheet Scanner Options</label>
-    <div style="display:flex; gap:5px; align-items:center;">
-        <input type="number" id="startRowInput" placeholder="Start Row (e.g. 2)" style="flex:1;" min="1">
-        <button id="testCloserBtn" class="btn" style="background-color: #555; margin-top: 0; font-size: 11px; padding: 8px; flex:2;">Run "The Closer"</button>
+    <label>Source URL</label>
+    <button id="btn-grab-flo" class="grab-btn">Use Flosports Event and URL</button>
+    <input type="text" id="sourceUrlDisplay" placeholder="Paste URL or Click Above...">
+    
+    <button id="startBtn" class="btn" disabled>Start Report</button>
+    
+    <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px;">
+        <button id="autoCrawlBtn" class="btn" style="background-color: #f39c12; font-size: 11px;">Start Auto-Crawl (TikTok)</button>
+        <div id="crawlStatus" style="font-size: 10px; color: #666; margin-top: 5px;"></div>
     </div>
-    <div id="closerStatus">Waiting to start...</div>
-    <div style="font-size: 10px; color:#666; margin-top:4px;">Scans Column H for dead links. Updates Status to 'Resolved' or 'Investigating'.</div>
+  </div>
+
+  <!-- THE WIZARD VIEW -->
+  <div id="wizardView">
+    <h3 class="wizard-title">Reporting Wizard ✥</h3>
+    <p style="font-size: 11px; color: #666; margin-bottom: 15px;">Follow the steps below to auto-fill the legal form on this page.</p>
+    
+    <div id="stepContainer">
+        <button id="wiz-step1" class="btn step-btn active">1. Fill Email & Continue</button>
+        <button id="wiz-step2" class="btn step-btn" disabled>2. Personal & Company Info</button>
+        <button id="wiz-step3" class="btn step-btn" disabled>3. Infringement Details & Sign</button>
+    </div>
+
+    <div id="logSection" style="display: none; border-top: 1px dashed #ccc; margin-top: 15px; padding-top: 10px;">
+        <p style="font-size: 11px; font-weight: bold; color: #ce0e2d; text-align: center;">⚠️ Submit form on page first!</p>
+        <button id="wiz-log-btn" class="btn">Log Final Report</button>
+        <div id="wiz-log-status" class="status-msg"></div>
+    </div>
+    
+    <button id="exitWizard" class="link-btn" style="float: none; margin-top: 15px; display: block; text-align: center; width: 100%;">Return to Main View</button>
   </div>
 
   <script src="sidepanel.js" type="module"></script>

@@ -18,9 +18,22 @@ import {
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
 
-// Open Side Panel on Click
+// Ensure side panel behavior triggers on action click
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
+
+// AUTO-OPEN SIDE PANEL ON LEGAL PAGES
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url) {
+    if (tab.url.includes('tiktok.com/legal/report') || tab.url.includes('youtube.com/copyright_complaint_form')) {
+      console.log("🛠️ Legal page detected. Opening Side Panel Wizard...");
+      // windowId is strictly required for the side panel API to function consistently
+      if (tab.windowId) {
+          chrome.sidePanel.open({ windowId: tab.windowId }).catch(e => console.error(e));
+      }
+    }
+  }
+});
 
 // --- ALARMS ---
 const ALARM_NAME = "theCloser";
@@ -425,6 +438,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  // Add logToSheet handler for the Side Panel
+  if (request.action === 'logToSheet') {
+      handleBatchReport(request.data).then(res => {
+          sendResponse(res);
+      });
+      return true; 
+  }
+
   // --- UPDATED PROCESS QUEUE HANDLER ---
   if (request.action === 'processQueue') {
       handleBatchReport(request.data).then(res => {
@@ -460,7 +481,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'openPopup') {
-    if (sender.tab && sender.tab.id) chrome.sidePanel.open({ tabId: sender.tab.id });
+    if (sender.tab && sender.tab.windowId) {
+        chrome.sidePanel.open({ windowId: sender.tab.windowId })
+            .catch(e => console.warn("Failed to open Side Panel:", e));
+    }
     return true;
   }
   
@@ -533,9 +557,16 @@ async function handleDynamicSearch(data) {
 
 async function handleAddVideo(tab, data) {
   try {
-    const screenshotPromise = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 50 });
-    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2000));
-    const screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
+    let screenshotUrl = null;
+    // Safety Try-Catch for screenshot logic so that a failure here won't kill the item saving
+    try {
+        const screenshotPromise = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 50 });
+        const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2000));
+        screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
+    } catch (imgErr) {
+        console.warn("Screenshot capture skipped/failed:", imgErr);
+    }
+
     const screenshotId = crypto.randomUUID();
     if (screenshotUrl) await saveImage(screenshotId, screenshotUrl);
 
