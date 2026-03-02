@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
   const closerStatusEl = document.getElementById('closerStatus'); 
-  const initTikTokBtn = document.getElementById('initTikTokBtn'); // NEW TIKTOK BTN
   
   // Create Stop Button dynamically if not present
   let stopCloserBtn = document.getElementById('stopCloserBtn');
@@ -327,85 +326,6 @@ document.addEventListener('DOMContentLoaded', async () => {
        copyUrlBtn.innerText = "Copied!";
        setTimeout(() => copyUrlBtn.innerText = 'Copy "Stolen From" Text', 2000);
     });
-  }
-
-  // --- TIKTOK INIT BUTTON LOGIC ---
-  if (initTikTokBtn) {
-      initTikTokBtn.addEventListener('click', async () => {
-          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          if (!tab || !tab.url.includes('tiktok.com')) {
-              alert("Please open the TikTok reporting page first.");
-              return;
-          }
-
-          initTikTokBtn.innerText = "Running...";
-          initTikTokBtn.disabled = true;
-
-          try {
-              // We execute the click logic dynamically inside the active tab
-              await chrome.scripting.executeScript({
-                  target: { tabId: tab.id },
-                  func: async () => {
-                      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                      
-                      async function selectTuxDropdown(searchText) {
-                          // Find all listbox trigger buttons
-                          const dropdowns = document.querySelectorAll('button[aria-haspopup="listbox"]');
-                          for (const dd of dropdowns) {
-                              // If it already displays the value, we can skip
-                              if (dd.innerText.toLowerCase().includes(searchText.toLowerCase())) return true;
-                              
-                              // Open the dropdown
-                              dd.click(); 
-                              await sleep(500); // Give the React Portal time to mount in the DOM
-                              
-                              // Search for the option globally (handles Portal rendering at the bottom of <body>)
-                              const xpath = `//div[@role="option" or @role="menuitem"]//text()[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${searchText.toLowerCase()}')]/parent::* | //li[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${searchText.toLowerCase()}')]`;
-                              const option = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                              
-                              if (option) {
-                                  option.scrollIntoView({block: 'center', behavior: 'smooth'});
-                                  
-                                  // Emulate a human click explicitly on the option
-                                  option.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-                                  option.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-                                  option.click();
-                                  
-                                  await sleep(500); // Wait for the UI state to update and next box to appear
-                                  return true;
-                              } else {
-                                  // Click again to close it if the option wasn't found in this specific dropdown
-                                  dd.click(); 
-                                  await sleep(300);
-                              }
-                          }
-                          return false;
-                      }
-
-                      // Click Target 1
-                      await selectTuxDropdown("copyright infringement");
-                      
-                      // Click Target 2 (The Next Box)
-                      await selectTuxDropdown("i am the copyright owner");
-                      
-                      return true;
-                  }
-              });
-              initTikTokBtn.innerText = "Done!";
-              initTikTokBtn.style.backgroundColor = "#4CAF50";
-          } catch (err) {
-              console.error("Init TikTok Error:", err);
-              initTikTokBtn.innerText = "Error (See Console)";
-              initTikTokBtn.style.backgroundColor = "#e74c3c";
-          }
-          
-          // Reset button UI after 3 seconds
-          setTimeout(() => {
-              initTikTokBtn.innerText = "Init TikTok Form (Boxes 1 & 2)";
-              initTikTokBtn.disabled = false;
-              initTikTokBtn.style.backgroundColor = "#0288d1";
-          }, 3000);
-      });
   }
 
   // --- Test Closer Button ---

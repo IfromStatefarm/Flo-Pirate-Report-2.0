@@ -208,11 +208,52 @@
     }
 
     // ==========================================
-    // 2. DISCRETE STEP FUNCTIONS
+    // 2. DISCRETE STEP FUNCTIONS (MANUAL TRIGGERS)
     // ==========================================
 
     async function runStep1(data) {
-        console.log("🔹 Step 1: Email Verification");
+        console.log("🔹 Step 1: Init Form & Email Verification");
+
+        async function selectTuxDropdown(searchText) {
+            // Find all listbox trigger buttons
+            const dropdowns = document.querySelectorAll('button[aria-haspopup="listbox"]');
+            for (const dd of dropdowns) {
+                // If it already displays the value, we can skip
+                if (dd.innerText.toLowerCase().includes(searchText.toLowerCase())) return true;
+                
+                // Open the dropdown
+                dd.click(); 
+                await sleep(500); // Give the React Portal time to mount in the DOM
+                
+                // Search for the option globally (handles Portal rendering at the bottom of <body>)
+                const xpath = `//div[@role="option" or @role="menuitem"]//text()[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${searchText.toLowerCase()}')]/parent::* | //li[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${searchText.toLowerCase()}')]`;
+                const option = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                
+                if (option) {
+                    option.scrollIntoView({block: 'center', behavior: 'smooth'});
+                    
+                    // Emulate a human click explicitly on the option
+                    option.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                    option.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                    option.click();
+                    
+                    await sleep(500); // Wait for the UI state to update and next box to appear
+                    return true;
+                } else {
+                    // Click again to close it if the option wasn't found in this specific dropdown
+                    dd.click(); 
+                    await sleep(300);
+                }
+            }
+            return false;
+        }
+
+        // Click Target 1 (Initialize dropdowns for TikTok)
+        await selectTuxDropdown("copyright infringement");
+        
+        // Click Target 2 (The Next Box)
+        await selectTuxDropdown("i am the copyright owner");
+
         const email = data.email || "copyright@flosports.tv";
         
         let targetInput = document.querySelector('input[placeholder*="email" i]');
@@ -340,7 +381,7 @@
 
 
     // ==========================================
-    // 3. UI OVERLAYS
+    // 3. UI OVERLAYS (WITH MINIMIZE SUPPORT)
     // ==========================================
 
     function createTikTokOverlay(data) {
@@ -352,56 +393,100 @@
         overlay.style.cssText = `
           position: fixed; top: 80px; right: 20px; width: 280px;
           background: white; border: 3px solid #0288d1; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-          z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
+          z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
         `;
       
-        // UPDATED: Combined Step 1 and Step 2 into an Init button
         overlay.innerHTML = `
-          <h3 style="margin-top:0; color:#0288d1;">FloSports TikTok Wizard ✥</h3>
-          <div style="margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px; font-size: 13px;">
-            <small>Follow the highlighted steps as you progress through the form.</small>
+          <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+            <h3 id="flo-wiz-title" style="margin:0; color:#0288d1; font-size:16px; pointer-events:none;">FloSports Wizard ✥</h3>
+            <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
           </div>
           
-          <div id="flo-step-container" style="display: flex; flex-direction: column; gap: 8px;">
-              <button id="flo-btn-init" style="background: #0288d1; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Init TikTok Form (Boxes 1 & 2)</button>
-              <button id="flo-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Infringement & Sign</button>
-          </div>
-  
-          <div id="flo-log-container" style="display: none;">
-              <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
-                  ⚠️ Click "Send" on the page first, then log below!
+          <div id="flo-wiz-main-content">
+              <div style="margin-bottom: 12px; font-size: 13px;">
+                <small>Follow the highlighted steps as you progress through the form.</small>
               </div>
-              <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
-              <div id="flo-log-status" style="margin-top:8px; font-size:12px; text-align: center;"></div>
+              
+              <div id="flo-step-container" style="display: flex; flex-direction: column; gap: 8px;">
+                  <button id="flo-btn-step1" style="background: #0288d1; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Init & Email</button>
+                  <button id="flo-btn-step2" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 2: Personal Info</button>
+                  <button id="flo-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Infringement & Sign</button>
+              </div>
+      
+              <div id="flo-log-container" style="display: none; margin-top: 15px;">
+                  <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                      ⚠️ Click "Send" on the page first, then log below!
+                  </div>
+                  <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+                  <div id="flo-log-status" style="margin-top:8px; font-size:12px; text-align: center;"></div>
+              </div>
           </div>
         `;
       
         document.body.appendChild(overlay);
         setupDrag(overlay);
   
-        const btnInit = document.getElementById('flo-btn-init');
+        // Minimize Logic
+        let isWizMinimized = false;
+        const minBtn = document.getElementById('flo-wiz-min-btn');
+        const mainContent = document.getElementById('flo-wiz-main-content');
+        const title = document.getElementById('flo-wiz-title');
+        const topBar = document.getElementById('flo-wiz-top-bar');
+
+        minBtn.addEventListener('click', () => {
+            isWizMinimized = !isWizMinimized;
+            if (isWizMinimized) {
+                mainContent.style.display = 'none';
+                minBtn.innerHTML = '+';
+                title.innerText = 'Wizard ✥';
+                overlay.style.width = 'auto';
+                topBar.style.borderBottom = 'none';
+                topBar.style.marginBottom = '0';
+                topBar.style.paddingBottom = '0';
+                overlay.style.left = 'auto'; // Snap to right side
+                overlay.style.right = '0px';
+                overlay.style.borderTopRightRadius = '0';
+                overlay.style.borderBottomRightRadius = '0';
+            } else {
+                mainContent.style.display = 'block';
+                minBtn.innerHTML = '−';
+                title.innerText = 'FloSports Wizard ✥';
+                overlay.style.width = '280px';
+                topBar.style.borderBottom = '1px solid #eee';
+                topBar.style.marginBottom = '10px';
+                topBar.style.paddingBottom = '8px';
+                overlay.style.borderRadius = '8px';
+                
+                // Adjust position slightly to prevent overflow
+                const rect = overlay.getBoundingClientRect();
+                if (window.innerWidth - rect.right < 10) {
+                    overlay.style.right = '20px';
+                    overlay.style.left = 'auto';
+                }
+            }
+        });
+
+        // Step Buttons Logic
+        const btn1 = document.getElementById('flo-btn-step1');
+        const btn2 = document.getElementById('flo-btn-step2');
         const btn3 = document.getElementById('flo-btn-step3');
         const stepContainer = document.getElementById('flo-step-container');
         const logContainer = document.getElementById('flo-log-container');
   
-        // NEW COMBINED LOGIC FOR STEP 1 & 2
-        btnInit.addEventListener('click', async () => {
-            btnInit.disabled = true;
-            btnInit.innerText = "Filling Email (Step 1)...";
+        btn1.addEventListener('click', async () => {
+            btn1.innerText = "Running...";
             await runStep1(data);
-            
-            btnInit.innerText = "Waiting for next page...";
-            await sleep(2000); // Give the SPA time to transition to Box 2
-            
-            btnInit.innerText = "Filling Info (Step 2)...";
+            btn1.innerText = "Step 1: Done";
+            btn1.style.background = "#ccc"; btn1.style.color = "#333";
+            btn2.style.background = "#0288d1"; btn2.style.color = "white";
+        });
+  
+        btn2.addEventListener('click', async () => {
+            btn2.innerText = "Running...";
             await runStep2(data);
-            
-            btnInit.innerText = "Boxes 1 & 2 Complete";
-            btnInit.style.background = "#ccc"; 
-            btnInit.style.color = "#333";
-            
-            btn3.style.background = "#0288d1"; 
-            btn3.style.color = "white";
+            btn2.innerText = "Step 2: Done";
+            btn2.style.background = "#ccc"; btn2.style.color = "#333";
+            btn3.style.background = "#0288d1"; btn3.style.color = "white";
         });
   
         btn3.addEventListener('click', async () => {
@@ -435,21 +520,67 @@
       overlay.style.cssText = `
         position: fixed; top: 80px; right: 20px; width: 300px;
         background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
+        z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
       `;
     
       overlay.innerHTML = `
-        <h3 style="margin-top:0; color:#ce0e2d;">FloSports Helper ✥</h3>
-        <div style="margin-bottom: 10px; border-bottom: 1px solid #eee;">
-          <strong>Platform:</strong> ${data.platform || "Unknown"}<br>
-          <small>Review fields, then click Send.</small>
+        <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+          <h3 id="flo-wiz-title" style="margin:0; color:#ce0e2d; font-size:16px; pointer-events:none;">FloSports Helper ✥</h3>
+          <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
         </div>
-        <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
-        <div id="flo-log-status" style="margin-top:8px; font-size:12px;"></div>
+        
+        <div id="flo-wiz-main-content">
+            <div style="margin-bottom: 10px;">
+              <strong>Platform:</strong> ${data.platform || "Unknown"}<br>
+              <small>Review fields, then click Send.</small>
+            </div>
+            <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+            <div id="flo-log-status" style="margin-top:8px; font-size:12px;"></div>
+        </div>
       `;
     
       document.body.appendChild(overlay);
       setupDrag(overlay);
+
+      // Minimize Logic
+      let isWizMinimized = false;
+      const minBtn = document.getElementById('flo-wiz-min-btn');
+      const mainContent = document.getElementById('flo-wiz-main-content');
+      const title = document.getElementById('flo-wiz-title');
+      const topBar = document.getElementById('flo-wiz-top-bar');
+
+      minBtn.addEventListener('click', () => {
+          isWizMinimized = !isWizMinimized;
+          if (isWizMinimized) {
+              mainContent.style.display = 'none';
+              minBtn.innerHTML = '+';
+              title.innerText = 'Helper ✥';
+              overlay.style.width = 'auto';
+              topBar.style.borderBottom = 'none';
+              topBar.style.marginBottom = '0';
+              topBar.style.paddingBottom = '0';
+              overlay.style.left = 'auto'; // Snap to right side
+              overlay.style.right = '0px';
+              overlay.style.borderTopRightRadius = '0';
+              overlay.style.borderBottomRightRadius = '0';
+          } else {
+              mainContent.style.display = 'block';
+              minBtn.innerHTML = '−';
+              title.innerText = 'FloSports Helper ✥';
+              overlay.style.width = '300px';
+              topBar.style.borderBottom = '1px solid #eee';
+              topBar.style.marginBottom = '10px';
+              topBar.style.paddingBottom = '8px';
+              overlay.style.borderRadius = '8px';
+              
+              // Adjust position slightly to prevent overflow
+              const rect = overlay.getBoundingClientRect();
+              if (window.innerWidth - rect.right < 10) {
+                  overlay.style.right = '20px';
+                  overlay.style.left = 'auto';
+              }
+          }
+      });
     
       document.getElementById("flo-log-btn").addEventListener("click", () => {
         const status = document.getElementById("flo-log-status");
@@ -468,7 +599,10 @@
     function setupDrag(overlay) {
       let isDragging = false, startX, startY, initialLeft, initialTop;
       overlay.addEventListener('mousedown', (e) => {
-          if (['BUTTON'].includes(e.target.tagName)) return;
+          // Ignore drag on interactive elements to allow clicking
+          if (['BUTTON', 'INPUT', 'A', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+          if (e.target.id === 'flo-wiz-min-btn') return;
+
           isDragging = true; startX = e.clientX; startY = e.clientY;
           const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
           overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
