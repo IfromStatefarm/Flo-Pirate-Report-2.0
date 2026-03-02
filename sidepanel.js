@@ -1,433 +1,536 @@
-// sidepanel.js
+// content_autofill.js
 
-let configData = null;
-let eventLookup = {}; 
+(function() { 
 
-document.addEventListener('DOMContentLoaded', async () => {
-  console.log("🚀 Sidepanel Loaded");
-
-  // --- GET ELEMENTS ---
-  const startBtn = document.getElementById('startBtn'); 
-  const loadingEl = document.getElementById('loading');
-  const eventInput = document.getElementById('eventInput');
-  const verticalSelect = document.getElementById('verticalSelect');
-  const sourceDisplay = document.getElementById('sourceUrlDisplay'); 
-  const reporterInput = document.getElementById('reporterName');
-  const copyUrlBtn = document.getElementById('copyUrlBtn');
-
-  // --- ENSURE DATALIST EXISTS (For Dropdown Behavior) ---
-  let dataList = document.getElementById('eventList');
-  if (!dataList) {
-      dataList = document.createElement('datalist');
-      dataList.id = 'eventList';
-      document.body.appendChild(dataList);
-  }
-  // Force the input to use this list
-  if (eventInput) {
-      eventInput.setAttribute("list", "eventList");
-      eventInput.setAttribute("autocomplete", "off"); // Turn off browser history to show our list instead
-  }
-
-  // ==========================================
-  // 1. LISTEN FOR MESSAGES
-  // ==========================================
-  chrome.runtime.onMessage.addListener((msg) => {
-    // A. Found URL
-    if (msg.action === 'urlFound') {
-      if(sourceDisplay) {
-        sourceDisplay.value = msg.url;
-        sourceDisplay.style.background = "#e6fffa"; 
-        sourceDisplay.placeholder = "";
-      }
-      if(copyUrlBtn) copyUrlBtn.innerText = "URL Found!";
+    if (typeof AUTOFILL_CONFIG === 'undefined') {
+      var AUTOFILL_CONFIG = {}; 
     }
     
-    // B. Search Failed
-    if (msg.action === 'botSearchFailed') {
-      if(sourceDisplay) {
-        sourceDisplay.value = "";
-        sourceDisplay.placeholder = "Bot failed. Search manually.";
-        sourceDisplay.style.background = "#ffe6e6"; 
-      }
-    }
-
-    // C. Success Sound
-    if (msg.action === 'playSuccessSound') {
-       const audio = new Audio('jingle.mp3');
-       audio.play().catch(e => console.log("Audio play failed", e));
-       
-       if(sourceDisplay) sourceDisplay.value = "";
-       if(eventInput) eventInput.value = "";
-    }
-  });
-
-  // ==========================================
-  // 2. CONFIG & SETUP
-  // ==========================================
-  chrome.storage.local.get(['last_reporter', 'last_vertical', 'last_event'], (res) => {
-    if (res.last_reporter && reporterInput) reporterInput.value = res.last_reporter;
-    window.lastVertical = res.last_vertical;
-    window.lastEvent = res.last_event;
-  });
-
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
-    if (response && response.success) {
-      configData = response.config;
-      populateVerticals();
-      if (loadingEl) loadingEl.style.display = 'none';
-      if (startBtn) startBtn.disabled = false;
-    } else {
-      if (loadingEl) loadingEl.innerText = "Error: " + (response ? response.error : "Unknown");
-    }
-  } catch (e) {
-    if (loadingEl) loadingEl.innerText = "Connection Failed.";
-  }
-
-  function populateVerticals() {
-    if (!verticalSelect) return;
-    verticalSelect.innerHTML = '<option value="">Select Vertical...</option>';
-    if (configData && configData.verticals) {
-      configData.verticals.forEach(v => {
-        const opt = document.createElement('option');
-        opt.value = v.name;
-        opt.innerText = v.name;
-        verticalSelect.appendChild(opt);
-      });
-    }
-    if (window.lastVertical) {
-      verticalSelect.value = window.lastVertical;
-      populateEvents(window.lastVertical); 
-    }
-  }
-
-  if (verticalSelect) {
-    verticalSelect.addEventListener('change', () => populateEvents(verticalSelect.value));
-  }
-
-  // Global variable for the Search URL (from Excel Cell B1)
-let verticalSearchBaseUrl = ""; 
-
-// ==========================================
-// 2. POPULATE EVENTS (Reads Row 3+ and Cell B1)
-// ==========================================
-async function populateEvents(verticalName) {
-    if (!eventInput || !sourceDisplay) return;
-
-    // Reset UI
-    if (dataList) dataList.innerHTML = ''; 
-    eventInput.value = '';
-    eventInput.placeholder = "Loading...";
-    verticalSearchBaseUrl = ""; // Reset
-    eventLookup = {};
-
-    try {
-      const response = await chrome.runtime.sendMessage({ action: 'getVerticalData', vertical: verticalName });
-      
-      if (response && response.success && response.data) {
-         eventInput.placeholder = "Type Event Name...";
-
-         // 1. CAPTURE CELL B1 (The Search URL)
-         // Expecting background script to parse Cell B1 into 'searchUrl'
-         if (response.data.searchUrl) {
-             verticalSearchBaseUrl = response.data.searchUrl;
-         }
-
-         // 2. CAPTURE DATA (Starting Row 3)
-         if (response.data.eventMap) {
-             const sortedNames = Object.values(response.data.eventMap)
-                 .map(item => item.name).sort();
-
-             sortedNames.forEach(name => {
-                 const item = response.data.eventMap[name.toLowerCase()];
-                 // Store in local lookup
-                 eventLookup[name.toLowerCase()] = item.url; 
-                 // Add to Dropdown
-                 const opt = document.createElement('option');
-                 opt.value = name; 
-                 dataList.appendChild(opt);
-             });
-         }
-      }
-    } catch (e) { console.error(e); }
-}
-
-// ==========================================
-// 3. SEARCH LOGIC (Uses B1 URL for Fallback)
-// ==========================================
-if (eventInput) {
-    // A. Check for Match as you type (Standard Dropdown)
-    eventInput.addEventListener('input', (e) => {
-       const key = e.target.value.trim().toLowerCase();
-       if (eventLookup[key]) {
-          sourceDisplay.value = eventLookup[key]; // Auto-fill URL
-          sourceDisplay.style.background = "#fff";
-       }
-    });
-
-    // B. Handle "Enter" -> Fallback Search
-    eventInput.addEventListener('change', (e) => {
-       const val = e.target.value.trim();
-       const key = val.toLowerCase();
-       
-       // If found in lookup, do nothing (URL is already filled)
-       if (eventLookup[key]) return; 
-
-       // If NOT found, Open the Search Tab
-       if (val.length > 0) {
-           sourceDisplay.value = ""; 
-           sourceDisplay.placeholder = "Opened Search... Please Click 'Use Flosports Event' when found.";
-           sourceDisplay.style.background = "#fffde7"; // Yellow warning
-
-           // Construct Search URL using the B1 variable
-           let targetUrl = "";
-           if (verticalSearchBaseUrl) {
-               // Use Excel B1 URL + User Query
-               targetUrl = verticalSearchBaseUrl + encodeURIComponent(val);
-           } else {
-               // Generic Fallback
-               targetUrl = "https://www.google.com/search?q=" + encodeURIComponent(verticalSelect.value + " " + val);
-           }
-
-           chrome.tabs.create({ url: targetUrl });
-       }
-    });
-}
-
-  /// ==========================================
-  // 4. START REPORT BUTTON (MULTI-PLATFORM)
-  // ==========================================
-  if (startBtn) {
-    startBtn.addEventListener('click', async () => {
-       const sourceUrl = sourceDisplay ? sourceDisplay.value : ""; 
-       const evt = eventInput ? eventInput.value : "";
-       const vert = verticalSelect ? verticalSelect.value : "";
-       const rep = reporterInput ? reporterInput.value : "";
-
-       if (!sourceUrl || !evt || !rep) {
-          alert("Please ensure you have a Reporter Name, Source URL, and Event selected.");
-          return;
-       }
-       
-       await chrome.storage.local.set({ last_reporter: rep });
-
-       const storage = await chrome.storage.local.get('piracy_cart');
-       const cart = storage.piracy_cart || [];
-
-       if (cart.length === 0) {
-           alert("Your cart is empty! Please add videos before reporting.");
-           return;
-       }
-
-       // --- NEW: PLATFORM DETECTION ---
-       // We detect the platform from the first item in the cart
-       const platform = cart[0].platform || "TikTok"; 
-       const infringingUrls = cart.map(item => item.url); 
-
-       // A. Save Source URL to the correct Platform Column in the Sheet
-       chrome.runtime.sendMessage({
-          action: 'saveEventUrl',
-          data: { 
-              vertical: vert, 
-              eventName: evt, 
-              url: sourceUrl,
-              platform: platform // Sends 'YouTube', 'Instagram', etc. to update the right column
-          }
-       });
-       
-       navigator.clipboard.writeText(sourceUrl); 
-
-       // --- NEW: ROUTE TO CORRECT FORM URL ---
-       let targetUrl = "";
-       switch (platform) {
-           case "TikTok": 
-               targetUrl = "https://ipr.tiktokforbusiness.com/legal/report/Copyright?issueType=1&affected=4&behalf=2&sole=2"; 
-               break;
-           case "YouTube": 
-               targetUrl = "https://www.youtube.com/copyright_complaint_form"; 
-               break;
-           case "Instagram": 
-               targetUrl = "https://help.instagram.com/contact/552695131608132"; 
-               break;
-           case "Twitter":
-           case "X":
-               targetUrl = "https://help.x.com/en/forms/IP/copyright";
-               break;
-           default:
-               alert(`Platform ${platform} not yet fully automated. Opening default form.`);
-               targetUrl = sourceUrl; // Fallback
-       }
-       
-       // B. Open the Tab
-       const tabs = await chrome.tabs.query({ url: "*://" + new URL(targetUrl).hostname + "/*" });
-       let tabId;
-
-       if (tabs.length > 0) {
-          tabId = tabs[0].id;
-          await chrome.tabs.update(tabId, { active: true, url: targetUrl });
-       } else {
-          const newTab = await chrome.tabs.create({ url: targetUrl });
-          tabId = newTab.id;
-       }
-
-       // C. SEND COMMAND (WITH RETRY)
-       startBtn.innerText = "Connecting...";
-       startBtn.disabled = true;
-
-       const payload = {
-          action: "startFullAutomation",
-          data: { 
-             email: "copyright@flosports.tv",
-             fullName: rep, 
-             urls: infringingUrls, 
-             sourceUrl: sourceUrl, 
-             eventName: evt,
-             vertical: vert,
-             platform: platform // Included so the filler knows which strategy to use
-          }
-       };
-
-       let attempts = 0;
-       const maxAttempts = 15; 
-
-       const trySending = () => {
-           chrome.tabs.sendMessage(tabId, payload, (response) => {
-               if (chrome.runtime.lastError) {
-                   attempts++;
-                   console.log(`Connection attempt ${attempts} failed. Retrying...`);
-                   if (attempts < maxAttempts) {
-                       setTimeout(trySending, 1000);
-                   } else {
-                       alert(`Error: The ${platform} page isn't ready. Please wait a moment and click Start Report again.`);
-                       startBtn.innerText = "Start Report";
-                       startBtn.disabled = false;
-                   }
-               } else {
-                   console.log("✅ Connected to Page!");
-                   startBtn.innerText = "Running...";
-                   setTimeout(() => {
-                       startBtn.innerText = "Start Report";
-                       startBtn.disabled = false;
-                   }, 2000);
-               }
-           });
-       };
-
-       setTimeout(trySending, 2000); 
-    }); 
-  }
-  
-  // --- 5. Copy Text ---
-  if (copyUrlBtn) {
-    copyUrlBtn.addEventListener('click', () => {
-       const txt = `Content stolen from ${eventInput ? eventInput.value : ""}. Original source: ${sourceDisplay ? sourceDisplay.value : ""}`;
-       navigator.clipboard.writeText(txt);
-       copyUrlBtn.innerText = "Copied!";
-       setTimeout(() => copyUrlBtn.innerText = 'Copy "Stolen From" Text', 2000);
-    });
-  }
-});
-// ==========================================
-// 6. SOURCE GRABBER + "AUTO-ADD TO EXCEL"
-// ==========================================
-const grabBtn = document.getElementById('btn-grab-flo');
-
-if (grabBtn) {
-  grabBtn.addEventListener('click', async () => {
-    // 1. Get the Active Tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    let configLoaded = false;
+    let isAutofilling = false; 
     
-    if (!tab) return;
-
-    // 2. Define the Standard Text (to restore later)
-    const originalText = "Use Flosports Event and url";
-
-    // 3. Visual Feedback
-    grabBtn.innerText = "Scraping & Saving...";
-    grabBtn.disabled = true;
+    async function loadConfig() {
+      try {
+        if (!chrome.runtime?.id) return;
+        const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
+        if (response && response.success && response.config && response.config.platform_selectors) {
+          console.log("✅ Remote Config Loaded");
+          AUTOFILL_CONFIG = response.config.platform_selectors;
+          configLoaded = true;
+        }
+      } catch(e) { console.warn("⚠️ Config load failed.", e); }
+    }
     
-    try {
-      // 4. Inject Script to Grab Data (Title + URL)
-      const result = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => {
-            let title = document.title; // Default fallback
-            
-            // 1. Try FloSports Specific Tag
-            const floHeader = document.querySelector('h1[data-test="header-title-desktop"]');
-            if (floHeader) {
-                title = floHeader.innerText.trim();
-            } 
-            // 2. Try YouTube Specific Tag
-            else if (window.location.hostname.includes('youtube.com')) {
-                const ytHeader = document.querySelector('h1.style-scope.ytd-watch-metadata'); 
-                if (ytHeader) title = ytHeader.innerText.trim();
-            }
-            // 3. Try TikTok Specific Tag
-            else if (window.location.hostname.includes('tiktok.com')) {
-                const tiktokDesc = document.querySelector('div[data-e2e="browse-video-desc"]');
-                if (tiktokDesc) title = tiktokDesc.innerText.trim();
-            }
-
-            return {
-              title: title,
-              url: window.location.href
+    (async function init() {
+        window.floAutofillRunning = true;
+        if (document.readyState === 'loading') {
+            await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+        }
+    
+        try {
+            const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
+            const cart = res.piracy_cart || [];
+            const info = res.reporterInfo;
+        
+            if (cart.length === 0 || !info) return;
+        
+            const host = window.location.hostname;
+            const platform = cart[0].platform || "TikTok";
+        
+            const data = {
+                fullName: info.name,
+                email: info.email || "copyright@flosports.tv",
+                urls: cart.map(c => c.url),
+                platform: platform,
+                eventName: info.eventName,
+                vertical: info.vertical,
+                sourceUrl: info.sourceUrl
             };
-        }
-      });
+        
+            loadConfig();
+            let retries = 0;
+            while (!configLoaded && retries < 20) { await sleep(100); retries++; }
+        
+            await sleep(500); 
+            routeAutofill(data);
+        } catch(e) { console.warn("Autofill Init Error:", e); }
+    })();
+    
+    async function routeAutofill(data) {
+        if (isAutofilling || !data) return;
+        isAutofilling = true;
 
-      // 5. Process Result
-      if (result && result[0] && result[0].result) {
-        const data = result[0].result;
-        const currentVertical = document.getElementById('verticalSelect').value;
-        
-        // 5a. Fill Event Name Input
-        const evInput = document.getElementById('eventInput');
-        if (evInput) {
-          evInput.value = data.title;
-          evInput.dispatchEvent(new Event('input')); 
-        }
-        
-        // 5b. Fill Source URL Input
-        const srcDisplay = document.getElementById('sourceUrlDisplay');
-        if (srcDisplay) {
-          srcDisplay.value = data.url;
-          srcDisplay.style.backgroundColor = "#e6fffa"; 
-        }
-        
-        // --- 5.1 NEW: THE "LEARNING" STEP ---
-        // Save this new event to the Excel sheet so it is found automatically next time.
-        if (currentVertical && data.title && data.url) {
-            console.log("Saving new event to sheet:", data.title);
-            
-            // A. Update Local Memory immediately
-            if (typeof eventLookup !== 'undefined') {
-                eventLookup[data.title.toLowerCase()] = data.url;
+        try {
+            const host = window.location.hostname;
+            if (host.includes('tiktok')) {
+                // TIKTOK EXCLUSIVE: Spawn the 3-Step Manual Overlay immediately
+                createTikTokOverlay(data);
+            } else {
+                // OTHER PLATFORMS: Auto-fill and spawn standard overlay
+                if (host.includes('youtube')) await fillYouTube(data);
+                else if (host.includes('instagram')) await fillInstagram(data);
+                else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
+                
+                if (data.eventName) createStandardOverlay(data);
             }
+        } finally {
+            isAutofilling = false;
+        }
+    }
+    
+    // ==========================================
+    // 1. DOM UTILITIES & SETTERS
+    // ==========================================
+    
+    const isVisible = (elem) => {
+        if (!elem) return false;
+        const rect = elem.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    };
 
-            // B. Send to Background to write to Google Sheet
-            chrome.runtime.sendMessage({
-                action: 'appendEventToSheet', 
-                data: {
-                    vertical: currentVertical,
-                    eventName: data.title,
-                    eventUrl: data.url
+    const setNativeValue = (element, value) => {
+        const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
+        const prototype = Object.getPrototypeOf(element);
+        const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+        
+        if (valueSetter && valueSetter !== prototypeValueSetter) {
+            prototypeValueSetter.call(element, value);
+        } else if (prototypeValueSetter) {
+            prototypeValueSetter.call(element, value);
+        } else {
+            element.value = value;
+        }
+    };
+
+    function checkReactCheckbox(cb) {
+        if (!cb || !isVisible(cb)) return;
+        try {
+            if (cb.tagName === 'INPUT' && (cb.type === 'checkbox' || cb.type === 'radio')) {
+                if (cb.checked) return; 
+                cb.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                cb.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                cb.click(); 
+                
+                const nativeCheckboxSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
+                if (nativeCheckboxSetter) {
+                    nativeCheckboxSetter.call(cb, true);
+                } else {
+                    cb.checked = true;
                 }
-            });
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+                cb.dispatchEvent(new Event('input', { bubbles: true }));
+            } 
+            else if (cb.getAttribute('role') === 'checkbox' || cb.getAttribute('role') === 'radio') {
+                if (cb.getAttribute('aria-checked') === 'true') return;
+                cb.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                cb.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                cb.click();
+            }
+        } catch (err) {}
+    }
+
+    function triggerReactUpdate(element) {
+        if (!element) return;
+        ['input', 'change', 'blur'].forEach(eventName => {
+            element.dispatchEvent(new Event(eventName, { bubbles: true }));
+        });
+    }
+
+    const typeValue = (el, val) => {
+        if (!el || !isVisible(el)) return false;
+        el.scrollIntoView({block: "center", behavior: "smooth"});
+        el.focus();
+        el.click();
+
+        setNativeValue(el, "");
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        setNativeValue(el, val);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true })); 
+        return true;
+    };
+
+    const fillByLabel = (labelText, value) => {
+        if (!value) return;
+        const lowerLabel = labelText.toLowerCase();
+        
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+        let textNode;
+        let targetInput = null;
+        
+        while ((textNode = walker.nextNode())) {
+            if (textNode.nodeValue.toLowerCase().includes(lowerLabel)) {
+                const parent = textNode.parentElement;
+                if (isVisible(parent)) {
+                    const xpath = `following::input[not(@type='hidden') and not(@type='radio') and not(@type='checkbox')] | following::textarea`;
+                    const input = document.evaluate(xpath, parent, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                    
+                    if (isVisible(input)) {
+                        targetInput = input;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (targetInput && targetInput.value !== value) {
+            console.log(`   ✅ Found field by label: "${labelText}"`);
+            typeValue(targetInput, value);
+        }
+    };
+
+    async function waitForButton(variants, timeout) {
+        const start = Date.now();
+        if (!Array.isArray(variants)) variants = [variants];
+    
+        while (Date.now() - start < timeout) {
+            for (const v of variants) {
+                let el;
+                if (v.startsWith('//')) {
+                    try { el = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; } catch(e){}
+                } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
+                    try { el = document.querySelector(v); } catch(e){}
+                } else {
+                    const xpath = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${v.toLowerCase()}')]`;
+                    try { el = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; } catch(e){}
+                }
+                if (el && isVisible(el) && !el.disabled) return el;
+            }
+            await sleep(200);
+        }
+        return null;
+    }
+
+    // ==========================================
+    // 2. DISCRETE STEP FUNCTIONS (MANUAL TRIGGERS)
+    // ==========================================
+
+    async function runStep1(data) {
+        console.log("🔹 Step 1: Email Verification");
+        const email = data.email || "copyright@flosports.tv";
+        
+        let targetInput = document.querySelector('input[placeholder*="email" i]');
+        if (!targetInput) {
+            const labels = Array.from(document.querySelectorAll('p.field-title, label, .form-label'));
+            const targetLabel = labels.find(l => l.innerText.toLowerCase().includes('email') && isVisible(l));
+            if (targetLabel) {
+                const xpath = `following::input[not(@type='hidden') and not(@type='radio') and not(@type='checkbox')]`;
+                const iterator = document.evaluate(xpath, targetLabel, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+                let node = iterator.iterateNext();
+                while (node) { 
+                    if (isVisible(node)) { targetInput = node; break; } 
+                    node = iterator.iterateNext(); 
+                }
+            }
+        }
+
+        if (targetInput && targetInput.value !== email) {
+            typeValue(targetInput, email);
         }
         
-        // 6. Success Message
-        grabBtn.innerText = "Captured & Saved!"; 
-      }
-    } catch (err) {
-      console.error("Failed to scrape:", err);
-      grabBtn.innerText = "Error - Try Manual Copy";
-    } finally {
-      // Restore Button after 2 seconds
-      setTimeout(() => { 
-          grabBtn.innerText = originalText; 
-          grabBtn.disabled = false;
-      }, 2000);
+        const nextBtn = await waitForButton(['Next', 'Continue', 'button.submit-button'], 500);
+        if (nextBtn && !nextBtn.disabled) {
+            console.log("➡️ Clicking Next...");
+            nextBtn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+            nextBtn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+            nextBtn.click();
+        }
     }
-  });
-}
+
+    async function runStep2(data) {
+        console.log("🔹 Step 2: Personal Info");
+        const defaults = {
+            company: "FloSports",
+            phone: "5122702356",
+            address: "301 Congress ave #1500 Austin Tx 78701",
+            name: data.fullName
+        };
+        
+        fillByLabel('your full name', defaults.name);
+        fillByLabel('name of the copyright owner', defaults.company);
+        fillByLabel('physical address', defaults.address);
+        fillByLabel('phone number', defaults.phone);
+        
+        const nextBtn = await waitForButton(['Next', 'Continue', 'button.submit-button'], 500);
+        if (nextBtn && !nextBtn.disabled) {
+            console.log("➡️ Clicking Next...");
+            nextBtn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+            nextBtn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+            nextBtn.click();
+        }
+    }
+
+    async function runStep3(data) {
+        console.log("🔹 Step 3: Infringement Details & Sign");
+        const defaults = { name: data.fullName };
+
+        // 1. Fill Signature First
+        fillByLabel('signature', defaults.name);
+
+        // 2. Fill Top "Email" placeholder with User Name (TikTok Glitch Fix)
+        const emailBoxAsName = document.querySelector('input[placeholder*="email" i]');
+        if (emailBoxAsName && isVisible(emailBoxAsName)) {
+            console.log("☑️ Filling top generic slot with Name...");
+            typeValue(emailBoxAsName, defaults.name);
+        }
+
+        // 3. Radio Buttons
+        const radioVideo = document.querySelector('input[name="typeCopyRight"][value="1"]');
+        if (radioVideo && !radioVideo.checked) checkReactCheckbox(radioVideo);
+
+        const outsideSpan = document.evaluate(`//span[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'outside of tiktok')]`, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+        if (outsideSpan && isVisible(outsideSpan)) {
+            const radioSource = outsideSpan.closest('div')?.querySelector('input[type="radio"]');
+            if (radioSource && !radioSource.checked) checkReactCheckbox(radioSource);
+            else if (!radioSource) outsideSpan.click(); 
+        }
+
+        // 4. Content Strings
+        fillByLabel('url to the original', data.sourceUrl || "Original source not provided");
+        fillByLabel('description of copyrighted work', data.eventName || "FloSports Event");
+        fillByLabel('content to report', Array.isArray(data.urls) ? data.urls.join('\n') : (data.urls || ''));
+
+        // 5. Checkboxes
+        const agreementTexts = [
+            "Prevent future copies",
+            "good faith belief",
+            "accurate",
+            "penalty of perjury"
+        ];
+
+        agreementTexts.forEach(text => {
+            const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+            const node = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            
+            if (node && isVisible(node)) {
+                const container = node.parentElement;
+                const hiddenInput = container ? container.querySelector('input[type="checkbox"]') : null;
+                const ariaBox = container ? container.querySelector('[role="checkbox"], [role="switch"]') : null;
+
+                if (hiddenInput) {
+                    if (!hiddenInput.checked) checkReactCheckbox(hiddenInput);
+                } else if (ariaBox) {
+                    if (ariaBox.getAttribute('aria-checked') !== 'true') {
+                        ariaBox.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                        ariaBox.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                        ariaBox.click();
+                        triggerReactUpdate(ariaBox);
+                    }
+                } else {
+                    if (!node.hasAttribute('data-flo-clicked')) {
+                        node.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                        node.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                        node.click();
+                        if(node.parentElement) node.parentElement.click();
+                        node.setAttribute('data-flo-clicked', 'true');
+                    }
+                }
+            }
+        });
+    
+        // 6. Highlight Send button, wait for user.
+        const sendBtn = await waitForButton(['Send', 'Submit'], 500); 
+        if (sendBtn) {
+            sendBtn.scrollIntoView({block: 'center'});
+            sendBtn.style.border = "4px solid #ce0e2d"; 
+            sendBtn.disabled = false; 
+            console.log("🛑 Step 3 complete. Waiting for user to review and manually click Send.");
+        }
+    }
+
+
+    // ==========================================
+    // 3. UI OVERLAYS
+    // ==========================================
+
+    // EXCLUSIVE TIKTOK WIZARD OVERLAY
+    function createTikTokOverlay(data) {
+        const existing = document.getElementById("flo-upload-overlay");
+        if (existing) existing.remove();
+      
+        const overlay = document.createElement("div");
+        overlay.id = "flo-upload-overlay";
+        overlay.style.cssText = `
+          position: fixed; top: 80px; right: 20px; width: 280px;
+          background: white; border: 3px solid #0288d1; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
+        `;
+      
+        overlay.innerHTML = `
+          <h3 style="margin-top:0; color:#0288d1;">FloSports TikTok Wizard ✥</h3>
+          <div style="margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px; font-size: 13px;">
+            <small>Follow the highlighted steps as you progress through the form.</small>
+          </div>
+          
+          <div id="flo-step-container" style="display: flex; flex-direction: column; gap: 8px;">
+              <button id="flo-btn-step1" style="background: #0288d1; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Email</button>
+              <button id="flo-btn-step2" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 2: Personal Info</button>
+              <button id="flo-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Infringement & Sign</button>
+          </div>
+  
+          <div id="flo-log-container" style="display: none;">
+              <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                  ⚠️ Click "Send" on the page first, then log below!
+              </div>
+              <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+              <div id="flo-log-status" style="margin-top:8px; font-size:12px; text-align: center;"></div>
+          </div>
+        `;
+      
+        document.body.appendChild(overlay);
+        setupDrag(overlay);
+  
+        // Button Logic
+        const btn1 = document.getElementById('flo-btn-step1');
+        const btn2 = document.getElementById('flo-btn-step2');
+        const btn3 = document.getElementById('flo-btn-step3');
+        const stepContainer = document.getElementById('flo-step-container');
+        const logContainer = document.getElementById('flo-log-container');
+  
+        btn1.addEventListener('click', async () => {
+            btn1.innerText = "Running...";
+            await runStep1(data);
+            btn1.innerText = "Step 1: Done";
+            btn1.style.background = "#ccc"; btn1.style.color = "#333";
+            btn2.style.background = "#0288d1"; btn2.style.color = "white";
+        });
+  
+        btn2.addEventListener('click', async () => {
+            btn2.innerText = "Running...";
+            await runStep2(data);
+            btn2.innerText = "Step 2: Done";
+            btn2.style.background = "#ccc"; btn2.style.color = "#333";
+            btn3.style.background = "#0288d1"; btn3.style.color = "white";
+        });
+  
+        btn3.addEventListener('click', async () => {
+            btn3.innerText = "Running...";
+            await runStep3(data);
+            stepContainer.style.display = "none";
+            logContainer.style.display = "block";
+            overlay.style.borderColor = "#ce0e2d"; // Switch color theme to Red for closing phase
+        });
+  
+        document.getElementById("flo-log-btn").addEventListener("click", () => {
+          const status = document.getElementById("flo-log-status");
+          status.innerText = "Logging...";
+          chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+            if (response && response.success) {
+              status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
+              setTimeout(() => overlay.remove(), 2000);
+            } else {
+              status.innerText = "❌ Failed."; status.style.color = "red";
+            }
+          });
+        });
+    }
+
+    // STANDARD OVERLAY FOR YOUTUBE/ETC
+    function createStandardOverlay(data) {
+      const existing = document.getElementById("flo-upload-overlay");
+      if (existing) existing.remove();
+    
+      const overlay = document.createElement("div");
+      overlay.id = "flo-upload-overlay";
+      overlay.style.cssText = `
+        position: fixed; top: 80px; right: 20px; width: 300px;
+        background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
+      `;
+    
+      overlay.innerHTML = `
+        <h3 style="margin-top:0; color:#ce0e2d;">FloSports Helper ✥</h3>
+        <div style="margin-bottom: 10px; border-bottom: 1px solid #eee;">
+          <strong>Platform:</strong> ${data.platform || "Unknown"}<br>
+          <small>Review fields, then click Send.</small>
+        </div>
+        <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+        <div id="flo-log-status" style="margin-top:8px; font-size:12px;"></div>
+      `;
+    
+      document.body.appendChild(overlay);
+      setupDrag(overlay);
+    
+      document.getElementById("flo-log-btn").addEventListener("click", () => {
+        const status = document.getElementById("flo-log-status");
+        status.innerText = "Logging...";
+        chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+          if (response && response.success) {
+            status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
+            setTimeout(() => overlay.remove(), 2000);
+          } else {
+            status.innerText = "❌ Failed."; status.style.color = "red";
+          }
+        });
+      });
+    }
+
+    // SHARED DRAG LOGIC
+    function setupDrag(overlay) {
+      let isDragging = false, startX, startY, initialLeft, initialTop;
+      overlay.addEventListener('mousedown', (e) => {
+          if (['BUTTON'].includes(e.target.tagName)) return;
+          isDragging = true; startX = e.clientX; startY = e.clientY;
+          const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
+          overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
+          e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+          if (!isDragging) return;
+          overlay.style.left = `${initialLeft + (e.clientX - startX)}px`;
+          overlay.style.top = `${initialTop + (e.clientY - startY)}px`;
+      });
+      document.addEventListener('mouseup', () => isDragging = false);
+    }
+
+    // ==========================================
+    // 4. LEGACY LOGIC (YOUTUBE, ETC)
+    // ==========================================
+    async function fillYouTube(data) {
+        console.log("📝 Running YouTube Strategy...");
+    
+        async function waitAndClick(textOrSel, time=3000) {
+           const btn = await waitForButton(textOrSel, time);
+           if (btn) { btn.click(); return true; }
+           return false;
+        }
+    
+        const infringingUrls = data.urls || [];
+        
+        for (const [index, badUrl] of infringingUrls.entries()) {
+            await waitAndClick("Add a video", 5000);
+            await sleep(1000);
+            
+            const fillSimple = async (sel, val) => {
+                const el = document.querySelector(sel);
+                if(el) { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }
+            };
+    
+            await fillSimple("[aria-label=\"Title\"]", data.eventName || "FloSports Event");
+            await fillSimple("[aria-label=\"YouTube URL of video to be removed\"]", badUrl);
+            
+            await waitAndClick("#save-button", 3000);
+            await sleep(2000);
+        }
+    }
+    
+    async function fillInstagram(data) {
+        const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
+        if(conf.name) {
+            const el = document.querySelector(`[name="${conf.name}"]`);
+            if(el) el.value = data.fullName;
+        }
+    }
+    
+    async function fillTwitter(data) {
+        const conf = AUTOFILL_CONFIG.twitter?.autofill || {};
+        if(conf.name) {
+            const el = document.querySelector(`[name="${conf.name}"]`);
+            if(el) el.value = data.fullName;
+        }
+    }
+
+})();

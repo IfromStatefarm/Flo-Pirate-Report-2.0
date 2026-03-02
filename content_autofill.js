@@ -1,624 +1,539 @@
 // content_autofill.js
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+(function() { // 1. Wrap in IIFE to prevent 'sleep' redeclaration errors
 
-// ==========================================
-// 1. LISTENERS & AUTO-RUN
-// ==========================================
+    // 2. DEFAULT CONFIGURATION (Robust Fallback)
+    if (typeof AUTOFILL_CONFIG === 'undefined') {
+      var AUTOFILL_CONFIG = {}; 
+    }
+    
+    // Define sleep inside the scope
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    let configLoaded = false;
+    let lastReportData = null; // Store data to re-use on clicks
+    let isAutofilling = false; // Prevent overlapping runs
+    
+    // --- LOAD REMOTE CONFIG HELPER ---
+    async function loadConfig() {
+      try {
+        // Check if extension context is valid before messaging
+        if (!chrome.runtime?.id) return;
+        
+        const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
+        if (response && response.success && response.config && response.config.platform_selectors) {
+          console.log("✅ Remote Config Loaded");
+          AUTOFILL_CONFIG = response.config.platform_selectors;
+          configLoaded = true;
+        } else {
+          console.warn("⚠️ Remote Config empty or invalid.");
+        }
+      } catch(e) { 
+          console.warn("⚠️ Using default local strategies (Config load failed).", e); 
+      }
+    }
+    
+    // ==========================================
+    // 2. LISTENERS & AUTO-RUN
+    // ==========================================
+    
+    if (!window.hasFloAutofillListener) {
+      window.hasFloAutofillListener = true;
+      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === "startFullAutomation") {
+            // Force wait for config on manual trigger
+            (async () => {
+                if (!configLoaded) await loadConfig();
+                if (request.data) lastReportData = request.data;
+                await routeAutofill(request.data);
+                sendResponse({ success: true });
+            })();
+            return true; 
+        }
+      });
+    }
+    
+    (async function init() {
+        console.log("🔄 Flo Autofill Script Injected/Re-loaded");
+        
+        // Always reset running flag on new injection/page load
+        window.floAutofillRunning = true;
+    
+        if (document.readyState === 'loading') {
+            await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+        }
+    
+        // Safety check for extension context
+        try {
+            const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
+            const cart = res.piracy_cart || [];
+            const info = res.reporterInfo;
+        
+            if (cart.length === 0 || !info) {
+                console.log("ℹ️ No active report data found in storage.");
+                return;
+            }
+        
+            const host = window.location.hostname;
+            const platform = cart[0].platform || "TikTok";
+        
+            // Basic Host Safety Checks
+            if (platform === "TikTok" && !host.includes("tiktok")) return;
+            if (platform === "YouTube" && !host.includes("youtube")) return;
+            if (platform === "Instagram" && !host.includes("instagram")) return;
+            if (platform === "Twitter" && !host.includes("x.com") && !host.includes("twitter")) return;
+        
+            const data = {
+                fullName: info.name,
+                email: info.email || "copyright@flosports.tv",
+                urls: cart.map(c => c.url),
+                platform: platform,
+                eventName: info.eventName,
+                vertical: info.vertical,
+                sourceUrl: info.sourceUrl
+            };
+        
+            lastReportData = data; // Save for the click listener
+            console.log("🚀 Starting Flo Autofill for:", platform);
+            
+            // START CONFIG LOAD
+            loadConfig();
+        
+            // STRICT WAIT LOOP
+            let retries = 0;
+            while (!configLoaded && retries < 50) { 
+                if (retries % 10 === 0) console.log("⏳ Waiting for config...");
+                await sleep(100);
+                retries++;
+            }
+        
+            if (!configLoaded) console.warn("⚠️ Timed out waiting for config. Strategies may fail.");
+        
+            await sleep(500); 
+            routeAutofill(data);
+        } catch(e) {
+            console.warn("Autofill Init Error (Context likely invalidated):", e);
+        }
+    })();
+    
+    async function routeAutofill(data) {
+        if (isAutofilling || !data) return;
+        isAutofilling = true;
 
-// A. Listener (For manual triggering from Sidepanel)
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "startFullAutomation") {
-      console.log("🤖 Received Automation Data:", request.data);
-      routeAutofill(request.data)
-        .then(() => sendResponse({ success: true }))
-        .catch(err => sendResponse({ success: false, error: err.message }));
-      return true; 
-  }
-});
-
-// B. Auto-Run on Page Load (The new "Smart" workflow)
-(async function init() {
-    const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
-    const cart = res.piracy_cart || [];
-    const info = res.reporterInfo;
-
-    // Only run if we have data AND we are on a relevant site
-    if (cart.length === 0 || !info) return;
-
-    const host = window.location.hostname;
-    const platform = cart[0].platform || "TikTok";
-
-    // Safety checks: Ensure we don't run TikTok logic on YouTube
-    if (platform === "TikTok" && !host.includes("tiktok")) return;
-    if (platform === "YouTube" && !host.includes("youtube")) return;
-    if (platform === "Instagram" && !host.includes("instagram") && !host.includes("facebook")) return;
-    if (platform === "Twitter" && !host.includes("x.com") && !host.includes("twitter")) return;
-
-    // Construct the data object exactly how your logic expects it
-    const data = {
-        fullName: info.name,
-        email: info.email || "copyright@flosports.tv",
-        urls: cart.map(c => c.url),
-        platform: platform,
-        eventName: info.eventName,
-        vertical: info.vertical,
-        sourceUrl: info.sourceUrl
+        try {
+            const host = window.location.hostname;
+            if (host.includes('tiktok')) await fillTikTok(data);
+            else if (host.includes('youtube')) await fillYouTube(data);
+            else if (host.includes('instagram')) await fillInstagram(data);
+            else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
+            
+        } finally {
+            isAutofilling = false;
+        }
+    }
+    
+    // --- HELPER: DOM VISIBILITY CHECK ---
+    const isVisible = (elem) => {
+        if (!elem) return false;
+        const rect = elem.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
     };
 
-    console.log(`🤖 Auto-Running for ${platform}...`);
-    routeAutofill(data);
-})();
+    // --- HELPER: BULLETPROOF REACT SETTER ---
+    const setNativeValue = (element, value) => {
+        const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
+        const prototype = Object.getPrototypeOf(element);
+        const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+        
+        if (valueSetter && valueSetter !== prototypeValueSetter) {
+            prototypeValueSetter.call(element, value);
+        } else if (prototypeValueSetter) {
+            prototypeValueSetter.call(element, value);
+        } else {
+            element.value = value;
+        }
+    };
 
-// ==========================================
-// 2. THE ROUTER (Traffic Cop)
-// ==========================================
-async function routeAutofill(data) {
-    const host = window.location.hostname;
-
-    if (host.includes('tiktok')) {
-        await fillTikTok(data); // Calls your preserved logic
-    } else if (host.includes('youtube')) {
-        await fillYouTube(data);
-    } else if (host.includes('instagram')) {
-        await fillInstagram(data);
-    } else if (host.includes('facebook')) {
-        await fillFacebook(data);
-    } else if (host.includes('twitter') || host.includes('x.com')) {
-        await fillTwitter(data);
-    } else {
-        console.log("No autofill strategy for this site.");
-        return;
+    // --- HELPER: REACT CHECKBOX HACKER ---
+    function checkReactCheckbox(cb) {
+        if (!cb || !isVisible(cb)) return;
+        try {
+            if (cb.tagName === 'INPUT' && (cb.type === 'checkbox' || cb.type === 'radio')) {
+                if (cb.checked) return; 
+                
+                cb.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                cb.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                cb.click(); 
+                
+                const nativeCheckboxSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
+                if (nativeCheckboxSetter) {
+                    nativeCheckboxSetter.call(cb, true);
+                } else {
+                    cb.checked = true;
+                }
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+                cb.dispatchEvent(new Event('input', { bubbles: true }));
+            } 
+            else if (cb.getAttribute('role') === 'checkbox' || cb.getAttribute('role') === 'radio') {
+                if (cb.getAttribute('aria-checked') === 'true') return;
+                cb.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                cb.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                cb.click();
+            }
+        } catch (err) {
+            console.warn("PIRATE AI: Error checking box:", err);
+        }
     }
 
-    // Show YOUR Overlay (The one with the progress bar)
-    createUploadOverlay(data);
-}
+    function triggerReactUpdate(element) {
+        if (!element) return;
+        ['input', 'change', 'blur'].forEach(eventName => {
+            element.dispatchEvent(new Event(eventName, { bubbles: true }));
+        });
+    }
 
-// ==========================================
-// 3. YOUR TIKTOK STRATEGY (Preserved Exactly)
-// ==========================================
-async function fillTikTok(data) {
-  const defaults = {
-      company: "Flosports",
-      phone: "5122702356",
-      address: "301 Congress ave #1500 Austin Tx 78701",
-      email: data.email || "copyright@flosports.tv"
-  };
+    // ==========================================
+    // 3. TIKTOK ROBUST AUTOMATION
+    // ==========================================
+    async function fillTikTok(data) {
+        const conf = AUTOFILL_CONFIG.tiktok?.autofill || {};
+        const defaults = {
+            company: "FloSports",
+            phone: "5122702356",
+            address: "301 Congress ave #1500 Austin Tx 78701",
+            email: data.email || "copyright@flosports.tv",
+            name: data.fullName
+        };
+    
+        console.log("🎵 Running Bullet-Proof TikTok Strategy...");
+    
+        const typeValue = (el, val) => {
+            if (!el || !isVisible(el)) return false;
 
-  console.log("📧 Attempting to fill email...");
-  
-  // Your robust email search
-  await fillBySelector('input[type="email"]', defaults.email);
-  await fillById("email", defaults.email); 
-  await fillById("contact_email", defaults.email);
-  await fillByName("email", defaults.email);
-  await fillByPlaceholder("email", defaults.email);
-  await fillByPlaceholder("example.com", defaults.email);
-  await fillInput("Email address", defaults.email); 
-  await fillInput("Verify your email", defaults.email); 
-  await fillInput("Contact email", defaults.email); 
+            el.scrollIntoView({block: "center", behavior: "smooth"});
+            el.focus();
+            el.click();
 
-  // Your "Next" button logic
-  const nextBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes("Next"));
-  if (nextBtn && !nextBtn.disabled) {
-      console.log("👉 Clicking Next...");
-      nextBtn.click();
-      console.log("⏳ Waiting for Main Form...");
-      await waitForSelector('#name input', 5000); 
-      await sleep(500); 
-  }
-
-  // Contact Info
-  await fillById("name", data.fullName); 
-  await fillById("nameOfOwner", defaults.company); 
-  await fillById("phoneNumber", defaults.phone); 
-  await fillById("address", defaults.address); 
-  
-  await fillInput("Copyright owner name", defaults.company); 
-  await fillInput("Phone number", defaults.phone);
-  await fillInput("Address", defaults.address, "email"); 
-
-  // URL List
-  const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-  await fillByPlaceholder("tiktok.com/@tiktok/video", urlText);
-  await fillInput("Content to report", urlText);
-  await fillInput("Enter the URL(s)", urlText);
-  await fillInput("Infringing material", urlText);
-
-  // Signature
-  await fillInput("Signature", data.fullName);
-  await fillInput("Sign your name", data.fullName);
-
-  // Checkboxes
-  const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-  checkboxes.forEach(cb => { if (!cb.checked) cb.click(); });
-}
-
-// ==========================================
-// 4. NEW STRATEGIES (For the other platforms)
-// ==========================================
-
-// ==========================================
-// YOUTUBE STRATEGY (FIXED WITH IDs)
-// ==========================================
-
-// REPLACE 'fillYouTube' FUNCTION
-
-async function fillYouTube(data) {
-    console.log("📝 Running YouTube Strategy (Final Fixes)...");
-
-    // Helper: Wait for button or ID
-    async function waitForButton(selectorOrText, timeout = 5000) {
-        const start = Date.now();
-        while (Date.now() - start < timeout) {
-            // Check if it's an ID selector first
-            if (selectorOrText.startsWith('#')) {
-                const el = await findDeep(selectorOrText);
-                if (el) return el;
-            } 
-            // Otherwise search by text
-            else {
-                const xpath = `//ytcp-button[.//div[contains(text(), '${selectorOrText}')]] | //button[contains(text(), '${selectorOrText}')]`;
-                const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                if (result.singleNodeValue) return result.singleNodeValue;
+            // Use the bulletproof native setter
+            setNativeValue(el, "");
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            
+            setNativeValue(el, val);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('blur', { bubbles: true })); 
+            
+            return true;
+        };
+    
+        // 1. Precise Field Finder (Anchor to Label -> Find Next Input)
+        const fillByLabel = (labelText, value) => {
+            if (!value) return;
+            const lowerLabel = labelText.toLowerCase();
+            
+            // Find all visible text nodes/labels that might be field titles
+            const labels = Array.from(document.querySelectorAll('p.field-title, label, .form-label, .tux-form-label, span'));
+            const targetLabel = labels.find(l => l.innerText.toLowerCase().includes(lowerLabel) && isVisible(l));
+            
+            let targetInput = null;
+            if (targetLabel) {
+                // Find the very next input/textarea physically following the label in the DOM
+                const xpath = `following::input[not(@type='hidden') and not(@type='radio') and not(@type='checkbox')] | following::textarea`;
+                const iterator = document.evaluate(xpath, targetLabel, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+                
+                let node = iterator.iterateNext();
+                while (node) {
+                    if (isVisible(node)) {
+                        targetInput = node;
+                        break;
+                    }
+                    node = iterator.iterateNext();
+                }
             }
-            await sleep(500);
+    
+            if (targetInput && targetInput.value !== value) {
+                console.log(`   ✅ Found field by label: "${labelText}"`);
+                typeValue(targetInput, value);
+            }
+        };
+
+        // --- PAGE DETECTION VIA VISIBLE BUTTONS & LABELS ---
+        const buttons = Array.from(document.querySelectorAll('button')).filter(isVisible);
+        const hasSendButton = buttons.some(b => b.innerText.toLowerCase().includes('send') || b.innerText.toLowerCase().includes('submit'));
+        const hasNextButton = buttons.some(b => b.innerText.toLowerCase().includes('next') || b.innerText.toLowerCase().includes('continue'));
+        
+        const labelsText = Array.from(document.querySelectorAll('p.field-title, label')).filter(isVisible).map(l => l.innerText.toLowerCase());
+        const hasSignature = labelsText.some(t => t.includes('signature'));
+        const hasEmail = labelsText.some(t => t.includes('email address')) || !!document.querySelector('input[placeholder*="email" i]');
+
+        // --- STEP 3: MAIN FORM (SIGNATURE & SEND) ---
+        if (hasSendButton && hasSignature) {
+            console.log("🔹 STEP 3: Main Form Detected...");
+            
+            // Execute in the exact order requested: Signature -> Name -> Scroll down through the rest
+            fillByLabel('signature', defaults.name);
+            fillByLabel('your full name', defaults.name);
+            fillByLabel('name of the copyright owner', defaults.company);
+            fillByLabel('physical address', defaults.address);
+            fillByLabel('phone number', defaults.phone);
+            
+            // Exact Match Radio Buttons
+            const radioVideo = document.querySelector('input[name="typeCopyRight"][value="1"]');
+            if (radioVideo && !radioVideo.checked) checkReactCheckbox(radioVideo);
+
+            const outsideSpan = document.evaluate(`//span[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'outside of tiktok')]`, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            if (outsideSpan && isVisible(outsideSpan)) {
+                const radioSource = outsideSpan.closest('div')?.querySelector('input[type="radio"]');
+                if (radioSource && !radioSource.checked) checkReactCheckbox(radioSource);
+                else if (!radioSource) outsideSpan.click(); 
+            }
+            
+            fillByLabel('url to the original', data.sourceUrl || "Original source not provided");
+            fillByLabel('description of copyrighted work', data.eventName || "FloSports Event");
+            fillByLabel('content to report', Array.isArray(data.urls) ? data.urls.join('\n') : (data.urls || ''));
+
+            // Toggles and Checkboxes by Text Matching
+            const agreementTexts = [
+                "Prevent future copies",
+                "good faith belief",
+                "accurate",
+                "penalty of perjury"
+            ];
+
+            agreementTexts.forEach(text => {
+                const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+                const node = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                
+                if (node && isVisible(node)) {
+                    const container = node.parentElement;
+                    const hiddenInput = container ? container.querySelector('input[type="checkbox"]') : null;
+                    const ariaBox = container ? container.querySelector('[role="checkbox"], [role="switch"]') : null;
+
+                    if (hiddenInput) {
+                        if (!hiddenInput.checked) checkReactCheckbox(hiddenInput);
+                    } else if (ariaBox) {
+                        if (ariaBox.getAttribute('aria-checked') !== 'true') {
+                            console.log(`☑️ Clicking ARIA box for: ${text}`);
+                            ariaBox.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                            ariaBox.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                            ariaBox.click();
+                            triggerReactUpdate(ariaBox);
+                        }
+                    } else {
+                        if (!node.hasAttribute('data-flo-clicked')) {
+                            console.log(`☑️ Clicking text node for custom checkbox: ${text}`);
+                            node.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                            node.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                            node.click();
+                            if(node.parentElement) node.parentElement.click();
+                            node.setAttribute('data-flo-clicked', 'true');
+                        }
+                    }
+                }
+            });
+        
+            createUploadOverlay(data);
+
+            // Highlight Send Button and WAIT for User.
+            const sendBtn = buttons.find(b => b.innerText.toLowerCase().includes('send') || b.innerText.toLowerCase().includes('submit'));
+            if (sendBtn) {
+                sendBtn.scrollIntoView({block: 'center'});
+                sendBtn.style.border = "4px solid #ce0e2d"; 
+                sendBtn.disabled = false; 
+                console.log("🛑 Step 3 complete. Waiting for user to review and manually click Send.");
+            }
+            return;
+        }
+
+        // --- STEP 2: EMAIL VERIFICATION ---
+        if (hasNextButton && hasEmail && !hasSignature) {
+            console.log("🔹 STEP 2: Email Verification Detected...");
+            
+            // Find Email Input safely
+            let targetInput = document.querySelector('input[placeholder*="email" i]');
+            if (!targetInput) {
+                const labels = Array.from(document.querySelectorAll('p.field-title, label, .form-label'));
+                const targetLabel = labels.find(l => l.innerText.toLowerCase().includes('email') && isVisible(l));
+                if (targetLabel) {
+                    const xpath = `following::input[not(@type='hidden') and not(@type='radio') and not(@type='checkbox')]`;
+                    const iterator = document.evaluate(xpath, targetLabel, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+                    let node = iterator.iterateNext();
+                    while (node) { 
+                        if (isVisible(node)) { targetInput = node; break; } 
+                        node = iterator.iterateNext(); 
+                    }
+                }
+            }
+
+            if (targetInput && targetInput.value !== defaults.email) {
+                typeValue(targetInput, defaults.email);
+            }
+            
+            const nextBtn = buttons.find(b => b.innerText.toLowerCase().includes('next') || b.innerText.toLowerCase().includes('continue'));
+            if (nextBtn && !nextBtn.disabled) {
+                console.log("➡️ Clicking Next to proceed...");
+                nextBtn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                nextBtn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                nextBtn.click();
+            }
+            return;
+        }
+
+        // --- STEP 1: ISSUE SELECTION ---
+        if (hasNextButton && !hasEmail && !hasSignature) {
+            console.log("🔹 STEP 1: Initial Issue Selection Detected. Waiting for user or auto-skipping via URL...");
+            // Let the user fill out the dropdowns manually or bypass via URL params.
+            return;
+        }
+    }
+    
+    // ==========================================
+    // 4. YOUTUBE (Legacy Logic Preserved)
+    // ==========================================
+    async function fillYouTube(data) {
+        const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
+        console.log("📝 Running YouTube Strategy...");
+    
+        async function waitAndClick(textOrSel, time=3000) {
+           const btn = await waitForButton(textOrSel, time);
+           if (btn) { btn.click(); return true; }
+           return false;
+        }
+    
+        const infringingUrls = data.urls || [];
+        
+        for (const [index, badUrl] of infringingUrls.entries()) {
+            const addBtnText = conf.buttons?.add_video || "Add a video";
+            await waitAndClick(addBtnText, 5000);
+            await sleep(1000);
+    
+            const badInputSel = conf.inputs.infringing_url?.[0];
+            const titleInputSel = conf.inputs.video_title?.[0];
+            
+            const fillSimple = async (sel, val) => {
+                const el = document.querySelector(sel);
+                if(el) { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }
+            };
+    
+            if(titleInputSel) await fillSimple(titleInputSel, data.eventName || "FloSports Event");
+            if(badInputSel) await fillSimple(badInputSel, badUrl);
+            
+            await waitAndClick(conf.buttons?.save || "#save-button", 3000);
+            await sleep(2000);
+        }
+    }
+    
+    async function fillInstagram(data) {
+        const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
+        if(conf.name) {
+            const el = document.querySelector(`[name="${conf.name}"]`);
+            if(el) el.value = data.fullName;
+        }
+    }
+    
+    async function fillTwitter(data) {
+        const conf = AUTOFILL_CONFIG.twitter?.autofill || {};
+        if(conf.name) {
+            const el = document.querySelector(`[name="${conf.name}"]`);
+            if(el) el.value = data.fullName;
+        }
+    }
+    
+    async function waitForButton(variants, timeout) {
+        const start = Date.now();
+        if (!Array.isArray(variants)) variants = [variants];
+    
+        while (Date.now() - start < timeout) {
+            for (const v of variants) {
+                let el;
+                if (v.startsWith('//')) {
+                    try {
+                        const res = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                        el = res.singleNodeValue;
+                    } catch(e){}
+                } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
+                    try { el = document.querySelector(v); } catch(e){}
+                } else {
+                    const xpath = `//button[contains(text(), '${v}')]`;
+                    try {
+                        const res = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                        el = res.singleNodeValue;
+                    } catch(e){}
+                }
+    
+                if (el && isVisible(el) && !el.disabled) return el;
+            }
+            await sleep(200);
         }
         return null;
     }
-
-    // --- PART 1: ADD VIDEOS ---
-    const infringingUrls = data.urls || [];
     
-    for (const [index, badUrl] of infringingUrls.entries()) {
-        console.log(`▶️ Processing Video ${index + 1}: ${badUrl}`);
-
-        const addBtn = await waitForButton('Add a video', 5000);
-        if (addBtn) {
-            addBtn.click();
-            await sleep(1500); 
-        }
-
-        // 1. Initial Dropdowns
-        await selectDropdownOption('Type of work', 'Video');
-        await selectDropdownOption('Subcategory', 'Internet video');
-        await selectDropdownOption('Source', 'From outside of YouTube');
-
-        console.log("⏳ Waiting for fields...");
-        await sleep(1500);
-
-        // 2. Fill Source Info
-        let sourceInput = await findDeep('#videoLink') || await findDeep('[aria-label="My video URL"]');
-        if (sourceInput && data.sourceUrl) await typeInField(sourceInput, data.sourceUrl);
-
-        let titleInput = await findDeep('#videoTitle') || await findDeep('[aria-label="Title"]'); 
-        if (titleInput) await typeInField(titleInput, data.eventName || "FloSports Event");
-
-        // 3. Fill Infringing URL
-        let badInput = await findDeep('#targetVideo') || await findDeep('[aria-label="YouTube URL of video to be removed"]');
-        if (badInput) {
-            await typeInField(badInput, badUrl);
-            console.log("   ↳ URL Filled, waiting for 'Location' dropdown...");
-            await sleep(2000); 
-        }
-
-        // 4. Select "Entire video" (Now uses updated selector)
-        await selectDropdownOption('Location of infringing content', 'Entire video');
-
-        // 5. Add to List (Using ID #save-button)
-        const saveBtn = await waitForButton('#save-button', 3000);
-        if (saveBtn) {
-            console.log("✅ Clicking 'Add to list' (#save-button)");
-            saveBtn.click();
-            await sleep(2500); 
-        } else {
-            console.warn("❌ 'Add to list' button not found!");
-        }
+    // Overlay Logic
+    function createUploadOverlay(data) {
+      const existing = document.getElementById("flo-upload-overlay");
+      if (existing) existing.remove();
+    
+      const overlay = document.createElement("div");
+      overlay.id = "flo-upload-overlay";
+      overlay.style.cssText = `
+        position: fixed; top: 80px; right: 20px; width: 300px;
+        background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
+      `;
+    
+      overlay.innerHTML = `
+        <h3 style="margin-top:0; color:#ce0e2d;">FloSports Helper ✥</h3>
+        <div style="margin-bottom: 10px; border-bottom: 1px solid #eee;">
+          <strong>Platform:</strong> ${data.platform || "TikTok"}<br>
+          <small>Review fields, then click Send.</small>
+        </div>
+        <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+        <div id="flo-log-status" style="margin-top:8px; font-size:12px;"></div>
+      `;
+    
+      document.body.appendChild(overlay);
+    
+      let isDragging = false, startX, startY, initialLeft, initialTop;
+      overlay.addEventListener('mousedown', (e) => {
+          if (['BUTTON'].includes(e.target.tagName)) return;
+          isDragging = true; startX = e.clientX; startY = e.clientY;
+          const rect = overlay.getBoundingClientRect(); initialLeft = rect.left; initialTop = rect.top;
+          overlay.style.right = 'auto'; overlay.style.left = `${initialLeft}px`; overlay.style.top = `${initialTop}px`;
+          e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+          if (!isDragging) return;
+          overlay.style.left = `${initialLeft + (e.clientX - startX)}px`;
+          overlay.style.top = `${initialTop + (e.clientY - startY)}px`;
+      });
+      document.addEventListener('mouseup', () => isDragging = false);
+    
+      document.getElementById("flo-log-btn").addEventListener("click", () => {
+        const status = document.getElementById("flo-log-status");
+        status.innerText = "Logging...";
+        chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+          if (response && response.success) {
+            status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
+            setTimeout(() => overlay.remove(), 2000);
+          } else {
+            status.innerText = "❌ Failed."; status.style.color = "red";
+          }
+        });
+      });
     }
 
-    // --- PART 2: CONTACT INFO ---
-    console.log("📝 Filling Contact Info...");
-    
-    await selectDropdownOption('Affected party', 'My company, organization, or client');
-    await sleep(1500); 
-
-    let nameInput = await findDeep('#claimant-name');
-    if (nameInput) await typeInField(nameInput, "Flosports");
-    
-    // Phone
-    const phoneXpath = `//ytcp-form-textarea[.//div[contains(text(), 'Phone')]]`;
-    const phoneResult = document.evaluate(phoneXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-    if (phoneResult.singleNodeValue) await typeInField(phoneResult.singleNodeValue, "5122702356");
-
-    await fillDeep('[aria-label="Secondary email"]', "copyright@flosports.tv");
-    
-    // Relationship
-    let relInput = await findDeep('#requester-authority');
-    if (relInput) await typeInField(relInput, "Authorized Representative");
-
-    // Address
-    await selectDropdownOption('country-select', 'United States');
-    await fillDeep('[aria-label="Street address"]', "301 Congress ave #1500");
-    await fillDeep('[aria-label="City"]', "Austin");
-    
-    // State
-    let stateInput = await findDeep('#state');
-    if (stateInput) await typeInField(stateInput, "Texas");
-
-    await fillDeep('[aria-label="Zip code"]', "78701");
-
-    // --- PART 3: LEGAL CHECKBOXES ---
-    console.log("📝 Filling Legal...");
-
-    const standardRadio = await findDeep('ytcp-radio-button[name="removal-timing-option"][aria-label*="Standard"]');
-    if (standardRadio) {
-        standardRadio.scrollIntoView({block: "center"});
-        standardRadio.click();
-    }
-
-    const preventCheck = await findDeep('ytcp-checkbox-lit[aria-label*="Prevent future copies"]');
-    if (preventCheck) preventCheck.click();
-
-    const agreements = ["good faith", "accurate", "abuse"];
-    for (const key of agreements) {
-        const xpath = `//ytcp-checkbox-lit//div[contains(@aria-label, '${key}')]`;
-        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        
-        if (result.singleNodeValue) {
-            const wrapper = result.singleNodeValue.closest('ytcp-checkbox-lit');
-            if (wrapper && wrapper.getAttribute('aria-checked') === 'false') {
-                 wrapper.scrollIntoView({block: "center"});
-                 wrapper.click();
-                 await sleep(300);
+    // ==========================================
+    // NEW TRIGGER: GLOBAL CLICK LISTENER
+    // ==========================================
+    // This allows the extension to "wake up" when the user clicks 'Next'
+    // or clicks anywhere on Page 3.
+    document.addEventListener('click', (e) => {
+        // By removing the tagName restriction, we catch clicks on SVGs and Spans inside buttons
+        setTimeout(() => {
+            if (lastReportData && !isAutofilling) {
+                console.log("🖱️ User interaction detected. Scanning for missing boxes/fields...");
+                routeAutofill(lastReportData);
             }
-        }
-    }
-    
-    await fillDeep('[aria-label="Signature"]', data.fullName);
-    console.log("✅ YouTube Automation Complete");
-}
+        }, 800); // Wait 800ms for TikTok's React animations to finish loading the next page
+    }, true);
 
-async function fillInstagram(data) {
-    console.log("📝 Running Instagram Strategy...");
-    
-    await fillByName("your_name", data.fullName);
-    await fillByName("email", data.email);
-    
-    const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-    await fillBySelector('textarea[name="content_urls"]', urlText);
-    await fillBySelector('textarea[name="links"]', urlText);
-    
-    await fillByName("electronic_signature", data.fullName);
-}
-
-async function fillFacebook(data) {
-    await fillInstagram(data); // FB is Meta, same structure usually
-}
-
-async function fillTwitter(data) {
-    console.log("📝 Running Twitter Strategy...");
-    await fillByName("reporter_name", data.fullName);
-    await fillByName("email", data.email);
-    await fillByName("company_name", "FloSports");
-    
-    const urlText = Array.isArray(data.urls) ? data.urls.join('\n') : data.urls;
-    await fillBySelector('textarea[name="source_url"]', urlText);
-    await fillByName("signature", data.fullName);
-}
-
-// ==========================================
-// 5. YOUR HELPERS (Preserved exactly)
-// ==========================================
-
-async function fillBySelector(selector, value) {
-    if (!value) return;
-    const el = document.querySelector(selector);
-    if (el) {
-        el.focus();
-        el.value = value;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.blur();
-        console.log(`✅ Filled selector: ${selector}`);
-        return true;
-    }
-    return false;
-}
-
-async function fillByName(nameAttr, value) {
-    if (!value) return;
-    const el = document.querySelector(`input[name="${nameAttr}"], textarea[name="${nameAttr}"]`);
-    if (el) {
-        el.focus();
-        el.value = value;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.blur();
-        console.log(`✅ Filled name="${nameAttr}"`);
-        return true;
-    }
-    return false;
-}
-
-async function fillByPlaceholder(partialPlaceholder, value) {
-    if (!value) return;
-    const inputs = Array.from(document.querySelectorAll('input, textarea'));
-    const target = inputs.find(el => el.placeholder && el.placeholder.toLowerCase().includes(partialPlaceholder.toLowerCase()));
-    if (target) {
-        target.focus();
-        target.value = value;
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-        target.dispatchEvent(new Event('change', { bubbles: true }));
-        target.blur();
-        console.log(`✅ Filled field with placeholder containing "${partialPlaceholder}"`);
-        return true;
-    }
-    return false;
-}
-
-async function fillById(containerId, value) {
-    if (!value) return;
-    const container = document.getElementById(containerId);
-    if (container) {
-        const input = container.tagName === 'INPUT' || container.tagName === 'TEXTAREA' ? container : container.querySelector('input, textarea');
-        if (input) {
-            input.focus();
-            input.value = value;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-            input.blur();
-            console.log(`✅ Filled ID #${containerId}`);
-            return true;
-        }
-    }
-    return false;
-}
-
-async function waitForSelector(selector, timeout) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-        if (document.querySelector(selector)) return true;
-        await sleep(200);
-    }
-    return false;
-}
-
-async function fillInput(labelText, value, excludeTerm = null) {
-  if (!value) return;
-  const lowerLabel = labelText.toLowerCase();
-  const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "${lowerLabel}")]`;
-  const snapshot = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-  let labelEl = null;
-
-  for (let i = 0; i < snapshot.snapshotLength; i++) {
-      const node = snapshot.snapshotItem(i);
-      const text = node.innerText || node.textContent || "";
-      if (excludeTerm && text.toLowerCase().includes(excludeTerm.toLowerCase())) continue; 
-      labelEl = node;
-      break; 
-  }
-  
-  if (!labelEl) return;
-  
-  let input = null;
-  let parent = labelEl.parentElement; 
-  for(let i=0; i<5; i++) {
-    if(!parent) break;
-    input = parent.querySelector('input:not([type="hidden"]), textarea');
-    if(input) break;
-    parent = parent.parentElement;
-  }
-  
-  if (input) {
-    input.focus();
-    input.value = value;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    input.blur();
-    console.log(`✅ Filled "${labelText}"`);
-  }
-}
-// --- SHADOW DOM HELPERS (Required for YouTube) ---
-
-// 1. Recursively find element inside Shadow Roots
-async function findDeep(selector, root = document.body) {
-    let el = root.querySelector(selector);
-    if (el) return el;
-    const elements = root.querySelectorAll('*');
-    for (const element of elements) {
-        if (element.shadowRoot) {
-            const found = await findDeep(selector, element.shadowRoot);
-            if (found) return found;
-        }
-    }
-    return null;
-}
-
-// 2. NEW: Robust Typer that drills into Custom Elements
-// This is critical for fields like <ytcp-form-textarea>
-async function typeInField(el, value) {
-    if (!el || !value) return;
-
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sleep(200);
-
-    // DRILL DOWN: If we found a wrapper component, find the inner input
-    if (el.shadowRoot) {
-        const inner = el.shadowRoot.querySelector('input, textarea');
-        if (inner) el = inner;
-    } else if (el.tagName.includes('-')) {
-         // Fallback for custom elements without open shadow roots
-         const inner = el.querySelector('input, textarea');
-         if (inner) el = inner;
-    }
-
-    el.focus();
-    el.value = value;
-    
-    // Dispatch events with 'composed: true' to penetrate Shadow DOM
-    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-    
-    // Simulate Keypress (Essential for YouTube validation)
-    el.dispatchEvent(new KeyboardEvent('keydown', { key: value[0], bubbles: true, composed: true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { key: value[0], bubbles: true, composed: true }));
-    
-    el.blur();
-}
-
-// 3. Wrapper to find deep element and fill it
-async function fillDeep(selector, value) {
-    const el = await findDeep(selector);
-    if(el) await typeInField(el, value);
-}
-
-// 4. Find Custom Elements by their inner Text (for Dropdowns/Buttons)
-async function findElementByText(text, tagName = '*', root = document.body) {
-    if (root.tagName && root.tagName.toLowerCase().includes(tagName.replace('*','')) && root.innerText && root.innerText.includes(text)) {
-        return root;
-    }
-    if (root.shadowRoot) {
-        const res = await findElementByText(text, tagName, root.shadowRoot);
-        if (res) return res;
-    }
-    const children = root.children;
-    for (const child of children) {
-        const res = await findElementByText(text, tagName, child);
-        if (res) return res;
-    }
-    return null;
-}
-
-// 5. Helper specifically for YouTube Dropdowns
-// REPLACE 'selectDropdownOption' IN HELPERS
-
-async function selectDropdownOption(label, optionText) {
-    console.log(`🔽 Selecting: ${label} -> ${optionText}`);
-
-    // 1. Find the Trigger (Updated to include 'ytcp-text-dropdown-trigger')
-    const triggerXpath = `
-        //*[@id="${label}"]//ytcp-dropdown-trigger |
-        //ytcp-dropdown-trigger[contains(@aria-label, '${label}')] |
-        //ytcp-form-select[contains(@aria-label, '${label}')]//ytcp-dropdown-trigger |
-        //ytcp-dropdown-trigger[.//div[contains(text(), '${label}')]] |
-        //ytcp-text-dropdown-trigger[.//div[contains(text(), '${label}')]] 
-    `;
-    const triggerResult = document.evaluate(triggerXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-    const trigger = triggerResult.singleNodeValue;
-
-    if (trigger) {
-        trigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        trigger.click();
-        await sleep(800); // Wait for menu to open
-
-        // 2. Find the Option
-        const optionXpath = `
-            //paper-item[contains(., '${optionText}')] | 
-            //ytcp-text-menu-item[contains(., '${optionText}')] | 
-            //tp-yt-paper-item[contains(., '${optionText}')]
-        `;
-        const optionResult = document.evaluate(optionXpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        const option = optionResult.singleNodeValue;
-
-        if (option) {
-            console.log(`   ✅ Found option: ${optionText}`);
-            option.click();
-            await sleep(1000); 
-            return true;
-        } else {
-            console.warn(`❌ Option '${optionText}' not found. Closing menu.`);
-            document.body.click(); 
-        }
-    } else {
-        console.warn(`❌ Dropdown trigger '${label}' not found.`);
-    }
-    return false;
-}
-// ==========================================
-// 6. YOUR OVERLAY (Preserved exactly)
-// ==========================================
-function createUploadOverlay(data) {
-  const existing = document.getElementById("flo-upload-overlay");
-  if (existing) existing.remove();
-
-  const overlay = document.createElement("div");
-  overlay.id = "flo-upload-overlay";
-  overlay.style.cssText = `
-    position: fixed; top: 80px; right: 20px; width: 300px;
-    background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px;
-  `;
-
-  overlay.innerHTML = `
-    <h3 style="margin-top:0; color:#ce0e2d;">FloSports Helper</h3>
-    <div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
-      <strong>Platform:</strong> ${data.platform || "TikTok"}<br>
-      <strong>Status:</strong> Form Filled.<br>
-      <small style="color:#666;">Double check all fields.</small>
-    </div>
-    <div style="margin-bottom: 15px;">
-      <strong>Step 2:</strong> Submit Report<br>
-      <small>Click "Send" on the form.</small>
-    </div>
-    <div>
-      <strong>Step 3:</strong> Log to Sheet<br>
-      <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%; margin-top:5px;">Log & Finish</button>
-      
-      <div id="flo-progress-container" style="display:none; width: 100%; background-color: #f1f1f1; border-radius: 4px; margin-top: 10px; overflow: hidden;">
-        <div id="flo-progress-fill" style="width: 0%; height: 8px; background-color: #ce0e2d; border-radius: 4px; transition: width 0.3s ease-in-out;"></div>
-      </div>
-      
-      <div id="flo-log-status" style="margin-top:8px; font-size:12px; font-weight:bold;"></div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  document.getElementById("flo-log-btn").addEventListener("click", () => {
-    const status = document.getElementById("flo-log-status");
-    const btn = document.getElementById("flo-log-btn");
-    const progressContainer = document.getElementById("flo-progress-container");
-    const progressFill = document.getElementById("flo-progress-fill");
-    
-    // 1. Setup UI for Loading
-    status.innerText = "⏳ Generating PDF & Logging...";
-    status.style.color = "blue";
-    btn.disabled = true;
-    btn.style.background = "#ccc";
-    progressContainer.style.display = "block";
-
-    // 2. Start Fake Progress Animation (Simulates up to 90%)
-    let width = 0;
-    const interval = setInterval(() => {
-        if (width >= 90) {
-            clearInterval(interval); // Stop at 90% and wait for actual response
-        } else {
-            width += (Math.random() * 5); // Increment randomly
-            progressFill.style.width = width + "%";
-        }
-    }, 200);
-
-    // 3. Send Message to Background
-    chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
-      clearInterval(interval); // Stop the animation logic
-
-      if (response && response.success) {
-        // Success! Jump to 100%
-        progressFill.style.width = "100%";
-        progressFill.style.backgroundColor = "#4CAF50"; // Turn Green
-        
-        status.innerText = "✅ Logged Successfully! Closing...";
-        status.style.color = "green";
-        setTimeout(() => overlay.remove(), 2500);
-      } else {
-        // Failure
-        progressFill.style.backgroundColor = "red";
-        status.innerText = "❌ Log Failed.";
-        status.style.color = "red";
-        btn.disabled = false;
-        btn.style.background = "#ce0e2d";
-      }
-    });
-  });
-}
+})();

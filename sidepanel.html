@@ -36,6 +36,17 @@
     
     /* Utility Link */
     .link-btn { background:none; border:none; color:#666; font-size:10px; cursor:pointer; text-decoration:underline; float: right; }
+
+    /* Closer Status */
+    #closerStatus {
+        margin-top: 5px;
+        font-size: 11px;
+        color: #555;
+        background: #eee;
+        padding: 5px;
+        border-radius: 4px;
+        display: none; /* Hidden by default */
+    }
   </style>
 </head>
 <body>
@@ -62,10 +73,28 @@
   <input type="text" id="sourceUrlDisplay" placeholder="Paste URL or Click Above...">
   
   <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" Text</button>
+  <button id="searchEventBtn" class="link-btn" style="margin-right: 10px;"> Search Event</button>
   <div style="clear:both;"></div>
 
   <button id="startBtn" class="btn" disabled>Start Report</button>
 
-  <script src="sidepanel.js"></script>
+  <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; background-color: #f9f9f9; padding: 10px; border-radius: 4px;">
+    <label style="color: #333; margin-top:0;">Automation Tools</label>
+    
+    <!-- Auto Crawl -->
+    <button id="autoCrawlBtn" class="btn" style="background-color: #f39c12; margin-top: 5px; font-size: 12px; padding: 10px;">Start Auto-Crawl (TikTok)</button>
+    <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
+
+    <!-- The Closer -->
+    <label style="margin-top: 15px;">Sheet Scanner Options</label>
+    <div style="display:flex; gap:5px; align-items:center;">
+        <input type="number" id="startRowInput" placeholder="Start Row (e.g. 2)" style="flex:1;" min="1">
+        <button id="testCloserBtn" class="btn" style="background-color: #555; margin-top: 0; font-size: 11px; padding: 8px; flex:2;">Run "The Closer"</button>
+    </div>
+    <div id="closerStatus">Waiting to start...</div>
+    <div style="font-size: 10px; color:#666; margin-top:4px;">Scans Column H for dead links. Updates Status to 'Resolved' or 'Investigating'.</div>
+  </div>
+
+  <script src="sidepanel.js" type="module"></script>
 </body>
 </html>
