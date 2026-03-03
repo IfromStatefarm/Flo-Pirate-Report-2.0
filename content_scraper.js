@@ -294,7 +294,7 @@
   });
 
   // ==========================================
-  // 3. OVERLAY UI LOGIC (Unchanged)
+  // 3. OVERLAY UI LOGIC (Updated for Capture First)
   // ==========================================
 
   function handleAddToQueue(btnAdd) {
@@ -314,8 +314,8 @@
           return; 
       }
       
-      const originalText = "Add";
-      btnAdd.innerText = "Checking...";
+      const originalText = "+ Add";
+      btnAdd.innerText = "Capturing...";
       btnAdd.disabled = true;
       btnAdd.style.backgroundColor = "#ff9800"; 
 
@@ -323,42 +323,68 @@
       let responseReceived = false;
       const safetyTimeout = setTimeout(() => {
           if (!responseReceived) {
-              console.warn("PIRATE AI: Whitelist check timed out. Forcing save.");
-              saveItem(data, originalText, btnAdd);
+              console.warn("PIRATE AI: Process timed out.");
+              btnAdd.innerText = "Error/Timeout";
+              setTimeout(() => {
+                  btnAdd.innerText = originalText;
+                  btnAdd.disabled = false;
+                  btnAdd.style.backgroundColor = "#ce0e2d";
+              }, 2000);
           }
-      }, 4000);
+      }, 8000); // 8 seconds to allow background capture + Google API call
 
       try {
+          // Tell the background script to handle capture & verification simultaneously
           chrome.runtime.sendMessage({ 
-              action: 'checkWhitelist', 
-              platform: data.platform, 
-              handle: data.handle 
-          }, (response) => {
+              action: 'processNewItem', 
+              data: data 
+          }, (res) => {
               responseReceived = true;
               clearTimeout(safetyTimeout);
 
               if (chrome.runtime.lastError) {
-                  console.warn("Whitelist check warning/fail:", chrome.runtime.lastError);
+                  console.warn("Process error:", chrome.runtime.lastError);
                   if (chrome.runtime.lastError.message && chrome.runtime.lastError.message.includes("context invalidated")) {
                       handleContextInvalidated();
                       return;
                   }
-                  saveItem(data, originalText, btnAdd);
+                  
+                  // Graceful failure UI update
+                  btnAdd.innerText = "Error";
+                  setTimeout(() => { 
+                      btnAdd.innerText = originalText; 
+                      btnAdd.disabled = false; 
+                      btnAdd.style.backgroundColor = "#ce0e2d";
+                  }, 1500);
                   return;
               }
 
-              if (response && response.authorized) {
+              if (res && res.status === 'whitelisted') {
                   alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
                   btnAdd.innerText = "Whitelisted";
                   btnAdd.style.backgroundColor = "#666"; 
                   
                   setTimeout(() => {
-                      btnAdd.innerText = "+ Add";
+                      btnAdd.innerText = originalText;
                       btnAdd.disabled = false;
                       btnAdd.style.backgroundColor = "#ce0e2d"; 
                   }, 2000);
+              } else if (res && res.success) {
+                  btnAdd.innerText = "Saved!"; 
+                  btnAdd.style.backgroundColor = "#4CAF50";
+                  setTimeout(() => { 
+                      btnAdd.innerText = originalText; 
+                      btnAdd.disabled = false; 
+                      btnAdd.style.backgroundColor = "#ce0e2d";
+                  }, 1500);
               } else {
-                  saveItem(data, originalText, btnAdd);
+                  btnAdd.innerText = "Error";
+                  console.error("Process Response Error:", res);
+                  setTimeout(() => { 
+                      btnAdd.innerText = originalText; 
+                      btnAdd.disabled = false; 
+                      btnAdd.style.backgroundColor = "#ce0e2d";
+                  }, 1500);
               }
           });
       } catch (e) {
@@ -369,38 +395,6 @@
       }
   }
 
-  function saveItem(data, originalText, btnAdd) {
-      btnAdd.innerText = "Saving...";
-      
-      try {
-          chrome.runtime.sendMessage({ action: 'addToCart', data: data }, (res) => {
-              if (chrome.runtime.lastError) { 
-                  console.error("Save error:", chrome.runtime.lastError);
-                  handleContextInvalidated(); 
-                  return; 
-              }
-              if (res && res.success) {
-                  btnAdd.innerText = "Saved!"; 
-                  btnAdd.style.backgroundColor = "#4CAF50";
-                  setTimeout(() => { 
-                      btnAdd.innerText = "+ Add"; 
-                      btnAdd.disabled = false; 
-                      btnAdd.style.backgroundColor = "#ce0e2d";
-                  }, 1500);
-              } else {
-                  btnAdd.innerText = "Error";
-                  console.error("Save Response Error:", res);
-                  setTimeout(() => { 
-                      btnAdd.innerText = "+ Add"; 
-                      btnAdd.disabled = false; 
-                      btnAdd.style.backgroundColor = "#ce0e2d";
-                  }, 1500);
-              }
-          });
-      } catch(e) {
-          handleContextInvalidated();
-      }
-  }
 
   async function initOverlay() {
     if (document.getElementById('flo-overlay')) return;

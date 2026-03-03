@@ -403,6 +403,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; 
   }
 
+  // Legacy Check, keep for fallback
   if (request.action === "checkWhitelist") {
     checkIfAuthorized(request.platform, request.handle)
       .then(isAuthorized => sendResponse({ authorized: isAuthorized }))
@@ -453,7 +454,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // Add logToSheet handler for the Side Panel
+  // --- NEW: CAPTURE FIRST, VERIFY SECOND WORKFLOW ---
+  if (request.action === 'processNewItem') {
+      handleProcessNewItem(sender.tab, request.data).then(sendResponse);
+      return true; // Keep channel open for async
+  }
+
   if (request.action === 'logToSheet') {
       handleBatchReport(request.data).then(res => {
           sendResponse(res);
@@ -461,7 +467,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true; 
   }
 
-  // --- UPDATED PROCESS QUEUE HANDLER ---
   if (request.action === 'processQueue') {
       handleBatchReport(request.data).then(res => {
           if (res.success) {
@@ -470,7 +475,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               chrome.runtime.sendMessage({ action: "progressError", error: res.error });
           }
       });
-      return false; // Async status handled by runtime messages
+      return false; 
   }
 
   if (request.action === 'getConfig') {
@@ -570,16 +575,13 @@ async function handleDynamicSearch(data) {
   }
 }
 
+// Legacy Fallback for direct adding
 async function handleAddVideo(tab, data) {
   try {
     let screenshotUrl = null;
     
     try {
-        // Omitting tab.windowId allows Chrome to default to the currently active window,
-        // which is safer in MV3 if the user is using split screens.
         const screenshotPromise = chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 50 });
-        
-        // Increased timeout to 5000ms for heavy video pages
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Screenshot timed out")), 5000));
         
         screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
@@ -599,6 +601,51 @@ async function handleAddVideo(tab, data) {
       await chrome.storage.local.set({ 'piracy_cart': cart });
     }
     return { success: true, count: cart.length };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+// NEW: Capture First, Verify Second Workflow
+async function handleProcessNewItem(tab, data) {
+  try {
+    // 1. CAPTURE IMMEDIATELY (Before network delays)
+    let screenshotUrl = null;
+    try {
+        const screenshotPromise = chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 50 });
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Screenshot timed out")), 5000));
+        screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
+    } catch (imgErr) {
+        console.warn("Screenshot capture skipped/failed:", imgErr);
+    }
+
+    // 2. VERIFY SECOND (Check whitelist while image is safely in memory)
+    try {
+        const isAuthorized = await checkIfAuthorized(data.platform, data.handle);
+        if (isAuthorized) {
+            // If whitelisted, discard the screenshot in memory and stop
+            return { success: false, status: 'whitelisted' };
+        }
+    } catch (err) {
+        console.warn("Whitelist check failed, proceeding to save anyway:", err);
+    }
+
+    // 3. SAVE DATA
+    const screenshotId = crypto.randomUUID();
+    if (screenshotUrl) {
+        await saveImage(screenshotId, screenshotUrl);
+    }
+
+    const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null, timestamp: new Date().toISOString() };
+    const storage = await chrome.storage.local.get('piracy_cart');
+    let cart = storage.piracy_cart || [];
+
+    if (!cart.some(item => item.url === data.url)) {
+      cart.push(newItem);
+      await chrome.storage.local.set({ 'piracy_cart': cart });
+    }
+    return { success: true, status: 'added', count: cart.length };
+
   } catch (e) {
     return { success: false, error: e.message };
   }

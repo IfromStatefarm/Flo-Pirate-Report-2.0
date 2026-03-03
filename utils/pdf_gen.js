@@ -98,7 +98,7 @@ export async function generatePDF(data) {
             // Parse views for total
             let viewCount = 0;
             if (item.views && item.views !== "N/A" && item.views !== "PENDING" && item.views !== "DELETED") {
-                const v = item.views.toLowerCase();
+                const v = String(item.views).toLowerCase();
                 if(v.includes('k')) viewCount = parseFloat(v) * 1000;
                 else if(v.includes('m')) viewCount = parseFloat(v) * 1000000;
                 else viewCount = parseFloat(v.replace(/,/g, '')) || 0;
@@ -110,7 +110,7 @@ export async function generatePDF(data) {
 
             // Add Row
             doc.text(displayUrl, margin + 2, y);
-            doc.text(item.views || "N/A", margin + 110, y);
+            doc.text(String(item.views || "N/A"), margin + 110, y);
             
             if (item.screenshotLink && item.screenshotLink.startsWith('http')) {
                 doc.setTextColor(0, 0, 255);
