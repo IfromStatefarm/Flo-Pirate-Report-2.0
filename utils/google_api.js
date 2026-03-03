@@ -299,10 +299,54 @@ export async function appendToSheet(token, logData) {
       ]];
   }
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/A1:append?valueInputOption=USER_ENTERED`, {
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/A1:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
+  });
+  
+  return await response.json();
+}
+
+export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
+  const { reportSheetId } = await getOptions();
+  const token = await getAuthToken();
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
+      headers: { Authorization: `Bearer ${token}` }
+  });
+  const metaData = await metaRes.json();
+  const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
+
+  const text = `Channel: @${handle}\nReport Document`;
+  const line1Len = `Channel: @${handle}`.length;
+
+  const requests = [{
+      updateCells: {
+          rows: [{
+              values: [{
+                  userEnteredValue: { stringValue: text },
+                  textFormatRuns: [
+                      { startIndex: 0, format: { link: { uri: channelUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } },
+                      { startIndex: line1Len, format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false } },
+                      { startIndex: line1Len + 1, format: { link: { uri: pdfUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } }
+                  ]
+              }]
+          }],
+          range: {
+              sheetId: sheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 10, // Column K index
+              endColumnIndex: 11
+          },
+          fields: "userEnteredValue,textFormatRuns"
+      }
+  }];
+
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
   });
 }
 

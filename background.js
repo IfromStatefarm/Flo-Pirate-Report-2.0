@@ -13,7 +13,8 @@ import {
   getColumnHData,
   updateRowStatus,
   formatCellAsTakenDown,
-  updateCellWithRichText
+  updateCellWithRichText,
+  setColumnKRichText
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
@@ -736,15 +737,36 @@ async function handleBatchReport(formData) {
       const viewString = items.map(i => i.views || "N/A").join('\n');
       const reportId = generateReportId();
 
-      let detectedPlatform = "TikTok"; 
-      if (urls[0].includes('youtube')) detectedPlatform = "YouTube";
+      let detectedPlatform = "TikTok";
+      let channelUrl = `https://www.tiktok.com/@${handle}`;
+
+      if (urls[0].includes('youtube') || urls[0].includes('youtu.be')) {
+          detectedPlatform = "YouTube";
+          channelUrl = `https://www.youtube.com/@${handle}`;
+      } else if (urls[0].includes('instagram')) {
+          detectedPlatform = "Instagram";
+          channelUrl = `https://www.instagram.com/${handle}`;
+      } else if (urls[0].includes('twitter') || urls[0].includes('x.com')) {
+          detectedPlatform = "Twitter";
+          channelUrl = `https://x.com/${handle}`;
+      } else if (urls[0].includes('facebook')) {
+          detectedPlatform = "Facebook";
+          channelUrl = `https://www.facebook.com/${handle}`;
+      } else if (urls[0].includes('twitch')) {
+          detectedPlatform = "Twitch";
+          channelUrl = `https://www.twitch.tv/${handle}`;
+      }
       
       // 2. UPLOAD SCREENSHOTS
       const evidenceLinks = []; 
       
       for (const item of items) {
           let imgLink = "No Screenshot Available";
-          if (formData.uploadScreenshots && item.screenshotId) {
+          
+          // FIX: Default to true if undefined (handles requests from the in-page wizard)
+          const shouldUploadScreenshots = formData.uploadScreenshots !== false;
+          
+          if (shouldUploadScreenshots && item.screenshotId) {
               try {
                   const imgDataUrl = await getImage(item.screenshotId);
                   if (imgDataUrl) {
@@ -786,8 +808,20 @@ async function handleBatchReport(formData) {
       const pdfUpload = await uploadToDrive(token, yearFolderId, pdfName, pdfBlob, 'application/pdf');
 
       // 5. LOG TO SHEET
-      // viewString contains the verified numbers (e.g. "1200\n500") or "DELETED"
-      await appendToSheet(token, { values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", `Report: ${pdfUpload.webViewLink}`, finalReporterName, "", "", "", "", "", "", "", reportId] });
+      const appendResponse = await appendToSheet(token, { values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", "Generating Links...", finalReporterName, "", "", "", "", "", "", "", reportId] });
+      
+      // 6. APPLY RICH TEXT LINKS TO COLUMN K
+      const updatedRange = appendResponse?.updates?.updatedRange;
+      if (updatedRange) {
+          // Extract the exact row number we just inserted
+          const rangePart = updatedRange.split('!')[1] || updatedRange;
+          const match = rangePart.match(/\d+/);
+          if (match) {
+              const rowIndex = parseInt(match[0], 10) - 1; // 0-based for API
+              const safePdfUrl = pdfUpload.webViewLink || "https://drive.google.com";
+              await setColumnKRichText(rowIndex, channelUrl, handle, safePdfUrl);
+          }
+      }
       
       await new Promise(r => setTimeout(r, 1000));
     }
