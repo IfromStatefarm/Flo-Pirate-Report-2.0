@@ -272,6 +272,9 @@ export async function fetchConfig() {
   return await contentRes.json();
 }
 
+/**
+ * Appends a row and automatically formats URLs in Column H as hyperlinks.
+ */
 export async function appendToSheet(token, logData) {
   const { reportSheetId } = await getOptions();
   
@@ -305,7 +308,81 @@ export async function appendToSheet(token, logData) {
     body: JSON.stringify({ values })
   });
   
-  return await response.json();
+  const appendData = await response.json();
+
+  // --- AUTOMATED HYPERLINKING FOR COLUMN H ---
+  const updatedRange = appendData?.updates?.updatedRange;
+  if (updatedRange) {
+      const rangeMatch = updatedRange.match(/\d+/);
+      if (rangeMatch) {
+          const rowIndex = parseInt(rangeMatch[0], 10) - 1; // 0-based index
+          const urlString = values[0][7] || ""; // Column H is index 7
+          if (urlString) {
+              await setColumnHLinks(token, rowIndex, urlString);
+          }
+      }
+  }
+  
+  return appendData;
+}
+
+/**
+ * Scans Column H text and turns every individual URL into a clickable link pointing to itself.
+ */
+async function setColumnHLinks(token, rowIndex, urlString) {
+  const { reportSheetId } = await getOptions();
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
+      headers: { Authorization: `Bearer ${token}` }
+  });
+  const metaData = await metaRes.json();
+  const sheetId = metaData.sheets?.[0]?.properties?.sheetId || 0;
+
+  const urlRegex = /https?:\/\/[^\s,]+/g;
+  let match;
+  const textFormatRuns = [];
+
+  while ((match = urlRegex.exec(urlString)) !== null) {
+      textFormatRuns.push({
+          startIndex: match.index,
+          format: {
+              link: { uri: match[0] },
+              foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 },
+              underline: true
+          }
+      });
+      // Reset formatting immediately after the link
+      textFormatRuns.push({
+          startIndex: match.index + match[0].length,
+          format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false }
+      });
+  }
+
+  if (textFormatRuns.length === 0) return;
+
+  const requests = [{
+      updateCells: {
+          rows: [{
+              values: [{
+                  userEnteredValue: { stringValue: urlString },
+                  textFormatRuns: textFormatRuns
+              }]
+          }],
+          range: {
+              sheetId: sheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 7, // Column H index
+              endColumnIndex: 8
+          },
+          fields: "userEnteredValue,textFormatRuns"
+      }
+  }];
+
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
+  });
 }
 
 export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
@@ -317,8 +394,9 @@ export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
   const metaData = await metaRes.json();
   const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
 
-  const text = `Channel: @${handle}\nReport Document`;
-  const line1Len = `Channel: @${handle}`.length;
+  // Use the literal URLs as the display text, separated by a newline
+  const text = `${channelUrl}\n${pdfUrl}`;
+  const line1Len = channelUrl.length;
 
   const requests = [{
       updateCells: {
