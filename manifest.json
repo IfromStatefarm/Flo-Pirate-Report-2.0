@@ -1,10 +1,9 @@
 {
   "manifest_version": 3,
   "name": "FloSports Pirate Reporter",
-  "version": "3.2",
+  "version": "3.3",
   "description": "Automated copyright reporting tool.",
   "permissions": [
-    "activeTab",
     "scripting",
     "storage",
     "identity",
@@ -23,8 +22,7 @@
     "https://www.twitch.tv/*",
     "https://discord.com/*",
     "https://ipr.tiktokforbusiness.com/*",
-    "https://www.googleapis.com/*",
-    "<all_urls>"
+    "https://www.googleapis.com/*"
   ],
   "oauth2": {
     "client_id": "1077684119158-g9a5ov4qpb40nbnc5rec0i9l8dp2i9us.apps.googleusercontent.com",
@@ -80,7 +78,7 @@
   "web_accessible_resources": [
     {
       "resources": ["lib/jspdf.umd.min.js", "style.css", "jingle.mp3", "search_bot.js"],
-      "matches": ["<all_urls>"]
+      "matches": ["*://*.tiktok.com/*", "*://*.youtube.com/*", "*://*.instagram.com/*", "*://*.facebook.com/*", "*://*.twitter.com/*", "*://*.x.com/*", "*://*.twitch.tv/*", "*://*.discord.com/*", "*://ipr.tiktokforbusiness.com/*", "*://www.tiktok.com/legal/report/*", "*://www.youtube.com/copyright_complaint_form*"]
     }
   ]
 }
