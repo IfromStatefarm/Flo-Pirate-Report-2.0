@@ -91,13 +91,6 @@
           background-color: #b00c26;
         }
       </style>
-
-      <div class="box" id="dragBox">
-        <h3 class="header">FloSports Helper</h3>
-        <p class="desc">
-            1. Find the correct Event page.<br>
-            2. Confirm URL below.
-        </p>
         
         <input type="text" id="urlInput" value="${window.location.href}" />
         
