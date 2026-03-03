@@ -3,22 +3,31 @@ import * as jsPDFModule from '../lib/jspdf.umd.min.js';
 
 export async function generatePDF(data) {
   try {
-    // 3. FIX: Robust Constructor Resolution for UMD/ESM compatibility
-    // The previous check failed because jsPDFModule was [object Module].
-    // We now strictly check for the constructor presence.
+    // FIX: Exhaustive Constructor Resolution for UMD/ESM compatibility
+    let jsPDF = null;
     
-    // Attempt 1: Default export might contain jsPDF
-    let jsPDF = jsPDFModule.default ? (jsPDFModule.default.jsPDF || jsPDFModule.default) : null;
-    
-    // Attempt 2: Named export
-    if (!jsPDF) jsPDF = jsPDFModule.jsPDF;
-    
-    // Attempt 3: Direct module (rare)
-    if (!jsPDF && typeof jsPDFModule === 'function') jsPDF = jsPDFModule;
+    // 1. Check standard module exports
+    if (jsPDFModule && typeof jsPDFModule.jsPDF === 'function') {
+        jsPDF = jsPDFModule.jsPDF;
+    } else if (jsPDFModule && typeof jsPDFModule.default === 'function') {
+        jsPDF = jsPDFModule.default;
+    } else if (jsPDFModule && jsPDFModule.default && typeof jsPDFModule.default.jsPDF === 'function') {
+        jsPDF = jsPDFModule.default.jsPDF;
+    } 
+    // 2. Check global scopes (where UMD scripts attach in MV3 Service Workers)
+    else if (typeof globalThis !== 'undefined' && globalThis.jspdf && typeof globalThis.jspdf.jsPDF === 'function') {
+        jsPDF = globalThis.jspdf.jsPDF;
+    } else if (typeof self !== 'undefined' && self.jspdf && typeof self.jspdf.jsPDF === 'function') {
+        jsPDF = self.jspdf.jsPDF;
+    } else if (typeof globalThis !== 'undefined' && typeof globalThis.jsPDF === 'function') {
+        jsPDF = globalThis.jsPDF;
+    } else if (typeof self !== 'undefined' && typeof self.jsPDF === 'function') {
+        jsPDF = self.jsPDF;
+    }
 
     // Sanity check: Ensure it's a function (constructor)
     if (typeof jsPDF !== 'function') {
-        console.error("jsPDF Import Debug:", jsPDFModule); 
+        console.error("jsPDF Import Debug - Module:", jsPDFModule, "Global:", typeof globalThis !== 'undefined' ? globalThis.jspdf : null); 
         throw new Error("jsPDF library not loaded correctly - Constructor not found");
     }
 

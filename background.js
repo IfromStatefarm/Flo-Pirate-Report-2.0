@@ -18,6 +18,21 @@ import {
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
 
+// --- UTILITY: Convert Base64 Data URI to Blob ---
+function base64ToBlob(dataURI) {
+  const splitDataURI = dataURI.split(',');
+  const byteString = splitDataURI[0].indexOf('base64') >= 0 
+      ? atob(splitDataURI[1]) 
+      : decodeURI(splitDataURI[1]);
+  const mimeString = splitDataURI[0].split(':')[1].split(';')[0];
+  
+  const ia = new Uint8Array(byteString.length);
+  for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+  }
+  return new Blob([ia], { type: mimeString });
+}
+
 // Ensure side panel behavior triggers on action click
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
@@ -558,10 +573,15 @@ async function handleDynamicSearch(data) {
 async function handleAddVideo(tab, data) {
   try {
     let screenshotUrl = null;
-    // Safety Try-Catch for screenshot logic so that a failure here won't kill the item saving
+    
     try {
-        const screenshotPromise = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 50 });
-        const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2000));
+        // Omitting tab.windowId allows Chrome to default to the currently active window,
+        // which is safer in MV3 if the user is using split screens.
+        const screenshotPromise = chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 50 });
+        
+        // Increased timeout to 5000ms for heavy video pages
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Screenshot timed out")), 5000));
+        
         screenshotUrl = await Promise.race([screenshotPromise, timeoutPromise]);
     } catch (imgErr) {
         console.warn("Screenshot capture skipped/failed:", imgErr);
@@ -573,6 +593,7 @@ async function handleAddVideo(tab, data) {
     const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null, timestamp: new Date().toISOString() };
     const storage = await chrome.storage.local.get('piracy_cart');
     let cart = storage.piracy_cart || [];
+    
     if (!cart.some(item => item.url === data.url)) {
       cart.push(newItem);
       await chrome.storage.local.set({ 'piracy_cart': cart });
@@ -677,12 +698,22 @@ async function handleBatchReport(formData) {
       for (const item of items) {
           let imgLink = "No Screenshot Available";
           if (formData.uploadScreenshots && item.screenshotId) {
-              const imgDataUrl = await getImage(item.screenshotId);
-              if (imgDataUrl) {
-                  const response = await fetch(imgDataUrl);
-                  // Upload to the separate daily screenshots folder
-                  const upload = await uploadToDrive(token, screenshotsFolderId, `${reportId}_Evidence_@${handle}.jpg`, await response.blob(), 'image/jpeg');
-                  imgLink = upload.webViewLink; 
+              try {
+                  const imgDataUrl = await getImage(item.screenshotId);
+                  if (imgDataUrl) {
+                      // Use manual conversion instead of fetch() to avoid MV3 data URI restrictions
+                      const imageBlob = base64ToBlob(imgDataUrl);
+                      const upload = await uploadToDrive(
+                          token, 
+                          screenshotsFolderId, 
+                          `${reportId}_Evidence_@${handle}.jpg`, 
+                          imageBlob, 
+                          'image/jpeg'
+                      );
+                      imgLink = upload.webViewLink; 
+                  }
+              } catch (imgUploadErr) {
+                  console.error(`Failed to upload screenshot for ${item.url}:`, imgUploadErr);
               }
           }
           evidenceLinks.push({ 
@@ -691,7 +722,6 @@ async function handleBatchReport(formData) {
               views: item.views 
           });
       }
-
       // 3. GENERATE PDF
       const pdfData = { 
           eventName: formData.eventConfig?.eventName || formData.eventName || "Unknown Event", 
