@@ -297,7 +297,7 @@ export async function appendToSheet(token, logData) {
         logData.urls || "",
         "DMCA takedown request",
         "Reported",
-        "",
+        "Generating Links...",
         logData.reporterName || "Unknown",
       ]];
   }
@@ -313,9 +313,13 @@ export async function appendToSheet(token, logData) {
   // --- AUTOMATED HYPERLINKING FOR COLUMN H ---
   const updatedRange = appendData?.updates?.updatedRange;
   if (updatedRange) {
-      const rangeMatch = updatedRange.match(/\d+/);
-      if (rangeMatch) {
-          const rowIndex = parseInt(rangeMatch[0], 10) - 1; // 0-based index
+      // Robust Parsing: Get row number from after the '!' or ':'
+      const rangeParts = updatedRange.split('!');
+      const cellData = rangeParts.length > 1 ? rangeParts[1] : rangeParts[0];
+      const rowMatch = cellData.match(/\d+/);
+      
+      if (rowMatch) {
+          const rowIndex = parseInt(rowMatch[0], 10) - 1; // 0-based index
           const urlString = values[0][7] || ""; // Column H is index 7
           if (urlString) {
               await setColumnHLinks(token, rowIndex, urlString);
@@ -385,65 +389,32 @@ async function setColumnHLinks(token, rowIndex, urlString) {
   });
 }
 
+/**
+ * Replaces "Generating Links..." with standard text links.
+ * Uses a basic PUT request to avoid batchUpdate permission blocks on restricted sheets.
+ */
 export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
   
-  // 1. Get the Sheet ID dynamically (usually 0 for the first tab)
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
-      headers: { Authorization: `Bearer ${token}` }
-  });
-  const metaData = await metaRes.json();
-  const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
-
-  // 2. Format the display strings
-  const line1 = `Channel: @${handle}`;
-  const line2 = `PDF Report`;
-  const fullText = `${line1}\n${line2}`;
+  // Format the output simply so Google Sheets auto-linkifies both URLs cleanly
+  const plainTextValue = `Channel: ${channelUrl}\nPDF: ${pdfUrl}`;
+  const range = `K${rowIndex + 1}`; // Column K is the 11th column
   
-  const line1Len = line1.length;
+  console.log(`🚀 Attempting plain text update for row ${rowIndex + 1} in Column K`);
 
-  // 3. Construct the BatchUpdate request
-  // We use textFormatRuns to assign DIFFERENT links to DIFFERENT parts of the same cell
-  const requests = [{
-      updateCells: {
-          rows: [{
-              values: [{
-                  userEnteredValue: { stringValue: fullText },
-                  textFormatRuns: [
-                      { 
-                        startIndex: 0, 
-                        format: { link: { uri: channelUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
-                      },
-                      { 
-                        startIndex: line1Len, 
-                        format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false } 
-                      },
-                      { 
-                        startIndex: line1Len + 1, 
-                        format: { link: { uri: pdfUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
-                      }
-                  ]
-              }]
-          }],
-          range: {
-              sheetId: sheetId,
-              startRowIndex: rowIndex,
-              endRowIndex: rowIndex + 1,
-              startColumnIndex: 10, // Column K index (0-based)
-              endColumnIndex: 11
-          },
-          fields: "userEnteredValue,textFormatRuns"
-      }
-  }];
-
-  console.log(`🚀 Forcing link update for row ${rowIndex + 1} in Column K`);
-
-  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
-      method: 'POST',
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+      method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requests })
+      body: JSON.stringify({ values: [[plainTextValue]] })
   });
+
+  if (!response.ok) {
+      const err = await response.json();
+      console.error("❌ Value Update Failed:", err);
+  } else {
+      console.log("✅ Links generated successfully (Plain Text Mode).");
+  }
 
   return await response.json();
 }
