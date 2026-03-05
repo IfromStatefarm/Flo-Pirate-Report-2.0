@@ -1,7 +1,7 @@
 import { getAuthToken } from './auth.js';
 
-// REMOVED: Hardcoded EVENT_SHEET_ID
 const WHITELIST_TAB = 'Handles White List';
+const TARGET_TAB_NAME = 'Report Submissions and status'; // Explicitly target your tab
 
 // --- HELPER: GET USER OPTIONS ---
 const getOptions = async () => {
@@ -12,6 +12,33 @@ const getOptions = async () => {
     eventSheetId: data.event_sheet_id
   };
 };
+
+// --- HELPER: GET SPECIFIC TAB INFO ---
+async function getTargetSheetInfo(token, spreadsheetId) {
+    const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    const metaData = await metaRes.json();
+    
+    let sheetId = 0;
+    let sheetName = TARGET_TAB_NAME;
+
+    if (metaData.sheets) {
+        // Look for the specific tab (ignoring case and whitespace)
+        const targetSheet = metaData.sheets.find(s => 
+            s.properties.title.trim().toLowerCase() === TARGET_TAB_NAME.trim().toLowerCase()
+        );
+        if (targetSheet) {
+            sheetId = targetSheet.properties.sheetId;
+            sheetName = targetSheet.properties.title;
+        } else {
+            // Fallback to first sheet if the specific one isn't found
+            sheetId = metaData.sheets[0].properties.sheetId;
+            sheetName = metaData.sheets[0].properties.title;
+        }
+    }
+    return { sheetId, sheetName };
+}
 
 // --- HELPER: VALIDATE CONFIG ---
 export async function isConfigComplete() {
@@ -54,8 +81,8 @@ export async function getEventData(vertical) {
   
   if (!eventSheetId) throw new Error("Event Sheet ID not configured.");
   
-  const range = `${vertical}!A1:I`; 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}`;
+  const range = `'${vertical}'!A1:I`; 
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}`;
   
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
@@ -115,8 +142,8 @@ export async function checkIfAuthorized(platform, handle) {
   
   if (targetIndex === undefined) return false;
 
-  const range = `${WHITELIST_TAB}!B2:I`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}`;
+  const range = `'${WHITELIST_TAB}'!B2:I`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}`;
 
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -142,10 +169,10 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
   const token = await getAuthToken();
   const { eventSheetId } = await getOptions();
   const colLetter = getColumnLetter(platform);
-  const range = `${vertical}!${colLetter}${rowIndex}`;
+  const range = `'${vertical}'!${colLetter}${rowIndex}`;
   const body = { values: [[newUrl]] };
   
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -155,7 +182,7 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
 export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
   const token = await getAuthToken();
   const { eventSheetId } = await getOptions();
-  const range = `${vertical}!A:I`; 
+  const range = `'${vertical}'!A:I`; 
   
   const row = new Array(9).fill(""); 
   row[0] = eventName;
@@ -170,7 +197,7 @@ export async function addNewEventToSheet(vertical, eventName, eventUrl, platform
 
   const body = { values: [row] };
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -277,6 +304,7 @@ export async function fetchConfig() {
  */
 export async function appendToSheet(token, logData) {
   const { reportSheetId } = await getOptions();
+  const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
   
   let values;
 
@@ -297,12 +325,13 @@ export async function appendToSheet(token, logData) {
         logData.urls || "",
         "DMCA takedown request",
         "Reported",
-        "Generating Links...",
+        "",
         logData.reporterName || "Unknown",
       ]];
   }
 
-  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/A1:append?valueInputOption=USER_ENTERED`, {
+  const range = `'${sheetName}'!A1:append`;
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
@@ -313,13 +342,9 @@ export async function appendToSheet(token, logData) {
   // --- AUTOMATED HYPERLINKING FOR COLUMN H ---
   const updatedRange = appendData?.updates?.updatedRange;
   if (updatedRange) {
-      // Robust Parsing: Get row number from after the '!' or ':'
-      const rangeParts = updatedRange.split('!');
-      const cellData = rangeParts.length > 1 ? rangeParts[1] : rangeParts[0];
-      const rowMatch = cellData.match(/\d+/);
-      
-      if (rowMatch) {
-          const rowIndex = parseInt(rowMatch[0], 10) - 1; // 0-based index
+      const rangeMatch = updatedRange.match(/\d+/);
+      if (rangeMatch) {
+          const rowIndex = parseInt(rangeMatch[0], 10) - 1; // 0-based index
           const urlString = values[0][7] || ""; // Column H is index 7
           if (urlString) {
               await setColumnHLinks(token, rowIndex, urlString);
@@ -335,11 +360,7 @@ export async function appendToSheet(token, logData) {
  */
 async function setColumnHLinks(token, rowIndex, urlString) {
   const { reportSheetId } = await getOptions();
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
-      headers: { Authorization: `Bearer ${token}` }
-  });
-  const metaData = await metaRes.json();
-  const sheetId = metaData.sheets?.[0]?.properties?.sheetId || 0;
+  const { sheetId } = await getTargetSheetInfo(token, reportSheetId);
 
   const urlRegex = /https?:\/\/[^\s,]+/g;
   let match;
@@ -389,32 +410,59 @@ async function setColumnHLinks(token, rowIndex, urlString) {
   });
 }
 
-/**
- * Replaces "Generating Links..." with standard text links.
- * Uses a basic PUT request to avoid batchUpdate permission blocks on restricted sheets.
- */
 export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
-  
-  // Format the output simply so Google Sheets auto-linkifies both URLs cleanly
-  const plainTextValue = `Channel: ${channelUrl}\nPDF: ${pdfUrl}`;
-  const range = `K${rowIndex + 1}`; // Column K is the 11th column
-  
-  console.log(`🚀 Attempting plain text update for row ${rowIndex + 1} in Column K`);
+  const { sheetId } = await getTargetSheetInfo(token, reportSheetId);
 
-  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
-      method: 'PUT',
+  // 2. Format the display strings
+  const line1 = `Channel: @${handle}`;
+  const line2 = `PDF Report`;
+  const fullText = `${line1}\n${line2}`;
+  
+  const line1Len = line1.length;
+
+  // 3. Construct the BatchUpdate request
+  // We use textFormatRuns to assign DIFFERENT links to DIFFERENT parts of the same cell
+  const requests = [{
+      updateCells: {
+          rows: [{
+              values: [{
+                  userEnteredValue: { stringValue: fullText },
+                  textFormatRuns: [
+                      { 
+                        startIndex: 0, 
+                        format: { link: { uri: channelUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
+                      },
+                      { 
+                        startIndex: line1Len, 
+                        format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false } 
+                      },
+                      { 
+                        startIndex: line1Len + 1, 
+                        format: { link: { uri: pdfUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
+                      }
+                  ]
+              }]
+          }],
+          range: {
+              sheetId: sheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 10, // Column K index (0-based)
+              endColumnIndex: 11
+          },
+          fields: "userEnteredValue,textFormatRuns"
+      }
+  }];
+
+  console.log(`🚀 Forcing link update for row ${rowIndex + 1} in Column K`);
+
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+      method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [[plainTextValue]] })
+      body: JSON.stringify({ requests })
   });
-
-  if (!response.ok) {
-      const err = await response.json();
-      console.error("❌ Value Update Failed:", err);
-  } else {
-      console.log("✅ Links generated successfully (Plain Text Mode).");
-  }
 
   return await response.json();
 }
@@ -453,12 +501,61 @@ export async function fetchRightsPdf(token, eventName) {
 // 6. THE CLOSER: STATUS UPDATE
 // ==========================================
 
+export async function getColumnHDataWithFormatting() {
+  const { reportSheetId } = await getOptions();
+  if (!reportSheetId) throw new Error("Report Sheet ID not configured in Options.");
+  
+  const token = await getAuthToken();
+  const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
+
+  // Fetch specific range with grid data for styling evaluation
+  const range = `'${sheetName}'!H:H`;
+  
+  // ADDED 'startRow' to fields so we know if Google skipped leading blank rows
+  const fields = "sheets(data(startRow,rowData(values(userEnteredValue,formattedValue,textFormatRuns,userEnteredFormat,effectiveFormat))))";
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?ranges=${encodeURIComponent(range)}&includeGridData=true&fields=${encodeURIComponent(fields)}`;
+
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  
+  if (!res.ok) {
+      const errText = await res.text();
+      console.error("API Error fetching formatting:", errText);
+      throw new Error("Failed to fetch column data from Google Sheets.");
+  }
+
+  const data = await res.json();
+  const gridData = data.sheets?.[0]?.data?.[0];
+  const startRow = gridData?.startRow || 0;
+  const rowData = gridData?.rowData || [];
+  
+  // Create an array that accurately represents the absolute row indices
+  // by filling empty placeholders up to the startRow where data actually begins.
+  const emptyPad = new Array(startRow).fill({ text: "", formatRuns: [], cellStrikethrough: false });
+  
+  const mappedRows = rowData.map(row => {
+      const cell = row.values?.[0];
+      if (!cell) return { text: "", formatRuns: [], cellStrikethrough: false };
+      
+      const text = cell.formattedValue || cell.userEnteredValue?.stringValue || "";
+      const formatRuns = cell.textFormatRuns || [];
+      
+      // Catch if the ENTIRE cell has base formatting applied to it
+      const cellStrikethrough = cell.userEnteredFormat?.textFormat?.strikethrough || cell.effectiveFormat?.textFormat?.strikethrough || false;
+      
+      return { text, formatRuns, cellStrikethrough };
+  });
+
+  return emptyPad.concat(mappedRows);
+}
+
 export async function getColumnHData() {
   const { reportSheetId } = await getOptions();
   if (!reportSheetId) return [];
   const token = await getAuthToken();
-  const range = "H:H"; 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${range}`;
+  const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
+
+  const range = `'${sheetName}'!H:H`; 
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`;
   
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
@@ -468,11 +565,12 @@ export async function getColumnHData() {
 export async function updateRowStatus(rowIndex, status) {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
+  const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
 
-  const range = `J${rowIndex + 1}`; 
+  const range = `'${sheetName}'!J${rowIndex + 1}`; 
   const valueBody = { values: [[status]] };
   
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(valueBody)
@@ -486,11 +584,7 @@ export async function updateRowStatus(rowIndex, status) {
 export async function formatCellAsTakenDown(rowIndex) {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
-      headers: { Authorization: `Bearer ${token}` }
-  });
-  const metaData = await metaRes.json();
-  const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
+  const { sheetId } = await getTargetSheetInfo(token, reportSheetId);
 
   const requests = [{
       repeatCell: {
@@ -523,11 +617,7 @@ export async function formatCellAsTakenDown(rowIndex) {
 export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns) {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
-      headers: { Authorization: `Bearer ${token}` }
-  });
-  const metaData = await metaRes.json();
-  const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
+  const { sheetId } = await getTargetSheetInfo(token, reportSheetId);
 
   const requests = [{
       updateCells: {

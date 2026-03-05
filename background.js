@@ -10,7 +10,7 @@ import {
   updateEventUrl,     
   addNewEventToSheet,
   checkIfAuthorized,
-  getColumnHData,
+  getColumnHDataWithFormatting,
   updateRowStatus,
   formatCellAsTakenDown,
   updateCellWithRichText,
@@ -19,7 +19,7 @@ import {
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
 
-// --- UTILITY: Convert Base64 Data URI to Blob ---
+// --- UTILITY: Convert Base64 Data URI to Blob --- //
 function base64ToBlob(dataURI) {
   const splitDataURI = dataURI.split(',');
   const byteString = splitDataURI[0].indexOf('base64') >= 0 
@@ -170,18 +170,33 @@ function sendProgress(status, details) {
     }).catch(() => {}); // Ignore error if panel closed
 }
 
-async function runSheetScanner(startRow = 1) {
+function isUrlCrossedOut(startIndex, endIndex, formatRuns, cellStrikethrough) {
+    if (cellStrikethrough) return true; // Base cell format covers it entirely
+    if (!formatRuns || formatRuns.length === 0) return false;
+
+    let runApply = null;
+    for (let i = formatRuns.length - 1; i >= 0; i--) {
+        if (formatRuns[i].startIndex <= startIndex) {
+            runApply = formatRuns[i];
+            break;
+        }
+    }
+    return runApply?.format?.strikethrough || false;
+}
+
+async function runSheetScanner(startRowUI = 1) {
   stopScannerSignal = false;
-  console.log(`🕵️ Sheet Scanner: Starting from Row ${startRow}...`);
-  sendProgress(`Starting from Row ${startRow}`, "Fetching sheet data...");
+  console.log(`🕵️ Sheet Scanner: Starting from Row ${startRowUI}...`);
+  sendProgress(`Starting from Row ${startRowUI}`, "Fetching sheet data with formatting...");
   
   try {
-    const rows = await getColumnHData();
+    const rows = await getColumnHDataWithFormatting();
     let consecutiveBlanks = 0;
     
-    if (startRow < 1) startRow = 1;
+    // Map the 1-based UI start row to 0-based array index
+    const startIdx = Math.max(0, startRowUI - 1);
 
-    for (let i = startRow; i < rows.length; i++) {
+    for (let i = startIdx; i < rows.length; i++) {
         if (stopScannerSignal) {
             console.log("🛑 Sheet Scanner: Stopped by user.");
             sendProgress("Scanner Stopped", "User interrupted the process.");
@@ -190,18 +205,19 @@ async function runSheetScanner(startRow = 1) {
 
         if (consecutiveBlanks >= 3) {
             console.log("🕵️ Sheet Scanner: Hit 3 blank cells. Stopping.");
-            sendProgress("Scanner Stopped", "Hit 3 consecutive blank cells.");
+            sendProgress("Scanner Complete", "Hit 3 consecutive blank cells.");
             break;
         }
 
-        const cellValue = rows[i][0]; 
+        const cellData = rows[i]; 
         
-        if (!cellValue) {
+        if (!cellData || !cellData.text) {
             consecutiveBlanks++;
             continue;
         }
         
         consecutiveBlanks = 0; 
+        const cellValue = cellData.text;
 
         const urlRegex = /https?:\/\/[^\s,]+/g;
         let match;
@@ -217,18 +233,27 @@ async function runSheetScanner(startRow = 1) {
 
         let activeCount = 0;
         let deadCount = 0;
+        let previouslyDeadCount = 0;
         
-        const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 } };
-        const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 } };
-        
-        let currentRuns = [{ startIndex: 0, format: defaultStyle }];
         const deadRanges = []; 
+        const activeRanges = [];
 
         for (let j = 0; j < matches.length; j++) {
             if (stopScannerSignal) break;
 
             const { url, index, end } = matches[j];
-            sendProgress(`Row ${i+1}`, `Link ${j+1}/${matches.length}: Checking...`);
+
+            // Smart Skip: Check if it's already struck through to save loading time
+            const isCrossedOut = isUrlCrossedOut(index, end, cellData.formatRuns, cellData.cellStrikethrough);
+
+            if (isCrossedOut) {
+                previouslyDeadCount++;
+                deadRanges.push({ start: index, end: end, url: url });
+                console.log(`  - SKIPPED (Already crossed out): ${url}`);
+                continue;
+            }
+
+            sendProgress(`Row ${i+1}`, `Link ${j+1}/${matches.length}: Checking availability...`);
             
             let platform = 'unknown';
             if (url.includes('tiktok')) platform = 'tiktok';
@@ -243,38 +268,17 @@ async function runSheetScanner(startRow = 1) {
                 
                 if (isDown) {
                     deadCount++;
-                    console.log(`  - DOWN: ${url}`);
-                    deadRanges.push({ start: index, end: end });
-                    deadRanges.sort((a, b) => a.start - b.start);
-
-                    const newRuns = [];
-                    let cursor = 0;
-                    
-                    if (deadRanges.length > 0 && deadRanges[0].start > 0) {
-                         newRuns.push({ startIndex: 0, format: defaultStyle });
-                    }
-                    
-                    for (const range of deadRanges) {
-                        if (range.start > cursor) {
-                            newRuns.push({ startIndex: cursor, format: defaultStyle });
-                        }
-                        newRuns.push({ startIndex: range.start, format: deadStyle });
-                        cursor = range.end;
-                    }
-                    
-                    if (cursor < cellValue.length) {
-                        newRuns.push({ startIndex: cursor, format: defaultStyle });
-                    }
-
-                    await updateCellWithRichText(i, cellValue, newRuns);
-                    
+                    console.log(`  - NEWLY DOWN: ${url}`);
+                    deadRanges.push({ start: index, end: end, url: url });
                 } else {
                     activeCount++;
                     console.log(`  - ACTIVE: ${url}`);
+                    activeRanges.push({ start: index, end: end, url: url });
                 }
             } catch (err) {
                 console.warn(`  - Error checking ${url}:`, err);
                 activeCount++; 
+                activeRanges.push({ start: index, end: end, url: url });
             }
             
             await new Promise(r => setTimeout(r, 1500)); 
@@ -285,13 +289,47 @@ async function runSheetScanner(startRow = 1) {
              break;
         }
 
-        if (deadCount > 0 && activeCount === 0) {
-            console.log(`Row ${i+1}: Resolved (All ${deadCount} links down).`);
+        // Apply updated formatting ONLY if we found NEW dead links
+        if (deadCount > 0) {
+            sendProgress(`Row ${i+1}`, `Updating formatting...`);
+            const defaultStyle = { link: null, strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false };
+            const deadStyle = { link: null, strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }, underline: false };
+            
+            const allLinkRanges = [
+                ...deadRanges.map(r => ({ ...r, style: deadStyle })),
+                ...activeRanges.map(r => ({ ...r, style: { link: { uri: r.url }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true, strikethrough: false } }))
+            ].sort((a, b) => a.start - b.start);
+
+            const newRuns = [];
+            let cursor = 0;
+            
+            if (allLinkRanges.length > 0 && allLinkRanges[0].start > 0) {
+                 newRuns.push({ startIndex: 0, format: defaultStyle });
+            }
+            
+            for (const range of allLinkRanges) {
+                if (range.start > cursor) {
+                    newRuns.push({ startIndex: cursor, format: defaultStyle });
+                }
+                newRuns.push({ startIndex: range.start, format: range.style });
+                cursor = range.end;
+            }
+            
+            if (cursor < cellValue.length) {
+                newRuns.push({ startIndex: cursor, format: defaultStyle });
+            }
+
+            await updateCellWithRichText(i, cellValue, newRuns);
+        }
+
+        const totalDead = deadCount + previouslyDeadCount;
+        if (totalDead > 0 && activeCount === 0) {
+            console.log(`Row ${i+1}: Resolved (All ${totalDead} links down).`);
             sendProgress(`Row ${i+1}: Resolved`, "Updating Sheet...");
             await updateRowStatus(i, "Resolved");
-        } else if (activeCount > 0 && deadCount > 0) {
-             console.log(`Row ${i+1}: Investigating (${activeCount} active, ${deadCount} down).`);
-             sendProgress(`Row ${i+1}: Investigating`, `${deadCount} dead links struck.`);
+        } else if (activeCount > 0 && totalDead > 0) {
+             console.log(`Row ${i+1}: Investigating (${activeCount} active, ${totalDead} down).`);
+             sendProgress(`Row ${i+1}: Investigating`, `${totalDead} dead links struck.`);
              await updateRowStatus(i, "Investigating");
         }
     }

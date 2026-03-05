@@ -9,7 +9,7 @@
     input, select { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
     label { font-size: 12px; font-weight: bold; display: block; margin-top: 10px; }
     
-    /* Highlight the Source URL box so you know where to paste */
+    /* Highlight the Source URL box */
     #sourceUrlDisplay { border: 2px solid #2563eb; background-color: #f0f9ff; }
     
     /* Main Submit Button */
@@ -17,12 +17,12 @@
     .btn:disabled { background: #ccc; cursor: not-allowed; }
     .btn:hover:not(:disabled) { opacity: 0.9; }
     
-    /* New Style for the 'Grab URL' button to clean up the code */
+    /* Grab URL Button */
     .grab-btn {
       width: 100%; 
       padding: 8px; 
       margin-bottom: 5px; 
-      background-color: #28a745; /* Green */
+      background-color: #28a745;
       color: white; 
       border: none; 
       border-radius: 4px; 
@@ -37,15 +37,23 @@
     /* Utility Link */
     .link-btn { background:none; border:none; color:#666; font-size:10px; cursor:pointer; text-decoration:underline; float: right; }
 
+    /* Scanner Toggle Switch */
+    .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; }
+    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; }
+    input:checked + .slider { background-color: #4CAF50; }
+    input:checked + .slider:before { transform: translateX(20px); }
+    .slider.round { border-radius: 20px; }
+    .slider.round:before { border-radius: 50%; }
+
     /* Closer Status */
     #closerStatus {
         margin-top: 5px;
-        font-size: 11px;
-        color: #555;
         background: #eee;
-        padding: 5px;
+        padding: 8px;
         border-radius: 4px;
-        display: none; /* Hidden by default */
+        display: none;
     }
   </style>
 </head>
@@ -65,10 +73,7 @@
   <datalist id="eventList"></datalist>
 
   <label>Source URL</label>
-  
-  <button id="btn-grab-flo" class="grab-btn">
-    Use Flosports Event and url
-  </button>
+  <button id="btn-grab-flo" class="grab-btn">Use Flosports Event and url</button>
 
   <input type="text" id="sourceUrlDisplay" placeholder="Paste URL or Click Above...">
   
@@ -86,13 +91,19 @@
     <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
 
     <!-- The Closer -->
-    <label style="margin-top: 15px;">Sheet Scanner Options</label>
-    <div style="display:flex; gap:5px; align-items:center;">
-        <input type="number" id="startRowInput" placeholder="Start Row (e.g. 2)" style="flex:1;" min="1">
-        <button id="testCloserBtn" class="btn" style="background-color: #555; margin-top: 0; font-size: 11px; padding: 8px; flex:2;">Run "The Closer"</button>
+    <label style="margin-top: 15px;">Sheet Scanner (Auto-Scan Column H)</label>
+    <div style="display:flex; gap:10px; align-items:center; margin-top: 5px;">
+        <input type="number" id="startRowInput" placeholder="Start Row (e.g. 2)" style="flex:1;" min="1" value="2">
+        <label class="switch" style="margin-top: 0; margin-bottom: 0;">
+          <input type="checkbox" id="closerToggle">
+          <span class="slider round"></span>
+        </label>
+        <span id="closerToggleLabel" style="font-size: 12px; font-weight: bold; color: #666; width: 25px;">Off</span>
     </div>
     <div id="closerStatus">Waiting to start...</div>
-    <div style="font-size: 10px; color:#666; margin-top:4px;">Scans Column H for dead links. Updates Status to 'Resolved' or 'Investigating'.</div>
+    <div style="font-size: 10px; color:#666; margin-top:6px; line-height: 1.3;">
+      Checking toggle skips links that are already crossed out. Updates Status to 'Resolved' or 'Investigating' based on results.
+    </div>
   </div>
 
   <script src="sidepanel.js" type="module"></script>

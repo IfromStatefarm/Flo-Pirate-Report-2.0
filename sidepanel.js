@@ -15,32 +15,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   const startBtn = document.getElementById('startBtn');
   const grabBtn = document.getElementById('btn-grab-flo');
   const sourceDisplay = document.getElementById('sourceUrlDisplay');
-  const closerBtn = document.getElementById('testCloserBtn');
   const crawlBtn = document.getElementById('autoCrawlBtn');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const searchEventBtn = document.getElementById('searchEventBtn');
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
+  
+  // New Toggle Elements
+  const closerToggle = document.getElementById('closerToggle');
+  const closerToggleLabel = document.getElementById('closerToggleLabel');
   const closerStatusEl = document.getElementById('closerStatus'); 
   
-  // Create Stop Button dynamically if not present
-  let stopCloserBtn = document.getElementById('stopCloserBtn');
-  if (!stopCloserBtn && closerBtn) {
-      stopCloserBtn = document.createElement('button');
-      stopCloserBtn.id = 'stopCloserBtn';
-      stopCloserBtn.className = 'btn';
-      stopCloserBtn.style.backgroundColor = '#e74c3c'; // Red
-      stopCloserBtn.style.marginTop = '5px';
-      stopCloserBtn.style.fontSize = '11px';
-      stopCloserBtn.style.padding = '8px';
-      stopCloserBtn.innerText = 'Stop Scanner';
-      stopCloserBtn.style.display = 'none';
-      if(closerBtn.parentNode && closerBtn.parentNode.parentNode) {
-          closerBtn.parentNode.parentNode.insertBefore(stopCloserBtn, closerStatusEl);
-      }
-  }
-
   // --- Message Listener for Crawler & Closer ---
   chrome.runtime.onMessage.addListener((msg) => {
     // Closer Status Update
@@ -49,18 +35,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             closerStatusEl.style.display = 'block';
             closerStatusEl.innerHTML = `<strong>${msg.status}</strong><br>${msg.details || ''}`;
             
-            // If running, show stop button
-            if (!msg.status.includes("Complete") && !msg.status.includes("Stop") && !msg.status.includes("Failed")) {
-                 if (closerBtn) closerBtn.style.display = 'none';
-                 if (stopCloserBtn) stopCloserBtn.style.display = 'block';
-            } else {
-                 // Stopped/Done
-                 if (closerBtn) {
-                     closerBtn.style.display = 'block';
-                     closerBtn.disabled = false;
-                     closerBtn.innerText = 'Run "The Closer"';
+            // If stopped, finished, or failed, toggle the switch off automatically
+            if (msg.status.includes("Complete") || msg.status.includes("Stop") || msg.status.includes("Failed")) {
+                 if (closerToggle && closerToggle.checked) {
+                     closerToggle.checked = false;
+                     if (closerToggleLabel) {
+                         closerToggleLabel.innerText = "Off";
+                         closerToggleLabel.style.color = "#666";
+                     }
                  }
-                 if (stopCloserBtn) stopCloserBtn.style.display = 'none';
             }
         }
         return; 
@@ -328,34 +311,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --- Test Closer Button ---
-  if (closerBtn) {
-      closerBtn.addEventListener('click', async () => {
-          const startVal = startRowInput ? startRowInput.value : 1;
-          const startRow = parseInt(startVal) || 1;
-
-          closerBtn.innerText = "Starting...";
-          closerBtn.disabled = true;
-          if(closerStatusEl) closerStatusEl.style.display = 'block';
-          if(closerStatusEl) closerStatusEl.innerText = "Initializing Scanner...";
+  // --- TOGGLE CLOSER SCANNER LOGIC ---
+  if (closerToggle) {
+      closerToggle.addEventListener('change', async (e) => {
+          const isChecked = e.target.checked;
           
-          chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow }, (res) => {
-              if (chrome.runtime.lastError) {
-                  closerBtn.innerText = "Error (Reload Panel)";
-                  closerBtn.disabled = false;
-                  if(closerStatusEl) closerStatusEl.innerText = "Error: " + chrome.runtime.lastError.message;
-                  return;
-              }
-          });
-      });
-  }
+          if (closerToggleLabel) {
+              closerToggleLabel.innerText = isChecked ? "On" : "Off";
+              closerToggleLabel.style.color = isChecked ? "#4CAF50" : "#666";
+          }
 
-  // --- Stop Closer Button Listener ---
-  if (stopCloserBtn) {
-      stopCloserBtn.addEventListener('click', () => {
-          stopCloserBtn.innerText = "Stopping...";
-          stopCloserBtn.disabled = true;
-          chrome.runtime.sendMessage({ action: 'stopSheetScanner' });
+          if (isChecked) {
+              const startVal = startRowInput ? startRowInput.value : 1;
+              const startRow = parseInt(startVal) || 1;
+              
+              if (closerStatusEl) {
+                  closerStatusEl.style.display = 'block';
+                  closerStatusEl.innerText = "Initializing Scanner...";
+              }
+
+              chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow }, (res) => {
+                  if (chrome.runtime.lastError) {
+                      // Revert toggle if error
+                      closerToggle.checked = false;
+                      if (closerToggleLabel) {
+                          closerToggleLabel.innerText = "Off";
+                          closerToggleLabel.style.color = "#666";
+                      }
+                      if (closerStatusEl) closerStatusEl.innerText = "Error: " + chrome.runtime.lastError.message;
+                  }
+              });
+          } else {
+              if (closerStatusEl) closerStatusEl.innerText = "Stopping...";
+              chrome.runtime.sendMessage({ action: 'stopSheetScanner' });
+          }
       });
   }
 
