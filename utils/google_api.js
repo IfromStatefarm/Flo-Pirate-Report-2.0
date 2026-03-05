@@ -388,25 +388,41 @@ async function setColumnHLinks(token, rowIndex, urlString) {
 export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
+  
+  // 1. Get the Sheet ID dynamically (usually 0 for the first tab)
   const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?fields=sheets.properties`, {
       headers: { Authorization: `Bearer ${token}` }
   });
   const metaData = await metaRes.json();
   const sheetId = metaData.sheets && metaData.sheets.length > 0 ? metaData.sheets[0].properties.sheetId : 0;
 
-  // Use the literal URLs as the display text, separated by a newline
-  const text = `${channelUrl}\n${pdfUrl}`;
-  const line1Len = channelUrl.length;
+  // 2. Format the display strings
+  const line1 = `Channel: @${handle}`;
+  const line2 = `PDF Report`;
+  const fullText = `${line1}\n${line2}`;
+  
+  const line1Len = line1.length;
 
+  // 3. Construct the BatchUpdate request
+  // We use textFormatRuns to assign DIFFERENT links to DIFFERENT parts of the same cell
   const requests = [{
       updateCells: {
           rows: [{
               values: [{
-                  userEnteredValue: { stringValue: text },
+                  userEnteredValue: { stringValue: fullText },
                   textFormatRuns: [
-                      { startIndex: 0, format: { link: { uri: channelUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } },
-                      { startIndex: line1Len, format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false } },
-                      { startIndex: line1Len + 1, format: { link: { uri: pdfUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } }
+                      { 
+                        startIndex: 0, 
+                        format: { link: { uri: channelUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
+                      },
+                      { 
+                        startIndex: line1Len, 
+                        format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false } 
+                      },
+                      { 
+                        startIndex: line1Len + 1, 
+                        format: { link: { uri: pdfUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
+                      }
                   ]
               }]
           }],
@@ -414,18 +430,22 @@ export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
               sheetId: sheetId,
               startRowIndex: rowIndex,
               endRowIndex: rowIndex + 1,
-              startColumnIndex: 10, // Column K index
+              startColumnIndex: 10, // Column K index (0-based)
               endColumnIndex: 11
           },
           fields: "userEnteredValue,textFormatRuns"
       }
   }];
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+  console.log(`🚀 Forcing link update for row ${rowIndex + 1} in Column K`);
+
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
   });
+
+  return await response.json();
 }
 
 // ==========================================

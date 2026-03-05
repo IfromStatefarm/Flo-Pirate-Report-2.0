@@ -91,11 +91,6 @@
           background-color: #b00c26;
         }
       </style>
-        
-        <input type="text" id="urlInput" value="${window.location.href}" />
-        
-        <button id="confirmBtn">USE THIS URL</button>
-      </div>
     `;
 
     shadow.appendChild(wrapper);
