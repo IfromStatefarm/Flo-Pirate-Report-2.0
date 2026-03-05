@@ -7,6 +7,7 @@ const TARGET_TAB_NAME = 'Report Submissions and status'; // Explicitly target yo
 // This catches HTML 400/404/500 pages from Google and throws a readable error
 // instead of letting `.json()` crash with "Unexpected token '<'".
 async function safeFetchJson(url, options) {
+    await new Promise(resolve => setTimeout(resolve, 1100)); // Small delay to prevent rapid-fire issues
     const res = await fetch(url, options);
     const text = await res.text();
     
@@ -111,34 +112,44 @@ export async function getEventData(vertical) {
   if (!eventSheetId) throw new Error("Event Sheet ID not configured.");
   
   const range = `'${vertical}'!A1:I`; 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}`;
+  const fields = "sheets(data(rowData(values(userEnteredValue,formattedValue,effectiveFormat(textFormat(strikethrough))))))";
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}?ranges=${encodeURIComponent(range)}&includeGridData=true&fields=${encodeURIComponent(fields)}`;
   
   const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
+  const rowData = data.sheets?.[0]?.data?.[0]?.rowData || [];
   
-  if (!data.values || data.values.length < 1) {
+  if (rowData.length < 1) {
     return { searchUrl: null, eventMap: {} };
   }
 
-  const searchUrl = (data.values[0] && data.values[0][1]) ? data.values[0][1] : null;
-  const eventRows = data.values.length > 2 ? data.values.slice(2) : []; 
+  // Row 1, Col B is the search URL (index 1)
+  const searchUrl = rowData[0]?.values?.[1]?.formattedValue || rowData[0]?.values?.[1]?.userEnteredValue?.stringValue || null;
+  const eventRows = rowData.length > 2 ? rowData.slice(2) : []; 
 
   const eventMap = {};
   eventRows.forEach((row, index) => {
-    if (row[0]) {
-      const originalName = row[0].trim();
+    const cells = row.values || [];
+    
+    // Safely extract text and strikethrough status
+    const getCellStr = (colIdx) => cells[colIdx]?.formattedValue || cells[colIdx]?.userEnteredValue?.stringValue || null;
+    const isStruck = (colIdx) => cells[colIdx]?.effectiveFormat?.textFormat?.strikethrough === true;
+
+    const eventName = getCellStr(0);
+    if (eventName) {
+      const originalName = eventName.trim();
       const cleanName = originalName.toLowerCase(); 
       eventMap[cleanName] = {
         name: originalName,
         rowIndex: index + 3,
         urls: {
-            tiktok:    row[1] || null,
-            instagram: row[2] || null,
-            youtube:   row[3] || null,
-            twitter:   row[4] || null,
-            twitch:    row[5] || null,
-            facebook:  row[6] || null,
-            discord:   row[7] || null,
-            rumble:    row[8] || null
+            tiktok:    isStruck(1) ? null : getCellStr(1),
+            instagram: isStruck(2) ? null : getCellStr(2),
+            youtube:   isStruck(3) ? null : getCellStr(3),
+            twitter:   isStruck(4) ? null : getCellStr(4),
+            twitch:    isStruck(5) ? null : getCellStr(5),
+            facebook:  isStruck(6) ? null : getCellStr(6),
+            discord:   isStruck(7) ? null : getCellStr(7),
+            rumble:    isStruck(8) ? null : getCellStr(8)
         }
       };
     }
@@ -147,10 +158,10 @@ export async function getEventData(vertical) {
   return { searchUrl, eventMap };
 }
 
-function getColumnLetter(platform) {
+export function getColumnLetter(platform) {
   const map = {
-    'tiktok': 'B', 'instagram': 'C', 'youtube': 'D', 'twitter': 'E',
-    'twitch': 'F', 'facebook': 'G', 'discord': 'H', 'rumble': 'I'
+    'tiktok': 'B', 'instagram': 'C', 'youtube': 'D', 'twitter': 'E', 'x': 'E',
+    'twitch': 'F', 'facebook': 'G', 'discord': 'H', 'rumble': 'I', 'other': 'J'
   };
   return map[platform?.toLowerCase()] || 'B'; 
 }
@@ -658,4 +669,19 @@ export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
   });
+}
+
+// ==========================================
+// 7. BULK CART MANAGER (Double Tap Helper)
+// ==========================================
+export async function bulkAddToCart(items) {
+    const storage = await chrome.storage.local.get('piracy_cart');
+    let cart = storage.piracy_cart || [];
+    
+    // Add new items and deduplicate by URL to prevent double-reporting
+    cart = [...cart, ...items];
+    const uniqueCart = Array.from(new Map(cart.map(item => [item.url, item])).values());
+    
+    await chrome.storage.local.set({ 'piracy_cart': uniqueCart });
+    return uniqueCart.length;
 }

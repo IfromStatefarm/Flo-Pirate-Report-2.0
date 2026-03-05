@@ -86,8 +86,35 @@
   <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; background-color: #f9f9f9; padding: 10px; border-radius: 4px;">
     <label style="color: #333; margin-top:0;">Automation Tools</label>
     
-    <!-- Auto Crawl -->
-    <button id="autoCrawlBtn" class="btn" style="background-color: #f39c12; margin-top: 5px; font-size: 12px; padding: 10px;">Start Auto-Crawl (TikTok)</button>
+    <!-- NEW: Double Tap Layout -->
+    <div style="display: flex; gap: 10px; align-items: stretch; margin-top: 10px;">
+        <!-- Column A: Double Tap Button -->
+        <div style="flex: 1; display: flex;">
+            <button id="doubleTapBtn" class="btn" style="background-color: #f39c12; margin: 0; width: 100%; font-size: 13px; padding: 10px; font-weight: bold; line-height: 1.4;">Double Tap<br>(Scan)</button>
+        </div>
+        <!-- Column B: Platform & Row -->
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 5px;">
+            <select id="platformScanSelect" style="margin: 0; padding: 8px;">
+              <option value="tiktok">TikTok</option>
+              <option value="youtube">YouTube</option>
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Facebook</option>
+              <option value="rumble">Rumble</option>
+              <option value="discord">Discord</option>
+              <option value="other">Other</option>
+            </select>
+            <div style="display:flex; gap:5px; align-items:center;">
+                <label style="margin:0; font-size: 11px;">Row:</label>
+                <input type="number" id="doubleTapStartRow" min="1" value="2" style="flex:1; margin:0; padding: 8px;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Stop and Report Now Buttons -->
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <button id="reportFromSheetBtn" class="btn" style="background-color: #2ecc71; margin-top: 0; font-size: 12px; padding: 10px; display: none; flex: 1;">Report Now</button>
+        <button id="stopScanBtn" class="btn" style="background-color: #e74c3c; margin-top: 0; font-size: 12px; padding: 10px; display: none; flex: 1;">Stop Scan</button>
+    </div>
     <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
 
     <!-- The Closer -->

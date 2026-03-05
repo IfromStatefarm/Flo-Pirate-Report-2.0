@@ -24,6 +24,15 @@
     },
     instagram: {
       handle: 'header a'
+    },
+    facebook: {
+      handle: 'h2 a[role="link"], strong span'
+    },
+    rumble: {
+      handle: '.media-by-heading .ellipsis-1, a.media-by--a'
+    },
+    discord: {
+     handle: 'div[class*="username"]'
     }
   };
 

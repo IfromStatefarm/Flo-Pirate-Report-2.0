@@ -16,6 +16,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const grabBtn = document.getElementById('btn-grab-flo');
   const sourceDisplay = document.getElementById('sourceUrlDisplay');
   const crawlBtn = document.getElementById('autoCrawlBtn');
+  const doubleTapBtn = document.getElementById('doubleTapBtn');
+  const reportFromSheetBtn = document.getElementById('reportFromSheetBtn');
+  const stopScanBtn = document.getElementById('stopScanBtn');
+  const platformScanSelect = document.getElementById('platformScanSelect');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const searchEventBtn = document.getElementById('searchEventBtn');
   const reporterInput = document.getElementById('reporterName');
@@ -29,6 +33,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // --- Message Listener for Crawler & Closer ---
   chrome.runtime.onMessage.addListener((msg) => {
+    // New listener for Double Tap progress
+    if (msg.action === 'scanProgress' && crawlStatusEl) {
+        crawlStatusEl.innerText = msg.message;
+        return;
+    }
     // Closer Status Update
     if (msg.action === 'closerProgress') {
         if (closerStatusEl) {
@@ -348,51 +357,74 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
-  // --- CRAWLER BUTTON LOGIC ---
-  if (crawlBtn) {
-      crawlBtn.addEventListener('click', async () => {
-          if (isCrawling) {
-              stopCrawl("Stopped by user.");
-              return;
-          }
-
+  // --- DOUBLE TAP & BULK REPORT LOGIC ---
+   if (doubleTapBtn) {
+      doubleTapBtn.addEventListener('click', async () => {
+          const platform = platformScanSelect ? platformScanSelect.value : 'tiktok';
           const vertical = verticalSelect.value;
+          const startRowVal = document.getElementById('doubleTapStartRow')?.value || 1;
+          const startRow = parseInt(startRowVal) || 1;
+          
           if (!vertical) {
               alert("Please select a Vertical first.");
               return;
           }
 
-          crawlStatusEl.innerText = "Fetching sheet data...";
-          crawlBtn.disabled = true;
+          crawlStatusEl.innerText = `Scanning sheet for active ${platform} links...`;
+          doubleTapBtn.disabled = true;
+          if (stopScanBtn) stopScanBtn.style.display = 'block';
 
-          const response = await chrome.runtime.sendMessage({ action: 'getVerticalData', vertical });
+          // Delegate formatting fetch and parsing to background script
+          const response = await chrome.runtime.sendMessage({ action: 'scanSheetForActiveLinks', platform, vertical, startRow });
           
-          if (!response || !response.success) {
-              crawlStatusEl.innerText = "Error fetching data.";
-              crawlBtn.disabled = false;
+          doubleTapBtn.disabled = false;
+          if (stopScanBtn) stopScanBtn.style.display = 'none';
+
+          if (response && response.success) {
+              crawlStatusEl.innerText = `Queued ${response.count} active links.`;
+              if (response.count > 0 && reportFromSheetBtn) {
+                  reportFromSheetBtn.style.display = 'block';
+              } else if (reportFromSheetBtn) {
+                  reportFromSheetBtn.style.display = 'none';
+              }
+          } else {
+              crawlStatusEl.innerText = "Error: " + (response?.error || "Failed to scan.");
+          }
+      });
+  }
+
+  if (reportFromSheetBtn) {
+      reportFromSheetBtn.addEventListener('click', async () => {
+          const reporterName = reporterInput.value;
+          const vertical = verticalSelect.value;
+          
+          if (!reporterName || !vertical) {
+              alert("Please fill in Reporter and Vertical.");
               return;
           }
 
-          const allEvents = Object.values(response.data.eventMap);
-          allEvents.sort((a, b) => a.rowIndex - b.rowIndex);
+          reportFromSheetBtn.disabled = true;
+          reportFromSheetBtn.innerText = "Processing Bulk Report...";
 
-          crawlQueue = allEvents.filter(e => !e.urls.tiktok || e.urls.tiktok.trim() === "");
-
-          if (crawlQueue.length === 0) {
-              crawlStatusEl.innerText = "No empty TikTok cells found.";
-              crawlBtn.disabled = false;
-              return;
-          }
-
-          isCrawling = true;
-          consecutiveFailures = 0;
-          crawlBtn.disabled = false;
-          crawlBtn.innerText = "Stop Auto-Crawl";
-          crawlBtn.style.backgroundColor = "#e74c3c";
+          // Trigger the existing bulk reporting logic in background.js
+          chrome.runtime.sendMessage({ 
+              action: 'processQueue', 
+              data: { 
+                  reporterName, 
+                  vertical, 
+                  eventName: "Bulk Sheet Report", 
+                  uploadScreenshots: false // Skip screenshots to save memory on bulk runs
+              } 
+          });
           
-          crawlStatusEl.innerText = `Queue: ${crawlQueue.length} events. Starting...`;
-          
-          processNextCrawlItem();
+          crawlStatusEl.innerText = "Bulk report started. Monitor via Popup.";
+      });
+  }
+
+  if (stopScanBtn) {
+      stopScanBtn.addEventListener('click', () => {
+          chrome.runtime.sendMessage({ action: 'stopSheetScanner' });
+          if (crawlStatusEl) crawlStatusEl.innerText = "Stopping scan...";
       });
   }
 });

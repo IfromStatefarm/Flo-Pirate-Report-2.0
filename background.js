@@ -38,6 +38,19 @@ function base64ToBlob(dataURI) {
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
 
+// AUTO-OPEN SIDE PANEL ON LEGAL PAGES
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url) {
+    if (tab.url.includes('tiktok.com/legal/report') || tab.url.includes('youtube.com/copyright_complaint_form')) {
+      console.log("🛠️ Legal page detected. Opening Side Panel Wizard...");
+      // windowId is strictly required for the side panel API to function consistently
+      if (tab.windowId) {
+          chrome.sidePanel.open({ windowId: tab.windowId }).catch(e => console.error(e));
+      }
+    }
+  }
+});
+
 // --- ALARMS ---
 const ALARM_NAME = "theCloser";
 chrome.runtime.onInstalled.addListener(() => {
@@ -374,6 +387,8 @@ async function verifyTakedownViaTab(url, platform) {
                     if (text.includes("video has been removed")) return true;
                     if (text.includes("video is private")) return true;
                     if (text.includes("this video is no longer available")) return true;
+                    if (text.includes("account has been terminated")) return true;
+                    if (text.includes("video is no longer available due to a copyright claim by FloSports")) return true;
                     if (window.location.href === "https://www.youtube.com/") return true; 
                 }
                 
@@ -387,6 +402,15 @@ async function verifyTakedownViaTab(url, platform) {
                     if (text.includes("sorry, this page isn't available")) return true;
                     if (text.includes("link you followed may be broken")) return true;
                     if (text.includes("content isn't available")) return true;
+                }
+                
+                // NEW PLATFORMS ADDED HERE
+                if (plat === 'rumble') {
+                    if (text.includes("this video is unavailable") || text.includes("page not found")) return true;
+                }
+                
+                if (plat === 'discord') {
+                    if (text.includes("invalid message") || text.includes("message deleted")) return true;
                 }
 
                 return false;
@@ -480,8 +504,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  // --- NEW: DOUBLE TAP SHEET SCANNER ---
+  if (request.action === 'scanSheetForActiveLinks') {
+      handleScanSheetForActiveLinks(request.platform, request.vertical, request.startRow).then(sendResponse);
+      return true;
+  }
+
   // --- NEW: CAPTURE FIRST, VERIFY SECOND WORKFLOW ---
   if (request.action === 'processNewItem') {
+
       handleProcessNewItem(sender.tab, request.data).then(sendResponse);
       return true; // Keep channel open for async
   }
@@ -685,7 +716,7 @@ async function handleBatchReport(formData) {
     const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
     let cart = storage.piracy_cart || [];
     const savedName = storage.last_reporter || "Unknown User";
-    const finalReporterName = formData.reporterName || formData.fullName || savedName;
+    const finalReporterName = formData.reporterName || savedName;
 
     // --- PHASE 1: FRESH SCRAPE (LAZY LOADING) ---
     const updatedCart = [];
@@ -816,16 +847,10 @@ async function handleBatchReport(formData) {
               views: item.views 
           });
       }
-      
       // 3. GENERATE PDF
-      // VERY SAFE EVENT NAME EXTRACTION
-      const safeEventName = (formData.eventConfig && formData.eventConfig.eventName) 
-                            ? formData.eventConfig.eventName 
-                            : (formData.eventName || "Unknown Event");
-
       const pdfData = { 
-          eventName: safeEventName, 
-          vertical: formData.vertical || "Unknown Vertical", 
+          eventName: formData.eventConfig?.eventName || formData.eventName || "Unknown Event", 
+          vertical: formData.vertical, 
           reporterName: finalReporterName, 
           handle, 
           items: evidenceLinks,
@@ -876,4 +901,100 @@ async function handleUrlSave(data) {
     if (eventInfo && eventInfo.rowIndex) await updateEventUrl(vertical, eventInfo.rowIndex, url, platform);
     else await addNewEventToSheet(vertical, eventName, url, platform);
   } catch (err) { console.error(err); }
+}
+
+// ==========================================
+// 6. BULK SCANNING LOGIC (DOUBLE TAP)
+// ==========================================
+async function handleScanSheetForActiveLinks(platform, vertical, startRowUI = 1) {
+    stopScannerSignal = false; // Reset signal
+    try {
+        const rows = await getColumnHDataWithFormatting();
+        if (!rows || rows.length === 0) return { success: false, error: "Failed to fetch sheet data" };
+
+        let activeLinks = [];
+        const startIdx = Math.max(0, startRowUI - 1);
+        
+        for (let i = startIdx; i < rows.length; i++) {
+            if (stopScannerSignal) break;
+            if (activeLinks.length >= 100) break; // Limit batch size to 100 to prevent browser crashes
+            
+            const cellData = rows[i];
+            if (!cellData || !cellData.text) continue;
+
+            // Extract all valid URLs from Column H
+            const urlRegex = /https?:\/\/[^\s,]+/g;
+            let match;
+            const matches = [];
+            while ((match = urlRegex.exec(cellData.text)) !== null) {
+                matches.push({ url: match[0], index: match.index, end: match.index + match[0].length });
+            }
+            
+            for (let j = 0; j < matches.length; j++) {
+                if (activeLinks.length >= 100) break;
+                const { url, index, end } = matches[j];
+
+                // 1. Filter out internal FloSports/Varsity links
+                if (url.includes('varsity.com') || url.includes('flosports') || url.includes('floracing') || url.includes('milesplit')) continue;
+
+                // 2. Ensure URL matches the selected platform
+                const pTarget = platform.toLowerCase();
+                let isPlatformMatch = false;
+                if (pTarget === 'twitter' || pTarget === 'x') {
+                    isPlatformMatch = url.includes('twitter.com') || url.includes('x.com');
+                } else if (pTarget === 'other') {
+                    isPlatformMatch = !url.includes('tiktok') && !url.includes('youtube') && !url.includes('instagram') && !url.includes('facebook') && !url.includes('rumble') && !url.includes('discord') && !url.includes('twitter') && !url.includes('x.com');
+                } else {
+                    isPlatformMatch = url.includes(pTarget);
+                }
+                if (!isPlatformMatch) continue;
+
+                // 3. Skip if already crossed out in the sheet
+                if (isUrlCrossedOut(index, end, cellData.formatRuns, cellData.cellStrikethrough)) continue;
+
+                if (stopScannerSignal) break;
+
+                chrome.runtime.sendMessage({ 
+                    action: 'scanProgress', 
+                    message: `Scanning Row ${i+1} | Link ${j+1} of ${matches.length}`
+
+                }).catch(() => {});
+
+                // Verify if active (Headless Tab check)
+                const isDown = await verifyTakedownViaTab(url, platform);
+                if (!isDown) {
+                    // Attempt to extract handle safely
+                    let handle = "Unknown";
+                    if (url.includes('@')) handle = url.split('@')[1]?.split(/[/?]/)[0] || "Unknown";
+                    else {
+                        try { handle = new URL(url).pathname.split('/')[1] || "Unknown"; } catch(e){}
+                    }
+
+                    activeLinks.push({
+                        url: url,
+                        platform: platform,
+                        handle: handle,
+                        views: "N/A", // Skip heavy view scraping on bulk runs
+                        timestamp: new Date().toISOString()
+                    });
+                }
+                await new Promise(r => setTimeout(r, 1000)); // Rate limit tab creation 
+            }
+        }
+        
+        if (activeLinks.length > 0) {
+            const storage = await chrome.storage.local.get('piracy_cart');
+            let cart = storage.piracy_cart || [];
+            cart = [...cart, ...activeLinks];
+            
+            // Deduplicate by URL
+            const uniqueCart = Array.from(new Map(cart.map(item => [item.url, item])).values());
+            await chrome.storage.local.set({ 'piracy_cart': uniqueCart });
+        }
+
+        return { success: true, count: activeLinks.length };
+    } catch (e) {
+        console.error("Scan Sheet Error:", e);
+        return { success: false, error: e.message };
+    }
 }
