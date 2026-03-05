@@ -38,19 +38,6 @@ function base64ToBlob(dataURI) {
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
 
-// AUTO-OPEN SIDE PANEL ON LEGAL PAGES
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url) {
-    if (tab.url.includes('tiktok.com/legal/report') || tab.url.includes('youtube.com/copyright_complaint_form')) {
-      console.log("🛠️ Legal page detected. Opening Side Panel Wizard...");
-      // windowId is strictly required for the side panel API to function consistently
-      if (tab.windowId) {
-          chrome.sidePanel.open({ windowId: tab.windowId }).catch(e => console.error(e));
-      }
-    }
-  }
-});
-
 // --- ALARMS ---
 const ALARM_NAME = "theCloser";
 chrome.runtime.onInstalled.addListener(() => {
@@ -698,7 +685,7 @@ async function handleBatchReport(formData) {
     const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
     let cart = storage.piracy_cart || [];
     const savedName = storage.last_reporter || "Unknown User";
-    const finalReporterName = formData.reporterName || savedName;
+    const finalReporterName = formData.reporterName || formData.fullName || savedName;
 
     // --- PHASE 1: FRESH SCRAPE (LAZY LOADING) ---
     const updatedCart = [];
@@ -829,10 +816,16 @@ async function handleBatchReport(formData) {
               views: item.views 
           });
       }
+      
       // 3. GENERATE PDF
+      // VERY SAFE EVENT NAME EXTRACTION
+      const safeEventName = (formData.eventConfig && formData.eventConfig.eventName) 
+                            ? formData.eventConfig.eventName 
+                            : (formData.eventName || "Unknown Event");
+
       const pdfData = { 
-          eventName: formData.eventConfig?.eventName || formData.eventName || "Unknown Event", 
-          vertical: formData.vertical, 
+          eventName: safeEventName, 
+          vertical: formData.vertical || "Unknown Vertical", 
           reporterName: finalReporterName, 
           handle, 
           items: evidenceLinks,

@@ -3,22 +3,52 @@ import { getAuthToken } from './auth.js';
 const WHITELIST_TAB = 'Handles White List';
 const TARGET_TAB_NAME = 'Report Submissions and status'; // Explicitly target your tab
 
+// --- HELPER: SAFE FETCH ---
+// This catches HTML 400/404/500 pages from Google and throws a readable error
+// instead of letting `.json()` crash with "Unexpected token '<'".
+async function safeFetchJson(url, options) {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    
+    if (!res.ok) {
+        let parsedMsg = text;
+        try {
+            const jsonObj = JSON.parse(text);
+            parsedMsg = jsonObj.error ? jsonObj.error.message : JSON.stringify(jsonObj);
+        } catch(e) {
+            // It's an HTML error page. Truncate it so it doesn't flood the logs.
+            parsedMsg = text.substring(0, 150).replace(/\n/g, ' ') + '...';
+        }
+        
+        // Extract just the endpoint name for cleaner error reading in the UI
+        const endpoint = url.split('?')[0].split('/').pop();
+        throw new Error(`Google API Error (${res.status} on ${endpoint}): ${parsedMsg}`);
+    }
+    
+    try {
+        return JSON.parse(text);
+    } catch(e) {
+        throw new Error(`Invalid JSON response from Google API.`);
+    }
+}
+
 // --- HELPER: GET USER OPTIONS ---
 const getOptions = async () => {
   const data = await chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id']);
   return {
-    driveRootId: data.piracy_folder_id,
-    reportSheetId: data.piracy_sheet_id,
-    eventSheetId: data.event_sheet_id
+    // We strictly trim here so if you accidentally pasted a space in the options page, 
+    // it won't break the Google API URL format and cause an HTML 400 response.
+    driveRootId: data.piracy_folder_id?.trim(),
+    reportSheetId: data.piracy_sheet_id?.trim(),
+    eventSheetId: data.event_sheet_id?.trim()
   };
 };
 
 // --- HELPER: GET SPECIFIC TAB INFO ---
 async function getTargetSheetInfo(token, spreadsheetId) {
-    const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, {
+    const metaData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, {
         headers: { Authorization: `Bearer ${token}` }
     });
-    const metaData = await metaRes.json();
     
     let sheetId = 0;
     let sheetName = TARGET_TAB_NAME;
@@ -64,8 +94,7 @@ export async function findFileId(name, mimeType, parentId = null) {
   if (parentId) query += ` and '${parentId}' in parents`;
 
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
+  const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
   
   if (data.files && data.files.length > 0) return data.files[0].id;
   return null;
@@ -84,8 +113,7 @@ export async function getEventData(vertical) {
   const range = `'${vertical}'!A1:I`; 
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}`;
   
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
+  const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
   
   if (!data.values || data.values.length < 1) {
     return { searchUrl: null, eventMap: {} };
@@ -146,8 +174,7 @@ export async function checkIfAuthorized(platform, handle) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}`;
 
   try {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
+    const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
 
     if (!data.values || data.values.length === 0) return false;
 
@@ -172,7 +199,7 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
   const range = `'${vertical}'!${colLetter}${rowIndex}`;
   const body = { values: [[newUrl]] };
   
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -197,7 +224,7 @@ export async function addNewEventToSheet(vertical, eventName, eventUrl, platform
 
   const body = { values: [row] };
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -236,16 +263,14 @@ export async function ensureFolderHierarchy(token, eventName, date) {
 async function findOrCreateFolder(token, parentId, name) {
   const query = `mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and name='${name}' and trashed=false`;
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
+  const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
   if (data.files && data.files.length > 0) return data.files[0].id;
   
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+  const d = await safeFetchJson('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] })
   });
-  const d = await createRes.json();
   return d.id;
 }
 
@@ -259,16 +284,14 @@ export async function uploadToDrive(token, folderId, name, blob, mimeType) {
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', blob);
   
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+  const data = await safeFetchJson('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
     method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form
   });
-  const data = await res.json();
   
   // Fetch folder link for the sheet log
-  const folderRes = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=webViewLink`, {
+  const folderData = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=webViewLink`, {
      headers: { Authorization: `Bearer ${token}` }
   });
-  const folderData = await folderRes.json();
   return { ...data, folderWebViewLink: folderData.webViewLink };
 }
 
@@ -283,20 +306,18 @@ export async function fetchConfig() {
   const token = await getAuthToken();
   
   const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
+  const data = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
      headers: { Authorization: `Bearer ${token}` }
   });
-  const data = await res.json();
   
   if (!data.files || data.files.length === 0) {
     throw new Error("Config file not found. Folder appears empty or inaccessible.");
   }
 
   const fileId = data.files[0].id;
-  const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+  return await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return await contentRes.json();
 }
 
 /**
@@ -330,14 +351,12 @@ export async function appendToSheet(token, logData) {
       ]];
   }
 
-  const range = `'${sheetName}'!A1:append`;
-  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+  const range = `'${sheetName}'!A1`;
+  const appendData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
   });
-  
-  const appendData = await response.json();
 
   // --- AUTOMATED HYPERLINKING FOR COLUMN H ---
   const updatedRange = appendData?.updates?.updatedRange;
@@ -375,11 +394,15 @@ async function setColumnHLinks(token, rowIndex, urlString) {
               underline: true
           }
       });
-      // Reset formatting immediately after the link
-      textFormatRuns.push({
-          startIndex: match.index + match[0].length,
-          format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false }
-      });
+      
+      // Reset formatting immediately after the link ONLY if it's not the very end of the string
+      const endIndex = match.index + match[0].length;
+      if (endIndex < urlString.length) {
+          textFormatRuns.push({
+              startIndex: endIndex,
+              format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false }
+          });
+      }
   }
 
   if (textFormatRuns.length === 0) return;
@@ -403,7 +426,7 @@ async function setColumnHLinks(token, rowIndex, urlString) {
       }
   }];
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
@@ -458,13 +481,11 @@ export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
 
   console.log(`🚀 Forcing link update for row ${rowIndex + 1} in Column K`);
 
-  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+  return await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
   });
-
-  return await response.json();
 }
 
 // ==========================================
@@ -476,10 +497,9 @@ export async function fetchRightsPdf(token, eventName) {
   const query = `name = '${fileName}' and trashed = false`;
   const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`;
   
-  const searchRes = await fetch(searchUrl, {
+  const searchData = await safeFetchJson(searchUrl, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  const searchData = await searchRes.json();
 
   if (!searchData.files || searchData.files.length === 0) {
     console.warn(`Rights file not found in Drive: ${fileName}`);
@@ -489,9 +509,12 @@ export async function fetchRightsPdf(token, eventName) {
   const fileId = searchData.files[0].id;
   const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
   
+  // This uses a raw fetch because we need the blob, not JSON
   const fileRes = await fetch(downloadUrl, {
     headers: { Authorization: `Bearer ${token}` }
   });
+  
+  if (!fileRes.ok) return null;
   
   const blob = await fileRes.blob();
   return { blob, name: fileName };
@@ -515,15 +538,8 @@ export async function getColumnHDataWithFormatting() {
   const fields = "sheets(data(startRow,rowData(values(userEnteredValue,formattedValue,textFormatRuns,userEnteredFormat,effectiveFormat))))";
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}?ranges=${encodeURIComponent(range)}&includeGridData=true&fields=${encodeURIComponent(fields)}`;
 
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
   
-  if (!res.ok) {
-      const errText = await res.text();
-      console.error("API Error fetching formatting:", errText);
-      throw new Error("Failed to fetch column data from Google Sheets.");
-  }
-
-  const data = await res.json();
   const gridData = data.sheets?.[0]?.data?.[0];
   const startRow = gridData?.startRow || 0;
   const rowData = gridData?.rowData || [];
@@ -557,8 +573,7 @@ export async function getColumnHData() {
   const range = `'${sheetName}'!H:H`; 
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`;
   
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
+  const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
   return data.values || [];
 }
 
@@ -570,7 +585,7 @@ export async function updateRowStatus(rowIndex, status) {
   const range = `'${sheetName}'!J${rowIndex + 1}`; 
   const valueBody = { values: [[status]] };
   
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(valueBody)
@@ -607,7 +622,7 @@ export async function formatCellAsTakenDown(rowIndex) {
       }
   }];
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
@@ -638,7 +653,7 @@ export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns
       }
   }];
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}:batchUpdate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
