@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reportFromSheetBtn = document.getElementById('reportFromSheetBtn');
   const stopScanBtn = document.getElementById('stopScanBtn');
   const platformScanSelect = document.getElementById('platformScanSelect');
+  const copyEventNameBtn = document.getElementById('copyEventNameBtn');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const searchEventBtn = document.getElementById('searchEventBtn');
   const reporterInput = document.getElementById('reporterName');
@@ -178,6 +179,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const eventName = eventInput.value;
       
       if (vertical && eventName) {
+          // --- NEW: Levenshtein distance check ---
+          const existingEvents = Array.from(eventList.options).map(opt => opt.value);
+          const similarEvent = existingEvents.find(name => 
+              name.toLowerCase() !== eventName.toLowerCase() && 
+              levenshtein(name.toLowerCase(), eventName.toLowerCase()) <= 2
+          );
+
+          if (similarEvent && !confirm(`"${eventName}" is very similar to existing event "${similarEvent}".\n\nClick OK to proceed anyway (this may create a duplicate row), or Cancel to correct it.`)) {
+              return;
+          }
+          // --- END NEW ---
+
           if (loadingEl) {
               loadingEl.innerText = "Opening Search Page...";
               loadingEl.style.display = "block";
@@ -310,13 +323,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
-  // Copy Tool
+  // Copy Name Tool
+  if (copyEventNameBtn) {
+    copyEventNameBtn.addEventListener('click', () => {
+       const txt = eventInput ? eventInput.value : "";
+       navigator.clipboard.writeText(txt);
+       copyEventNameBtn.innerText = "Copied!";
+       setTimeout(() => copyEventNameBtn.innerText = 'Copy Event Name', 2000);
+    });
+  }
+  //Copy URL Tool
   if (copyUrlBtn) {
     copyUrlBtn.addEventListener('click', () => {
-       const txt = `Content stolen from ${eventInput ? eventInput.value : ""}. Original source: ${sourceDisplay ? sourceDisplay.value : ""}`;
+       const txt = sourceDisplay ? sourceDisplay.value : "";
        navigator.clipboard.writeText(txt);
        copyUrlBtn.innerText = "Copied!";
-       setTimeout(() => copyUrlBtn.innerText = 'Copy "Stolen From" Text', 2000);
+       setTimeout(() => copyUrlBtn.innerText = "Copy 'Stolen From' URL", 2000);
     });
   }
 
@@ -480,4 +502,17 @@ function populateVerticals(selectEl) {
       selectEl.appendChild(opt);
     });
   }
+}
+// --- Levenshtein distance helper ---
+function levenshtein(a, b) {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) matrix[i][j] = matrix[i - 1][j - 1];
+            else matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+        }
+    }
+    return matrix[b.length][a.length];
 }

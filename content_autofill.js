@@ -158,11 +158,16 @@
 
     const typeValue = (el, val) => {
         if (!el || !isVisible(el)) return false;
+        // Sanitize: remove newlines and hidden control characters
+        const cleanVal = typeof val === 'string' ? val.replace(/[\r\n\x00-\x1F\x7F-\x9F]/g, " ").trim() : val;
         el.scrollIntoView({block: "center", behavior: "smooth"});
         el.focus();
         el.click();
 
         setNativeValue(el, "");
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        setNativeValue(el, cleanVal);
         el.dispatchEvent(new Event('input', { bubbles: true }));
         
         setNativeValue(el, val);
