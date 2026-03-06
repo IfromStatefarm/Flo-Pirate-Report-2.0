@@ -1,157 +1,226 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { padding: 15px; font-family: sans-serif; color: #333; }
-    h2 { color: #ce0e2d; margin-top:0; }
-    
-    /* Input Styling */
-    input, select { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-    label { font-size: 12px; font-weight: bold; display: block; margin-top: 10px; }
-    
-    /* Highlight the Source URL box */
-    #sourceUrlDisplay { border: 2px solid #2563eb; background-color: #f0f9ff; }
-    
-    /* Main Submit Button */
-    .btn { width: 100%; padding: 12px; margin-top: 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background: #ce0e2d; color: white; }
-    .btn:disabled { background: #ccc; cursor: not-allowed; }
-    .btn:hover:not(:disabled) { opacity: 0.9; }
-    
-    /* Grab URL Button */
-    .grab-btn {
-      width: 100%; 
-      padding: 8px; 
-      margin-bottom: 5px; 
-      background-color: #28a745;
-      color: white; 
-      border: none; 
-      border-radius: 4px; 
-      cursor: pointer; 
-      font-size: 12px;
-      font-weight: bold;
+    /* Global Styles */
+    body { 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+        background-color: #f4f7f6; 
+        color: #1f2937; 
+        padding: 12px; 
+        margin: 0; 
+        box-sizing: border-box;
     }
-    .grab-btn:hover { background-color: #218838; }
+    * { box-sizing: border-box; }
 
-    #loading { color: blue; font-weight: bold; margin-bottom: 10px; }
+    /* Typography & Headers */
+    h2 { 
+        color: #ce0e2d; 
+        margin: 0 0 12px 0; 
+        font-size: 18px; 
+        font-weight: 800; 
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .section-title { font-size: 14px; font-weight: 700; margin: 0 0 12px 0; color: #111827; }
+
+    /* Layout Cards */
+    .container { display: flex; flex-direction: column; gap: 12px; }
+    .card { 
+        background: #ffffff; 
+        border-radius: 8px; 
+        padding: 15px; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+        border: 1px solid #e5e7eb; 
+    }
+    .auto-card { background: #f8fafc; border-color: #bfdbfe; }
+    .auto-card .section-title { color: #1e3a8a; }
+
+    /* Form Elements */
+    label { font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #4b5563; display: block; }
+    input, select { 
+        width: 100%; padding: 9px 10px; margin-bottom: 12px; 
+        border: 1px solid #d1d5db; border-radius: 6px; 
+        font-size: 13px; color: #111827; background-color: #f9fafb; 
+        transition: all 0.2s; 
+    }
+    input:focus, select:focus { 
+        outline: none; border-color: #0288d1; box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.15); 
+        background-color: #ffffff; 
+    }
+    #sourceUrlDisplay { border-color: #93c5fd; background-color: #eff6ff; }
     
-    /* Utility Link */
-    .link-btn { background:none; border:none; color:#666; font-size:10px; cursor:pointer; text-decoration:underline; float: right; }
+    /* Text Hints */
+    .hint { font-size: 11px; color: #6b7280; margin-top: -8px; margin-bottom: 12px; line-height: 1.4; }
+    .hint strong { color: #0288d1; }
 
-    /* Scanner Toggle Switch */
-    .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+    /* Buttons */
+    .btn { 
+        width: 100%; padding: 10px; border: none; border-radius: 6px; 
+        cursor: pointer; font-weight: 600; font-size: 13px; 
+        transition: background-color 0.2s, transform 0.1s; 
+        text-align: center; display: inline-block;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { background: #d1d5db !important; color: #9ca3af !important; cursor: not-allowed; transform: none; }
+    
+    .btn-primary { background: #ce0e2d; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #a80b24; }
+    
+    .btn-info { background: #0288d1; color: white; }
+    .btn-info:hover:not(:disabled) { background: #026b9c; }
+    
+    .btn-success { background: #10b981; color: white; }
+    .btn-success:hover:not(:disabled) { background: #059669; }
+
+    .btn-warning { background: #f59e0b; color: white; }
+    .btn-warning:hover:not(:disabled) { background: #d97706; }
+
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+
+    .link-btn { 
+        background: none; border: none; color: #6b7280; font-size: 11px; 
+        cursor: pointer; text-decoration: none; padding: 0; font-weight: 500; transition: color 0.2s; 
+    }
+    .link-btn:hover { color: #0288d1; text-decoration: underline; }
+
+    /* Layout Utilities */
+    .flex-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .flex-row input, .flex-row select, .flex-row button { margin-bottom: 0; }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; margin-top: 6px;}
+
+    /* Instructions Box */
+    .instructions { background: #f0fdf4; padding: 12px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 15px; }
+    .instructions strong { color: #166534; font-size: 12px; display: block; margin-bottom: 6px; }
+    .instructions ol { margin: 0; padding-left: 20px; font-size: 11px; color: #15803d; line-height: 1.5; }
+    .instructions li { margin-bottom: 4px; }
+
+    /* Status & Alerts */
+    #loading { color: #0288d1; font-weight: bold; font-size: 12px; margin-bottom: 10px; background: #e0f2fe; padding: 8px; border-radius: 4px; text-align: center; }
+    #closerStatus { margin-top: 8px; margin-bottom: 12px; background: #e5e7eb; padding: 8px; border-radius: 4px; display: none; font-size: 11px; color: #374151; }
+    #crawlStatus { font-size: 11px; color: #4b5563; margin-top: 8px; font-weight: bold; text-align: center; }
+
+    /* Toggle Switch */
+    .switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; }
-    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; }
-    input:checked + .slider { background-color: #4CAF50; }
-    input:checked + .slider:before { transform: translateX(20px); }
-    .slider.round { border-radius: 20px; }
-    .slider.round:before { border-radius: 50%; }
-
-    /* Closer Status */
-    #closerStatus {
-        margin-top: 5px;
-        background: #eee;
-        padding: 8px;
-        border-radius: 4px;
-        display: none;
-    }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #d1d5db; transition: .4s; border-radius: 20px; }
+    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    input:checked + .slider { background-color: #10b981; }
+    input:checked + .slider:before { transform: translateX(16px); }
   </style>
 </head>
 <body>
-  <h2>FloSports Reporter</h2>
-  
-  <div id="loading">Connecting...</div>
 
-  <label>Reporter Name</label>
-  <input type="text" id="reporterName" placeholder="John Doe">
-  
-  <label>Vertical</label>
-  <select id="verticalSelect"><option value="">Loading...</option></select>
-  
-  <label>FloSports Event Name (Type to Search)</label>
-  <div style="display: flex; gap: 5px; align-items: center; margin: 5px 0;">
-    <input type="text" id="eventInput" list="eventList" placeholder="202X Name of Event" style="flex: 1; margin: 0;">
-    <button id="searchEventBtn" class="btn" style="width: auto; margin: 0; padding: 8px 12px; background: #0288d1;" title="Search Event">Search</button>
-  </div>
-  <datalist id="eventList"></datalist>
+  <h2>🛡️ FloSports Reporter</h2>
+  <div id="loading">Connecting to Secure Services...</div>
 
-  <label>Source URL</label>
-  <button id="btn-grab-flo" class="grab-btn">Copy Current Tab's URL</button>
-  <div style="font-size: 11px; color: #666; margin-bottom: 5px; line-height: 1.3;">
-    This button is used to save the FloSports URL that is being Pirated from.
-  </div>
-
-  <input type="text" id="sourceUrlDisplay" placeholder="Paste FloSports URL or Click Above...">
-  
-  <div style="display: flex; justify-content: space-between; margin-top: 5px;">
-      <button id="copyEventNameBtn" class="link-btn" style="float: none;">Copy Event Name</button>
-      <button id="copyUrlBtn" class="link-btn" style="float: none;">Copy "Stolen From" Text</button>
-  </div>
-  <div style="clear:both;"></div>
-<!-- Instruction List -->
-  <div style="font-size: 12px; margin-top: 20px; margin-bottom: 10px; background: #f0f9ff; padding: 12px; border-radius: 4px; border: 1px solid #cce5ff;">
-    <strong style="color: #0288d1;">Workflow Steps:</strong>
-    <ol style="margin-top: 8px; margin-bottom: 0; padding-left: 22px; line-height: 1.4; color: #333;">
-      <li>Select the <b>Vertical</b> and <b>Event Name</b>.</li>
-      <li>Open the original FloSports broadcast and click <b>Copy Current Tab's URL</b>.</li>
-      <li>Navigate to the pirated video on social media and click <b>+ Add</b> on the screen overlay.</li>
-      <li>Click <b>Start Report</b> below to open the legal form.</li>
-    </ol>
-  </div>
-  <button id="startBtn" class="btn" disabled>Start Report</button>
-
-  <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; background-color: #f9f9f9; padding: 10px; border-radius: 4px;">
-    <label style="color: #333; margin-top:0;">Automation Tools</label>
-    <div style="font-size: 12px; color: #856404; background-color: #fff3cd; border: 1px solid #ffeeba; padding: 8px; border-radius: 4px; margin-top: 8px; margin-bottom: 15px; line-height: 1.4;">
-       Robot scrolls through Pirate excel sheet. <strong>Only 1 robot at a time.</strong>
-    </div>
+  <div class="container">
     
-    <!-- The Closer -->
-    <label style="margin-top: 5px;">Sheet Scanner (Auto-Scan Column H)</label>
-    <div style="display:flex; gap:10px; align-items:center; margin-top: 5px;">
-        <input type="number" id="startRowInput" placeholder="Start Row (e.g. 2)" style="flex:1;" min="1" value="2">
-        <label class="switch" style="margin-top: 0; margin-bottom: 0;">
-          <input type="checkbox" id="closerToggle">
-          <span class="slider round"></span>
-        </label>
-        <span id="closerToggleLabel" style="font-size: 12px; font-weight: bold; color: #666; width: 25px;">Off</span>
-    </div>
-    <div id="closerStatus">Waiting to start...</div>
-    <div style="font-size: 10px; color:#666; margin-top:6px; margin-bottom: 15px; line-height: 1.3; border-bottom: 1px solid #ddd; padding-bottom: 15px;">
-      Checking toggle skips links that are already crossed out. Updates Status to 'Resolved' or 'Investigating' based on results.
+    <!-- MANUAL REPORTING CARD -->
+    <div class="card">
+      <h3 class="section-title">Manual Reporting</h3>
+      
+      <label>Reporter Name</label>
+      <input type="text" id="reporterName" placeholder="e.g. John Doe">
+      
+      <label>Vertical</label>
+      <select id="verticalSelect"><option value="">Loading...</option></select>
+      
+      <label>FloSports Event Name (Type to Search)</label>
+      <input type="text" id="eventInput" list="eventList" placeholder="202X Name of Event">
+      <datalist id="eventList"></datalist>
+
+      <label>Flo's Source URL</label>
+      <div class="hint">
+        Saves the FloSports URL being pirated. <strong>If empty after selecting an event, push Search.</strong>
+      </div>
+      
+      <div class="flex-row">
+        <input type="text" id="sourceUrlDisplay" placeholder="Paste URL here..." style="flex: 1;">
+        <button id="searchEventBtn" class="btn btn-info" style="width: auto; padding: 9px 15px;" title="Search Event">Search</button>
+      </div>
+
+      <button id="btn-grab-flo" class="btn btn-success" style="margin-bottom: 8px;">Copy Current Tab's URL</button>
+      
+      <div class="flex-between">
+          <button id="copyEventNameBtn" class="link-btn">Copy Event Name</button>
+          <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" Text</button>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 15px 0;">
+
+      <!-- Instructions -->
+      <div class="instructions">
+        <strong>Workflow Steps:</strong>
+        <ol>
+          <li>Select the <b>Vertical</b> and <b>Event Name</b>.</li>
+          <li>Open the original broadcast and click <b>Copy Current Tab's URL</b>.</li>
+          <li>Navigate to the pirated video and click <b>+ Add</b> on the screen overlay.</li>
+          <li>Click <b>Start Report</b> below.</li>
+        </ol>
+      </div>
+      
+      <button id="startBtn" class="btn btn-primary" disabled style="font-size: 14px; padding: 12px;">Start Report</button>
     </div>
 
-    <!-- NEW: Double Tap Layout -->
-    <div style="display: flex; gap: 10px; align-items: stretch; margin-top: 10px;">
-        <!-- Column A: Double Tap Button -->
-        <div style="flex: 1; display: flex;">
-            <button id="doubleTapBtn" class="btn" style="background-color: #f39c12; margin: 0; width: 100%; font-size: 13px; padding: 10px; font-weight: bold; line-height: 1.4;">Double Tap<br>(Scan)</button>
-        </div>
-        <!-- Column B: Platform & Row -->
-        <div style="flex: 1; display: flex; flex-direction: column; gap: 5px;">
-            <select id="platformScanSelect" style="margin: 0; padding: 8px;">
-              <option value="tiktok">TikTok</option>
-              <option value="youtube">YouTube</option>
-              <option value="instagram">Instagram</option>
-              <option value="facebook">Facebook</option>
-              <option value="rumble">Rumble</option>
-              <option value="discord">Discord</option>
-              <option value="other">Other</option>
-            </select>
-            <div style="display:flex; gap:5px; align-items:center;">
-                <label style="margin:0; font-size: 11px;">Row:</label>
-                <input type="number" id="doubleTapStartRow" min="1" value="2" style="flex:1; margin:0; padding: 8px;">
-            </div>
-        </div>
+    <!-- AUTOMATION TOOLS CARD -->
+    <div class="card auto-card">
+      <h3 class="section-title">🤖 Automation Tools</h3>
+      <div class="hint" style="color: #92400e; margin-bottom: 15px;">
+        Automate tasks using the connected Google Sheet. <strong>Run only one tool at a time.</strong>
+      </div>
+      
+      <!-- The Closer -->
+      <label>1. The Closer (Status Checker)</label>
+      <div class="hint">
+        Scans Column H for live links. Automatically skips dead links and updates the row status to 'Resolved' or 'Investigating'.
+      </div>
+      <div class="flex-row">
+          <label for="startRowInput" style="margin:0; font-size: 11px; white-space: nowrap;">Start Row:</label>
+          <input type="number" id="startRowInput" placeholder="e.g. 2" min="1" value="2" style="flex: 1;">
+          <label class="switch">
+            <input type="checkbox" id="closerToggle">
+            <span class="slider"></span>
+          </label>
+          <span id="closerToggleLabel" style="font-size: 12px; font-weight: bold; color: #6b7280; width: 25px; text-align: right;">Off</span>
+      </div>
+      <div id="closerStatus">Waiting to start...</div>
+
+      <hr style="border: 0; border-top: 1px solid #d1d5db; margin: 15px 0;">
+
+      <!-- Double Tap Scan -->
+      <label>2. Double Tap (Bulk Reporter)</label>
+      <div class="hint">
+        Finds active links for a specific platform in your sheet and queues them up so you can report them all at once.
+      </div>
+      <div class="flex-row">
+          <select id="platformScanSelect" style="flex: 1;">
+            <option value="tiktok">TikTok</option>
+            <option value="youtube">YouTube</option>
+            <option value="instagram">Instagram</option>
+            <option value="facebook">Facebook</option>
+            <option value="rumble">Rumble</option>
+            <option value="discord">Discord</option>
+            <option value="other">Other</option>
+          </select>
+          <label for="doubleTapStartRow" style="margin:0; font-size: 11px; white-space: nowrap;">Start Row:</label>
+          <input type="number" id="doubleTapStartRow" min="1" value="2" title="Start Row" style="width: 60px;">
+          <button id="doubleTapBtn" class="btn btn-warning" style="width: auto; padding: 9px 12px;">Scan</button>
+      </div>
+
+      <div class="flex-row" style="margin-top: 8px;">
+          <button id="reportFromSheetBtn" class="btn btn-success" style="display: none; flex: 1;">Report Queued</button>
+          <button id="stopScanBtn" class="btn btn-danger" style="display: none; flex: 1;">Stop Scan</button>
+      </div>
+      
+      <div id="crawlStatus"></div>
     </div>
 
-    <!-- Stop and Report Now Buttons -->
-    <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <button id="reportFromSheetBtn" class="btn" style="background-color: #2ecc71; margin-top: 0; font-size: 12px; padding: 10px; display: none; flex: 1;">Report Now</button>
-        <button id="stopScanBtn" class="btn" style="background-color: #e74c3c; margin-top: 0; font-size: 12px; padding: 10px; display: none; flex: 1;">Stop Scan</button>
-    </div>
-    <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
-
+  </div>
 
   <script src="sidepanel.js" type="module"></script>
 </body>
