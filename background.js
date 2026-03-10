@@ -73,6 +73,16 @@ function generateReportId() {
 // --- STOP FLAG ---
 let stopScannerSignal = false;
 
+// --- ROGUE STREAM SNIFFER ---
+let sniffedMediaUrls = new Set();
+chrome.webRequest.onBeforeRequest.addListener(
+    (details) => {
+        if (details.url.includes('.m3u8') || details.url.includes('.mp4')) {
+            sniffedMediaUrls.add(details.url);
+        }
+    },
+    { urls: ["<all_urls>"] }
+);
 // ==========================================
 // 1. FRESH SCRAPING LOGIC (LAZY LOADING)
 // ==========================================
@@ -579,6 +589,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'stopSheetScanner') {
       stopScannerSignal = true;
+      sendResponse({ success: true });
+      return true;
+  }
+  if (request.action === 'initRogueTakedown') {
+      const rogueData = { ...request.data, sniffedUrls: Array.from(sniffedMediaUrls) };
+      chrome.storage.local.set({ rogue_target_data: rogueData }, () => {
+          sniffedMediaUrls.clear(); // Reset after capture
+      });
       sendResponse({ success: true });
       return true;
   }

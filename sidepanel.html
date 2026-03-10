@@ -164,8 +164,11 @@
         </ol>
       </div>
       
-      <button id="startBtn" class="btn btn-primary" disabled style="font-size: 14px; padding: 12px;">Start Report</button>
-    </div>
+      <button id="startBtn" class="btn" disabled>Start Report</button>
+  <button id="nukeStreamBtn" class="btn" style="background-color: #1a1a1a; margin-top: 10px;">Nuke Stream (Rogue Site)</button>
+
+  <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; background-color: #f9f9f9; padding: 10px; border-radius: 4px;">
+    <label style="color: #333; margin-top:0;">Automation Tools</label>
 
     <!-- AUTOMATION TOOLS CARD -->
     <div class="card auto-card">
@@ -217,9 +220,26 @@
           <button id="stopScanBtn" class="btn btn-danger" style="display: none; flex: 1;">Stop Scan</button>
       </div>
       
-      <div id="crawlStatus"></div>
-    </div>
+      <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
+  </div>
 
+  <!-- ROGUE WALKTHROUGH CONTAINER -->
+  <div id="rogue-walkthrough" style="display: none; padding-top: 10px;">
+    <h3 style="color: #1a1a1a; margin-top: 0;">Rogue Site Takedown</h3>
+    <div style="font-size: 12px; margin-bottom: 10px;">
+      <strong>Step 1: Infrastructure Takedown</strong><br>
+      <textarea id="dmcaNotice" rows="8" style="width: 100%; margin-top: 5px; font-size: 11px; padding: 6px; box-sizing: border-box;" placeholder="DMCA Notice will generate here..."></textarea>
+      <button id="generateDmcaBtn" class="btn" style="background: #1a1a1a; padding: 8px;">Generate DMCA Email</button>
+    </div>
+    <div style="font-size: 12px; margin-bottom: 10px;">
+      <strong>Step 2: Hosting Lookup</strong><br>
+      <a href="https://lookup.icann.org/" target="_blank" style="color: #0288d1;">Open ICANN Lookup</a> (Find Host Abuse Email)
+    </div>
+    <div style="font-size: 12px; margin-bottom: 10px;">
+      <strong>Step 3: Google De-index</strong><br>
+      <button id="googleDeindexBtn" class="btn" style="background: #4285f4; padding: 8px; margin-top: 5px;">Report to Google</button>
+    </div>
+    <button id="closeRogueBtn" class="btn" style="background: #ccc; color: #333; padding: 8px;">Cancel / Close</button>
   </div>
 
   <script src="sidepanel.js" type="module"></script>

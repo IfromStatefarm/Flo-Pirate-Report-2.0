@@ -26,7 +26,51 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
-  
+  // Rogue Site Elements
+  const nukeStreamBtn = document.getElementById('nukeStreamBtn');
+  const mainUiContainer = document.getElementById('main-ui-container');
+  const rogueWalkthrough = document.getElementById('rogue-walkthrough');
+  const dmcaNoticeArea = document.getElementById('dmcaNotice');
+  const generateDmcaBtn = document.getElementById('generateDmcaBtn');
+  const googleDeindexBtn = document.getElementById('googleDeindexBtn');
+  const closeRogueBtn = document.getElementById('closeRogueBtn');
+  let currentRogueData = null;
+
+  function renderRogueWalkthrough(data) {
+      currentRogueData = data;
+      rogueWalkthrough.classList.remove('hidden');
+      
+      const iframesStr = data.iframes.length > 0 ? data.iframes.join('\n') : 'None found';
+      const sniffedStr = data.sniffedUrls.length > 0 ? data.sniffedUrls.join('\n') : 'None found';
+      const abuseEmails = data.emails.length > 0 ? data.emails.join(', ') : '[INSERT ABUSE EMAIL]';
+      
+      dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - FloSports\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of FloSports regarding unauthorized broadcasting of our copyrighted content.\n\nInfringing URL: ${data.url}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\nFloSports Anti-Piracy Team`;
+  }
+
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace === 'local' && changes.rogue_target_data && changes.rogue_target_data.newValue) {
+          renderRogueWalkthrough(changes.rogue_target_data.newValue);
+      }
+  });
+
+  if (generateDmcaBtn) {
+      generateDmcaBtn.addEventListener('click', () => {
+          const emails = currentRogueData?.emails.length > 0 ? currentRogueData.emails.join(',') : '';
+          const body = encodeURIComponent(dmcaNoticeArea.value);
+          window.open(`mailto:${emails}?subject=DMCA Takedown Notice - FloSports&body=${body}`);
+      });
+  }
+
+  if (googleDeindexBtn) {
+      googleDeindexBtn.addEventListener('click', () => window.open('https://reportcontent.google.com/'));
+  }
+
+  if (closeRogueBtn) {
+      closeRogueBtn.addEventListener('click', () => {
+          rogueWalkthrough.classList.add('hidden');
+          chrome.storage.local.remove('rogue_target_data');
+      });
+  }
   // New Toggle Elements
   const closerToggle = document.getElementById('closerToggle');
   const closerToggleLabel = document.getElementById('closerToggleLabel');
@@ -138,6 +182,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           verticalSelect.dispatchEvent(new Event('change'));
       }
   });
+  chrome.storage.local.get(['rogue_target_data'], (rogueRes) => {
+      if (rogueRes.rogue_target_data) {
+          renderRogueWalkthrough(rogueRes.rogue_target_data);
+      }
+  });
 
   // 2. Event Listeners
   if (verticalSelect) {
@@ -234,6 +283,43 @@ document.addEventListener('DOMContentLoaded', async () => {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           if (tab && tab.url) {
               if (sourceDisplay) sourceDisplay.value = tab.url;
+          }
+      });
+  }
+
+  // --- ROGUE SITE SCRAPE LOGIC ---
+  if (nukeStreamBtn) {
+      nukeStreamBtn.addEventListener('click', async () => {
+          nukeStreamBtn.innerText = "Scraping & Sniffing...";
+          nukeStreamBtn.disabled = true;
+
+          try {
+              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+              if (!tab) throw new Error("No active tab");
+
+              // Inject a targeted scraper directly into the current page
+              const results = await chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: () => {
+                      return {
+                          title: document.title,
+                          url: window.location.href,
+                          iframes: Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean),
+                          videos: Array.from(document.querySelectorAll('video')).map(v => v.src).filter(Boolean),
+                          emails: (document.body.innerText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || []).filter(e => e.toLowerCase().includes('abuse'))
+                      };
+                  }
+              });
+
+              // Send the scraped DOM data to background to merge with sniffed network URLs
+              chrome.runtime.sendMessage({ action: 'initRogueTakedown', data: results[0].result }, () => {
+                  nukeStreamBtn.innerText = "Nuke Stream (Rogue Site)";
+                  nukeStreamBtn.disabled = false;
+              });
+          } catch (e) {
+              console.error(e);
+              nukeStreamBtn.innerText = "Error - Refresh Page";
+              setTimeout(() => { nukeStreamBtn.innerText = "Nuke Stream (Rogue Site)"; nukeStreamBtn.disabled = false; }, 2000);
           }
       });
   }
@@ -447,6 +533,47 @@ document.addEventListener('DOMContentLoaded', async () => {
       stopScanBtn.addEventListener('click', () => {
           chrome.runtime.sendMessage({ action: 'stopSheetScanner' });
           if (crawlStatusEl) crawlStatusEl.innerText = "Stopping scan...";
+      });
+  }
+
+  // --- ROGUE SITE WALKTHROUGH LOGIC ---
+  function renderRogueWalkthrough(data) {
+      currentRogueData = data;
+      if (mainUiContainer) mainUiContainer.style.display = 'none';
+      if (rogueWalkthrough) rogueWalkthrough.style.display = 'block';
+      
+      const iframesStr = data.iframes.length > 0 ? data.iframes.join('\n') : 'None found';
+      const sniffedStr = data.sniffedUrls.length > 0 ? data.sniffedUrls.join('\n') : 'None found';
+      const abuseEmails = data.emails.length > 0 ? data.emails.join(', ') : '[INSERT ABUSE EMAIL]';
+      
+      dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - FloSports\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of FloSports regarding unauthorized broadcasting of our copyrighted content.\n\nInfringing URL: ${data.url}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\nFloSports Anti-Piracy Team`;
+  }
+
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace === 'local' && changes.rogue_target_data && changes.rogue_target_data.newValue) {
+          renderRogueWalkthrough(changes.rogue_target_data.newValue);
+      }
+  });
+
+  chrome.storage.local.get(['rogue_target_data'], (res) => {
+      if (res.rogue_target_data) renderRogueWalkthrough(res.rogue_target_data);
+  });
+
+  if (generateDmcaBtn) {
+      generateDmcaBtn.addEventListener('click', () => {
+          const emails = currentRogueData?.emails.length > 0 ? currentRogueData.emails.join(',') : '';
+          const body = encodeURIComponent(dmcaNoticeArea.value);
+          window.open(`mailto:${emails}?subject=DMCA Takedown Notice - FloSports&body=${body}`);
+      });
+  }
+
+  if (googleDeindexBtn) googleDeindexBtn.addEventListener('click', () => window.open('https://reportcontent.google.com/'));
+
+  if (closeRogueBtn) {
+      closeRogueBtn.addEventListener('click', () => {
+          chrome.storage.local.remove('rogue_target_data');
+          if (rogueWalkthrough) rogueWalkthrough.style.display = 'none';
+          if (mainUiContainer) mainUiContainer.style.display = 'block';
       });
   }
 });
