@@ -450,24 +450,6 @@
         btnAdd.addEventListener('click', () => handleAddToQueue(btnAdd));
     }
 
-    const btnNuke = document.getElementById('flo-nuke');
-    if (btnNuke) {
-        btnNuke.addEventListener('click', () => {
-            btnNuke.innerText = "Sniffing...";
-            btnNuke.disabled = true;
-            const data = {
-                title: document.title,
-                url: window.location.href,
-                iframes: Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean),
-                videos: Array.from(document.querySelectorAll('video')).map(v => v.src).filter(Boolean),
-                emails: (document.body.innerText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || []).filter(e => e.toLowerCase().includes('abuse'))
-            };
-            chrome.runtime.sendMessage({ action: 'initRogueTakedown', data }, () => {
-                setTimeout(() => { btnNuke.innerText = "Nuke Stream"; btnNuke.disabled = false; }, 2000);
-            });
-        });
-    }
-
     document.getElementById('flo-report').addEventListener('click', () => {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
       try { chrome.runtime.sendMessage({ action: 'openPopup' }); } 
