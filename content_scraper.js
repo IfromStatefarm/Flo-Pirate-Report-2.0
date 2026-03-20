@@ -510,6 +510,8 @@
     // Minimize Logic
     let isMinimized = isReportingPage;
     const minBtn = document.getElementById('flo-min-btn');
+    const mainContent = document.getElementById('flo-main-content');
+    const dragHandle = document.getElementById('flo-drag-handle');
 
     const toggleMinimize = () => {
         if (isMinimized) {
