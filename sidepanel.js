@@ -189,6 +189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           opt.value = name;
                           eventList.appendChild(opt);
                       });
+                      window.currentEventMap = response.data.eventMap;
                       
                       if (eventInput) eventInput.placeholder = "Select or Type...";
                   }
@@ -234,13 +235,18 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
       } else {
           alert("Please select a Vertical and enter an Event Name.");
-      }
-  };
+        }
+    };
 
-  if (eventInput) {
-      eventInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-              performSearch();
+    if (eventInput) {
+        eventInput.addEventListener('change', () => {
+            const ev = window.currentEventMap && window.currentEventMap[eventInput.value.toLowerCase().trim()];
+            if (ev && sourceDisplay) sourceDisplay.value = Object.values(ev.urls).find(u => u) || "";
+        });
+        
+        eventInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                performSearch();
           }
       });
   }
@@ -362,6 +368,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               vertical: vertical,
               sourceUrl: sourceUrl || ""
           };
+          
+          if (sourceUrl) chrome.runtime.sendMessage({ action: 'saveEventUrl', data: { vertical, eventName, url: sourceUrl, platform: platform.toLowerCase() } });
 
           await chrome.storage.local.set({ reporterInfo });
 
