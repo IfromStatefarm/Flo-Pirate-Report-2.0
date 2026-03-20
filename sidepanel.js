@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const googleDeindexBtn = document.getElementById('googleDeindexBtn');
   const closeRogueBtn = document.getElementById('closeRogueBtn');
   let currentRogueData = null;
+  const rogueToggle = document.getElementById('rogueToggle');
 
   // 🚨 CRITICAL FIX: Escaping unclosed HTML tags 🚨
   // sidepanel.html is missing a few closing </div> tags, causing the Walkthrough UI to get trapped 
@@ -562,6 +563,26 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (rogueWalkthrough) rogueWalkthrough.style.display = 'none';
           if (mainUiContainer) mainUiContainer.style.display = 'flex'; // Restore container as flex
           if (nukeBtn) nukeBtn.style.display = 'block'; // Bring Nuke button back
+      });
+  }
+
+  // --- ROGUE TOGGLE & COLOR LOGIC ---
+  if (rogueToggle && nukeStreamBtn) {
+      // Load initial state on open
+     chrome.storage.local.get(['showNukeButton'], (res) => {
+          const isChecked = !!res.showNukeButton;
+          rogueToggle.checked = isChecked;
+          nukeStreamBtn.style.backgroundColor = isChecked ? '#ce0e2d' : '#1a1a1a';
+          nukeStreamBtn.style.color = 'white';
+          nukeStreamBtn.innerText = isChecked ? '☢️ 3rd Party Site Safety OFF' : '🛡️ 3rd Party Safety: ON';
+      });
+
+      // Listen for toggle changes
+      rogueToggle.addEventListener('change', (e) => {
+          const isChecked = e.target.checked;
+          chrome.storage.local.set({ showNukeButton: isChecked });
+          nukeStreamBtn.style.backgroundColor = isChecked ? '#ce0e2d' : '#1a1a1a';
+          nukeStreamBtn.innerText = isChecked ? '☢️ 3rd Party Site Safety OFF' : '🛡️ 3rd Party Safety: ON';
       });
   }
 });
