@@ -437,7 +437,9 @@
           <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
           <button id="flo-report" style="flex: 1; background: #333; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">Panel</button>
         </div>
-        <button id="flo-nuke" style="width: 100%; background: #1a1a1a; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold; margin-bottom: 10px;">Nuke Stream</button>
+        
+        <!-- NUKE BUTTON (Hidden by Default) -->
+        <button id="flo-nuke" style="width: 100%; background: #1a1a1a; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold; margin-bottom: 10px; display: none;">Nuke Stream</button>
 
         <button id="flo-reset" style="background: none; border: none; color: #999; font-size: 11px; text-decoration: underline; cursor: pointer;">Reset Queue</button>
       </div>
@@ -463,11 +465,51 @@
       catch(e) { handleContextInvalidated(); }
     });
 
+    // ==========================================
+    // ON-PAGE NUKE BUTTON FORENSIC LOGIC
+    // ==========================================
+    const btnNuke = document.getElementById('flo-nuke');
+    if (btnNuke) {
+        // Initial state check
+        chrome.storage.local.get(['showNukeButton'], (res) => {
+            btnNuke.style.display = res.showNukeButton ? 'block' : 'none';
+        });
+
+        // Click handler (Forensic Scrape from the page context)
+        btnNuke.addEventListener('click', () => {
+            btnNuke.innerText = "Extracting IOCs...";
+            btnNuke.disabled = true;
+
+            const html = document.documentElement.innerHTML;
+            const iocs = {
+                configKeys: html.match(/Config Key:\s*([A-Za-z0-9]+)/i) || html.match(/['"]([A-Za-z0-9]{16,})['"]/g),
+                affiliateIds: html.match(/(pub_id=\d+|cid=[a-zA-Z0-9]+)/gi) || [],
+                wargaming: html.match(/10652030/g) ? "Wargaming ID 10652030" : null,
+                cloudflareRum: html.match(/[a-f0-9]{32}/gi) || []
+            };
+
+            const data = {
+                title: document.title,
+                url: window.location.href,
+                iframes: Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean),
+                videos: Array.from(document.querySelectorAll('video')).map(v => v.src).filter(Boolean),
+                emails: (document.body.innerText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || []).filter(e => e.toLowerCase().includes('abuse')),
+                forensics: iocs
+            };
+
+            chrome.runtime.sendMessage({ action: 'initRogueTakedown', data: data }, () => {
+                btnNuke.innerText = "Nuke Stream";
+                btnNuke.disabled = false;
+                
+                // Pop the side panel open to show the results
+                chrome.runtime.sendMessage({ action: 'openPopup' });
+            });
+        });
+    }
+
     // Minimize Logic
     let isMinimized = isReportingPage;
     const minBtn = document.getElementById('flo-min-btn');
-    const mainContent = document.getElementById('flo-main-content');
-    const dragHandle = document.getElementById('flo-drag-handle');
 
     const toggleMinimize = () => {
         if (isMinimized) {
@@ -573,6 +615,13 @@
               if (namespace === 'local' && changes.piracy_cart) {
                   const newValue = changes.piracy_cart.newValue || [];
                   updateCount(newValue.length);
+              }
+              // Listen for the Nuke Button visibility toggle
+              if (namespace === 'local' && changes.showNukeButton) {
+                  const nukeBtn = document.getElementById('flo-nuke');
+                  if (nukeBtn) {
+                      nukeBtn.style.display = changes.showNukeButton.newValue ? 'block' : 'none';
+                  }
               }
           });
       } catch (e) { console.warn("Could not attach storage listener"); }

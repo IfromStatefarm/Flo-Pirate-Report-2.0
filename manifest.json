@@ -59,7 +59,8 @@
         "*://twitter.com/*",
         "*://x.com/*",
         "*://www.twitch.tv/*",
-        "*://discord.com/*"
+        "*://discord.com/*",
+        "*://timstreams.net/*"
       ],
       "js": ["content_scraper.js"],
       "run_at": "document_idle"

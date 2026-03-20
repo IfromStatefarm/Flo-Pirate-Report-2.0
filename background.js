@@ -73,12 +73,28 @@ function generateReportId() {
 // --- STOP FLAG ---
 let stopScannerSignal = false;
 
-// --- ROGUE STREAM SNIFFER ---
-let sniffedMediaUrls = new Set();
+// ==========================================
+// ROGUE STREAM SNIFFER & IP RESOLVER
+// ==========================================
+// Upgraded to a Map to store URL -> IP Address pairings
+let sniffedNetworkTraffic = new Map();
+
+// 1. Catch WebSockets (C2 Infrastructure)
 chrome.webRequest.onBeforeRequest.addListener(
+   (details) => {
+       if (details.url.startsWith('wss://')) {
+           sniffedNetworkTraffic.set(details.url, 'WebSocket/C2');
+       }
+   },
+   { urls: ["<all_urls>"] }
+);
+
+// 2. Catch Video Pipes and resolve their Server IP
+chrome.webRequest.onResponseStarted.addListener(
     (details) => {
-        if (details.url.includes('.m3u8') || details.url.includes('.mp4')) {
-            sniffedMediaUrls.add(details.url);
+        if (details.url.includes('.m3u8') || details.url.includes('.mp4') || details.url.includes('.ts')) {
+            // details.ip provides the actual resolved IP of the server delivering the payload
+            sniffedNetworkTraffic.set(details.url, details.ip || 'IP Hidden/Cloudflare');
         }
     },
     { urls: ["<all_urls>"] }
@@ -593,13 +609,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
   }
   if (request.action === 'initRogueTakedown') {
-      const rogueData = { ...request.data, sniffedUrls: Array.from(sniffedMediaUrls) };
-      chrome.storage.local.set({ rogue_target_data: rogueData }, () => {
-          sniffedMediaUrls.clear(); // Reset after capture
-      });
-      sendResponse({ success: true });
-      return true;
-  }
+     // Transform Map into an array of objects for easier handling in the UI
+     const trafficArray = Array.from(sniffedNetworkTraffic.entries()).map(([url, ip]) => ({ url, ip }));
+     const rogueData = { ...request.data, networkTraffic: trafficArray };
+     
+     chrome.storage.local.set({ rogue_target_data: rogueData }, () => {
+         sniffedNetworkTraffic.clear(); // Reset map after capture
+     });
+     sendResponse({ success: true });
+     return true;
+ }
 });
 
 // ==========================================
@@ -808,7 +827,16 @@ async function handleBatchReport(formData) {
       const items = grouped[handle];
       const urls = items.map(i => i.url);
       const urlString = urls.join('\n'); 
-      const viewString = items.map(i => i.views || "N/A").join('\n');
+      const totalViewsCount = items.reduce((acc, item) => {
+        let val = 0;
+        const v = String(item.views || "0").toLowerCase();
+        if (v === "pending" || v === "n/a" || v === "deleted" || v === "error") val = 0;
+        else if (v.includes('k')) val = parseFloat(v) * 1000;
+        else if (v.includes('m')) val = parseFloat(v) * 1000000;
+        else val = parseFloat(v.replace(/[^\d.]/g, '')) || 0;
+        return acc + val;
+      }, 0);
+      const viewString = totalViewsCount > 0 ? totalViewsCount.toLocaleString() : "N/A";
       const reportId = generateReportId();
 
       let detectedPlatform = "TikTok";

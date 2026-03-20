@@ -164,11 +164,22 @@
         </ol>
       </div>
       
+      <!-- ... existing code ... -->
       <button id="startBtn" class="btn" disabled>Start Report</button>
   <button id="nukeStreamBtn" class="btn" style="background-color: #1a1a1a; margin-top: 10px;">Nuke Stream (Rogue Site)</button>
 
+  <!-- NEW TOGGLE FOR PAGE OVERLAY -->
+  <div class="flex-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
+      <label for="rogueToggle" style="margin:0; font-size: 11px; flex: 1;">Show 'Nuke' Button on Video Page</label>
+      <label class="switch">
+        <input type="checkbox" id="rogueToggle">
+        <span class="slider"></span>
+      </label>
+  </div>
+
   <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; background-color: #f9f9f9; padding: 10px; border-radius: 4px;">
     <label style="color: #333; margin-top:0;">Automation Tools</label>
+    </div>
 
     <!-- AUTOMATION TOOLS CARD -->
     <div class="card auto-card">
@@ -243,7 +254,7 @@
   </div>
 
   <!-- Nuke Button -->
-  <button id="nukeBtn" class="btn nuke-btn">☢️ Nuke Current Page</button>
+  <button id="nukeBtn" class="btn nuke-btn" style="display:none;">☢️ Nuke Current Page</button>
   <div id="nukeStatus" style="font-size: 10px; color: #ce0e2d; font-weight: bold; margin-top: 5px; text-align: center;"></div>
 
   <script src="sidepanel.js" type="module"></script>

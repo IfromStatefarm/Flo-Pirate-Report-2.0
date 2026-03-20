@@ -26,9 +26,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
+  
   // Rogue Site Elements
   const nukeStreamBtn = document.getElementById('nukeStreamBtn');
-  const mainUiContainer = document.getElementById('main-ui-container');
+  const nukeBtn = document.getElementById('nukeBtn');
+  const nukeStatus = document.getElementById('nukeStatus');
+  const mainUiContainer = document.querySelector('.container'); // Fallback to class since ID was missing in HTML
   const rogueWalkthrough = document.getElementById('rogue-walkthrough');
   const dmcaNoticeArea = document.getElementById('dmcaNotice');
   const generateDmcaBtn = document.getElementById('generateDmcaBtn');
@@ -36,41 +39,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const closeRogueBtn = document.getElementById('closeRogueBtn');
   let currentRogueData = null;
 
-  function renderRogueWalkthrough(data) {
-      currentRogueData = data;
-      rogueWalkthrough.classList.remove('hidden');
-      
-      const iframesStr = data.iframes.length > 0 ? data.iframes.join('\n') : 'None found';
-      const sniffedStr = data.sniffedUrls.length > 0 ? data.sniffedUrls.join('\n') : 'None found';
-      const abuseEmails = data.emails.length > 0 ? data.emails.join(', ') : '[INSERT ABUSE EMAIL]';
-      
-      dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - FloSports\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of FloSports regarding unauthorized broadcasting of our copyrighted content.\n\nInfringing URL: ${data.url}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\nFloSports Anti-Piracy Team`;
-  }
+  // 🚨 CRITICAL FIX: Escaping unclosed HTML tags 🚨
+  // sidepanel.html is missing a few closing </div> tags, causing the Walkthrough UI to get trapped 
+  // inside the mainUiContainer. When the main container hides, it takes the walkthrough down with it.
+  // Reparenting these elements to the body prevents the blank screen issue.
+  if (rogueWalkthrough) document.body.appendChild(rogueWalkthrough);
+  if (nukeBtn) document.body.appendChild(nukeBtn);
+  if (nukeStatus) document.body.appendChild(nukeStatus);
 
-  chrome.storage.onChanged.addListener((changes, namespace) => {
-      if (namespace === 'local' && changes.rogue_target_data && changes.rogue_target_data.newValue) {
-          renderRogueWalkthrough(changes.rogue_target_data.newValue);
-      }
-  });
-
-  if (generateDmcaBtn) {
-      generateDmcaBtn.addEventListener('click', () => {
-          const emails = currentRogueData?.emails.length > 0 ? currentRogueData.emails.join(',') : '';
-          const body = encodeURIComponent(dmcaNoticeArea.value);
-          window.open(`mailto:${emails}?subject=DMCA Takedown Notice - FloSports&body=${body}`);
-      });
-  }
-
-  if (googleDeindexBtn) {
-      googleDeindexBtn.addEventListener('click', () => window.open('https://reportcontent.google.com/'));
-  }
-
-  if (closeRogueBtn) {
-      closeRogueBtn.addEventListener('click', () => {
-          rogueWalkthrough.classList.add('hidden');
-          chrome.storage.local.remove('rogue_target_data');
-      });
-  }
   // New Toggle Elements
   const closerToggle = document.getElementById('closerToggle');
   const closerToggleLabel = document.getElementById('closerToggleLabel');
@@ -287,42 +263,48 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
-  // --- ROGUE SITE SCRAPE LOGIC ---
-  if (nukeStreamBtn) {
-      nukeStreamBtn.addEventListener('click', async () => {
-          nukeStreamBtn.innerText = "Scraping & Sniffing...";
-          nukeStreamBtn.disabled = true;
+  // --- ROGUE SITE SCRAPE LOGIC (Consolidated for all buttons) ---
+  const handleNukeClick = async (btn) => {
+      const originalText = btn.innerText;
+      btn.innerText = "Scraping & Sniffing...";
+      btn.disabled = true;
+      if (nukeStatus) nukeStatus.innerText = "Working...";
 
-          try {
-              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-              if (!tab) throw new Error("No active tab");
+      try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (!tab) throw new Error("No active tab");
 
-              // Inject a targeted scraper directly into the current page
-              const results = await chrome.scripting.executeScript({
-                  target: { tabId: tab.id },
-                  func: () => {
-                      return {
-                          title: document.title,
-                          url: window.location.href,
-                          iframes: Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean),
-                          videos: Array.from(document.querySelectorAll('video')).map(v => v.src).filter(Boolean),
-                          emails: (document.body.innerText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || []).filter(e => e.toLowerCase().includes('abuse'))
-                      };
-                  }
-              });
+          // Inject a targeted scraper directly into the current page
+          const results = await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: () => {
+                  return {
+                      title: document.title,
+                      url: window.location.href,
+                      iframes: Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean),
+                      videos: Array.from(document.querySelectorAll('video')).map(v => v.src).filter(Boolean),
+                      emails: (document.body.innerText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || []).filter(e => e.toLowerCase().includes('abuse'))
+                  };
+              }
+          });
 
-              // Send the scraped DOM data to background to merge with sniffed network URLs
-              chrome.runtime.sendMessage({ action: 'initRogueTakedown', data: results[0].result }, () => {
-                  nukeStreamBtn.innerText = "Nuke Stream (Rogue Site)";
-                  nukeStreamBtn.disabled = false;
-              });
-          } catch (e) {
-              console.error(e);
-              nukeStreamBtn.innerText = "Error - Refresh Page";
-              setTimeout(() => { nukeStreamBtn.innerText = "Nuke Stream (Rogue Site)"; nukeStreamBtn.disabled = false; }, 2000);
-          }
-      });
-  }
+          // Send the scraped DOM data to background to merge with sniffed network URLs
+          chrome.runtime.sendMessage({ action: 'initRogueTakedown', data: results[0].result }, () => {
+              btn.innerText = originalText;
+              btn.disabled = false;
+              if (nukeStatus) nukeStatus.innerText = "Data captured! See Rogue Walkthrough.";
+              setTimeout(() => { if (nukeStatus) nukeStatus.innerText = ""; }, 3000);
+          });
+      } catch (e) {
+          console.error(e);
+          btn.innerText = "Error - Refresh Page";
+          if (nukeStatus) nukeStatus.innerText = "Failed.";
+          setTimeout(() => { btn.innerText = originalText; btn.disabled = false; if (nukeStatus) nukeStatus.innerText = ""; }, 2000);
+      }
+  };
+
+  if (nukeStreamBtn) nukeStreamBtn.addEventListener('click', () => handleNukeClick(nukeStreamBtn));
+  if (nukeBtn) nukeBtn.addEventListener('click', () => handleNukeClick(nukeBtn));
 
   // --- START REPORT LOGIC ---
   if (startBtn) {
@@ -540,13 +522,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderRogueWalkthrough(data) {
       currentRogueData = data;
       if (mainUiContainer) mainUiContainer.style.display = 'none';
+      if (nukeBtn) nukeBtn.style.display = 'none'; // Hide Nuke button to keep UI clean
       if (rogueWalkthrough) rogueWalkthrough.style.display = 'block';
       
-      const iframesStr = data.iframes.length > 0 ? data.iframes.join('\n') : 'None found';
-      const sniffedStr = data.sniffedUrls.length > 0 ? data.sniffedUrls.join('\n') : 'None found';
-      const abuseEmails = data.emails.length > 0 ? data.emails.join(', ') : '[INSERT ABUSE EMAIL]';
+      // Use optional chaining (?.) to prevent fatal crashes if data is missing
+      const iframesStr = (data?.iframes?.length > 0) ? data.iframes.join('\n') : 'None found';
+      const sniffedStr = (data?.sniffedUrls?.length > 0) ? data.sniffedUrls.join('\n') : 'None found';
+      const abuseEmails = (data?.emails?.length > 0) ? data.emails.join(', ') : '[INSERT ABUSE EMAIL]';
+      const urlStr = data?.url || 'Unknown URL';
       
-      dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - FloSports\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of FloSports regarding unauthorized broadcasting of our copyrighted content.\n\nInfringing URL: ${data.url}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\nFloSports Anti-Piracy Team`;
+      if (dmcaNoticeArea) {
+          dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - FloSports\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of FloSports regarding unauthorized broadcasting of our copyrighted content.\n\nInfringing URL: ${urlStr}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\nFloSports Anti-Piracy Team`;
+      }
   }
 
   chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -561,8 +548,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (generateDmcaBtn) {
       generateDmcaBtn.addEventListener('click', () => {
-          const emails = currentRogueData?.emails.length > 0 ? currentRogueData.emails.join(',') : '';
-          const body = encodeURIComponent(dmcaNoticeArea.value);
+          const emails = (currentRogueData?.emails?.length > 0) ? currentRogueData.emails.join(',') : '';
+          const body = encodeURIComponent(dmcaNoticeArea ? dmcaNoticeArea.value : '');
           window.open(`mailto:${emails}?subject=DMCA Takedown Notice - FloSports&body=${body}`);
       });
   }
@@ -573,7 +560,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       closeRogueBtn.addEventListener('click', () => {
           chrome.storage.local.remove('rogue_target_data');
           if (rogueWalkthrough) rogueWalkthrough.style.display = 'none';
-          if (mainUiContainer) mainUiContainer.style.display = 'block';
+          if (mainUiContainer) mainUiContainer.style.display = 'flex'; // Restore container as flex
+          if (nukeBtn) nukeBtn.style.display = 'block'; // Bring Nuke button back
       });
   }
 });
