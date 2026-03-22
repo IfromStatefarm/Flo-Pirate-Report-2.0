@@ -578,6 +578,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'undoCart') {
+    chrome.storage.local.get('piracy_cart').then(res => {
+      let cart = res.piracy_cart || [];
+      if (cart.length > 0) cart.pop(); // Removes the most recently added item
+      chrome.storage.local.set({ 'piracy_cart': cart }).then(() => sendResponse({success: true}));
+    });
+    return true;
+  }
+
   if (request.action === "saveEventUrl") {
     handleUrlSave(request.data);
     return false; 

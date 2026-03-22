@@ -441,7 +441,10 @@
         <!-- NUKE BUTTON (Hidden by Default) -->
         <button id="flo-nuke" style="width: 100%; background: #1a1a1a; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold; margin-bottom: 10px; display: none;">Nuke Stream</button>
 
-        <button id="flo-reset" style="background: none; border: none; color: #999; font-size: 11px; text-decoration: underline; cursor: pointer;">Reset Queue</button>
+        <div style="display: flex; justify-content: space-between;">
+          <button id="flo-undo" style="background: none; border: none; color: #999; font-size: 11px; text-decoration: underline; cursor: pointer;">Undo Last</button>
+          <button id="flo-reset" style="background: none; border: none; color: #999; font-size: 11px; text-decoration: underline; cursor: pointer;">Reset Queue</button>
+        </div>
       </div>
     `;
 
@@ -451,18 +454,26 @@
     if (btnAdd) {
         btnAdd.addEventListener('click', () => handleAddToQueue(btnAdd));
     }
-
+    // 1. Panel Button Listener - Opens the side panel
     document.getElementById('flo-report').addEventListener('click', () => {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
       try { chrome.runtime.sendMessage({ action: 'openPopup' }); } 
       catch(e) { handleContextInvalidated(); }
     });
-
+    // 2. Reset Button Listener - Clears the cart with confirmation
     document.getElementById('flo-reset').addEventListener('click', () => {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
       if (currentCount > 0 && !confirm(`Delete ${currentCount} items from cart?`)) return;
       try { chrome.runtime.sendMessage({ action: 'clearCart' }); } 
       catch(e) { handleContextInvalidated(); }
+    });
+    // 3. Undo Button Listener - Removes the most recently added item
+    document.getElementById('flo-undo').addEventListener('click', () => {
+      if (!isExtensionValid()) { handleContextInvalidated(); return; }
+      if (currentCount > 0) {
+        try { chrome.runtime.sendMessage({ action: 'undoCart' }); } 
+        catch(e) { handleContextInvalidated(); }
+      }
     });
 
     // ==========================================

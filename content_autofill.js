@@ -83,6 +83,8 @@
             const host = window.location.hostname;
             if (host.includes('tiktok')) {
                 createTikTokOverlay(data);
+            } else if (host.includes('youtube')) {
+                createYouTubeOverlay(data);
             } else {
                 if (!hasRunAutomatedFill) {
                     hasRunAutomatedFill = true;
@@ -449,6 +451,7 @@
             }
             return;
         }
+    
 
         const existing = document.getElementById("flo-upload-overlay");
         if (existing) existing.remove();
@@ -723,7 +726,144 @@
         });
       });
     }
+    function createYouTubeOverlay(data) {
+        if (cachedOverlay && cachedOverlay.id === "flo-upload-overlay") {
+            if (!document.getElementById("flo-upload-overlay")) {
+                document.body.appendChild(cachedOverlay);
+            }
+            return;
+        }
 
+        const existing = document.getElementById("flo-upload-overlay");
+        if (existing) existing.remove();
+      
+        const overlay = document.createElement("div");
+        overlay.id = "flo-upload-overlay";
+        overlay.style.cssText = `
+          position: fixed; top: 80px; right: 20px; width: 280px;
+          background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
+        `;
+      
+        overlay.innerHTML = `
+          <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+            <h3 id="flo-wiz-title" style="margin:0; color:#ce0e2d; font-size:16px; pointer-events:none;">YouTube Wizard ✥</h3>
+            <div>
+                <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
+                <button id="flo-wiz-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">×</button>
+            </div>
+          </div>
+          
+          <div id="flo-wiz-main-content">
+              <div style="margin-bottom: 12px; font-size: 13px;">
+                <small>Follow the highlighted steps as you progress through the form.</small>
+              </div>
+              
+              <div id="flo-step-container" style="display: flex; flex-direction: column; gap: 8px;">
+                  <button id="flo-yt-btn-step1" style="background: #ce0e2d; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Videos to remove</button>
+                  <button id="flo-yt-btn-step2" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 2: Copyright owner</button>
+                  <button id="flo-yt-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Removal options & Legal</button>
+              </div>
+      
+              <div id="flo-log-container" style="display: none; margin-top: 15px;">
+                  <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                      ⚠️ Ensure all fields are valid before logging!
+                  </div>
+                  <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+                  <div id="flo-log-status" style="margin-top:8px; font-size:12px; text-align: center;"></div>
+              </div>
+          </div>
+        `;
+      
+        cachedOverlay = overlay;
+        document.body.appendChild(overlay);
+        setupDrag(overlay);
+  
+        let isWizMinimized = false;
+        const minBtn = document.getElementById('flo-wiz-min-btn');
+        const closeBtn = document.getElementById('flo-wiz-close-btn');
+        const mainContent = document.getElementById('flo-wiz-main-content');
+        const title = document.getElementById('flo-wiz-title');
+        const topBar = document.getElementById('flo-wiz-top-bar');
+
+        minBtn.addEventListener('click', () => {
+            isWizMinimized = !isWizMinimized;
+            if (isWizMinimized) {
+                mainContent.style.display = 'none';
+                minBtn.innerHTML = '+';
+                title.innerText = 'Wizard ✥';
+                overlay.style.width = 'auto';
+                topBar.style.borderBottom = 'none';
+                topBar.style.marginBottom = '0';
+                topBar.style.paddingBottom = '0';
+                overlay.style.right = '0px';
+                overlay.style.borderTopRightRadius = '0';
+                overlay.style.borderBottomRightRadius = '0';
+            } else {
+                mainContent.style.display = 'block';
+                minBtn.innerHTML = '−';
+                title.innerText = 'YouTube Wizard ✥';
+                overlay.style.width = '280px';
+                topBar.style.borderBottom = '1px solid #eee';
+                topBar.style.marginBottom = '10px';
+                topBar.style.paddingBottom = '8px';
+                overlay.style.borderRadius = '8px';
+                const rect = overlay.getBoundingClientRect();
+                if (window.innerWidth - rect.right < 10) {
+                    overlay.style.right = '20px';
+                    overlay.style.left = 'auto';
+                }
+            }
+        });
+
+        closeBtn.addEventListener('click', () => overlay.remove());
+
+        const btn1 = document.getElementById('flo-yt-btn-step1');
+        const btn2 = document.getElementById('flo-yt-btn-step2');
+        const btn3 = document.getElementById('flo-yt-btn-step3');
+        const logContainer = document.getElementById('flo-log-container');
+  
+        btn1.addEventListener('click', async () => {
+            btn1.innerText = "Running...";
+            await runYtStep1(data);
+            btn1.innerText = "Step 1: Done";
+            btn1.style.background = "#ccc"; btn1.style.color = "#333";
+            btn2.style.background = "#ce0e2d"; btn2.style.color = "white";
+        });
+  
+        btn2.addEventListener('click', async () => {
+            btn2.innerText = "Running...";
+            await runYtStep2(data);
+            btn2.innerText = "Step 2: Done";
+            btn2.style.background = "#ccc"; btn2.style.color = "#333";
+            btn3.style.background = "#ce0e2d"; btn3.style.color = "white";
+        });
+  
+        btn3.addEventListener('click', async () => {
+            btn3.innerText = "Running...";
+            await runYtStep3(data);
+            btn3.innerText = "Step 3: Done";
+            btn3.style.background = "#ccc"; btn3.style.color = "#333";
+            logContainer.style.display = "block";
+        });
+  
+        document.getElementById("flo-log-btn").addEventListener("click", () => {
+          const status = document.getElementById("flo-log-status");
+          status.innerText = "Logging...";
+          chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+            if (response && response.success) {
+              status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
+              setTimeout(() => {
+                  lastReportData = null; 
+                  cachedOverlay = null;  
+                  overlay.remove();
+              }, 2000);
+            } else {
+              status.innerText = "❌ Failed."; status.style.color = "red";
+            }
+          });
+        });
+    }
     function setupDrag(overlay) {
       let isDragging = false, startX, startY, initialLeft, initialTop;
       overlay.addEventListener('mousedown', (e) => {
@@ -747,37 +887,129 @@
     // ==========================================
     // 4. LEGACY LOGIC (YOUTUBE, ETC)
     // ==========================================
-    async function fillYouTube(data) {
-        console.log("📝 Running YouTube Strategy...");
+     async function runYtStep1(data) {
+        console.log("📝 Running YouTube Step 1: Videos...");
         const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
-    
+        
+        // 1. IMPOSE THE 10 VIDEO LIMIT
+        const infringingUrls = data.urls || [];
+        const MAX_YOUTUBE_URLS = 10;
+        const urlsToReport = infringingUrls.slice(0, MAX_YOUTUBE_URLS);
+        
+        if (infringingUrls.length > MAX_YOUTUBE_URLS) {
+            console.warn(`YouTube limits 10 videos per form. Only processing the first 10.`);
+            alert(`YouTube Limits Reports to 10 Videos.\n\nOnly the first 10 videos have been loaded into this form. You will need to submit this form, clear your cart, and run the remaining videos in a new batch.`);
+        }
+
         async function waitAndClick(textOrSel, time=3000) {
            const btn = await waitForButton(textOrSel, time);
-           if (btn) { btn.click(); return true; }
+           if (btn) { 
+               btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+               btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+               btn.click(); 
+               return true; 
+           }
            return false;
         }
-    
-        const infringingUrls = data.urls || [];
-        
-        for (const badUrl of infringingUrls) {
-            const addBtnText = conf.buttons?.add_video || "Add a video";
-            await waitAndClick(addBtnText, 5000);
-            await sleep(1000);
-            
-            const badInputSel = conf.inputs?.infringing_url?.[0] || "[aria-label=\"YouTube URL of video to be removed\"]";
-            const titleInputSel = conf.inputs?.video_title?.[0] || "[aria-label=\"Title\"]";
 
-            const fillSimple = async (sel, val) => {
-                const el = document.querySelector(sel);
-                if(el) { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }
-            };
-    
-            await fillSimple(titleInputSel, data.eventName || "FloSports Event");
-            await fillSimple(badInputSel, badUrl);
-            
-            await waitAndClick(conf.buttons?.save || "#save-button", 3000);
-            await sleep(2000);
+        // Helper for YouTube's Polymer Dropdowns
+        async function selectYtcpDropdown(labelStr, valueStr) {
+            const dropdowns = Array.from(document.querySelectorAll('ytcp-form-select, ytcp-text-dropdown-trigger'));
+            const targetDd = dropdowns.find(el => el.innerText.toLowerCase().includes(labelStr.toLowerCase()) && isVisible(el));
+
+            if (targetDd) {
+                if (targetDd.innerText.toLowerCase().includes(valueStr.toLowerCase())) return;
+                
+                const trigger = targetDd.querySelector('[role="button"]') || targetDd;
+                trigger.click();
+                await sleep(500);
+
+                const options = Array.from(document.querySelectorAll('tp-yt-paper-item, paper-item, .ytcp-dropdown-item'));
+                const option = options.find(opt => opt.innerText.toLowerCase().trim() === valueStr.toLowerCase() && isVisible(opt));
+
+                if (option) {
+                    option.click();
+                } else {
+                    document.body.click(); // Close if not found
+                }
+                await sleep(500);
+            }
         }
+
+        // Helper for YouTube inputs
+        const fillYtcpInput = (selector, val) => {
+            if (!val) return;
+            const el = document.querySelector(selector);
+            if (el) {
+                // Find inner input if targeting a wrapper
+                const innerInput = el.querySelector('input, textarea') || (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ? el : null);
+                if (innerInput) typeValue(innerInput, val);
+            } else {
+                // Fallback using xPath to find the input by label
+                fillByLabel(selector.replace(/[[\]'"]/g, ''), val);
+            }
+        };
+
+        // 2. ADD VIDEOS LOOP
+        for (const badUrl of urlsToReport) {
+            const addBtnText = conf.buttons?.add_video || "Add a video";
+            await waitAndClick(addBtnText, 3000);
+            await sleep(1000);
+
+            const dds = conf.dropdowns || {};
+            await selectYtcpDropdown(dds.type_work?.label || "Type of work", dds.type_work?.value || "Video");
+            await selectYtcpDropdown(dds.subcategory?.label || "Subcategory", dds.subcategory?.value || "Internet video");
+            await selectYtcpDropdown(dds.source?.label || "Source of my content", dds.source?.value || "From outside of YouTube");
+
+            const videoTitleSel = conf.inputs?.video_title?.[0] || conf.inputs?.video_title || "Video title";
+            fillYtcpInput(videoTitleSel, data.eventName || "FloSports Event");
+
+            const badInputSel = conf.inputs?.infringing_url?.[0] || conf.inputs?.infringing_url || "YouTube URL of video to be removed";
+            fillYtcpInput(badInputSel, badUrl);
+
+            const locDropdown = dds.location || { label: "Location of infringing content", value: "Entire video" };
+            await selectYtcpDropdown(locDropdown.label, locDropdown.value);
+
+            await waitAndClick(conf.buttons?.save || "Add to list", 2000);
+            await sleep(1500);
+        }
+
+        // 3. FILL COPYRIGHT OWNER SECTION
+        console.log("Filling copyright owner details...");
+        const ownerInputs = conf.inputs || {};
+        
+        await selectYtcpDropdown(conf.dropdowns?.affected_party?.label || "Affected party", conf.dropdowns?.affected_party?.value || "Myself");
+
+        fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", data.fullName || "FloSports");
+        fillYtcpInput(ownerInputs.phone || "Phone", "5122702356"); // FloSports Default
+        fillYtcpInput(ownerInputs.secondary_email || "Secondary email", data.email || "copyright@flosports.tv");
+        fillYtcpInput(ownerInputs.authority || "Relationship", "Authorized Representative");
+        
+        await selectYtcpDropdown(conf.dropdowns?.country?.label || "Country", conf.dropdowns?.country?.value || "United States");
+
+        fillYtcpInput(ownerInputs.street || "Street address", "301 Congress Ave #1500");
+        fillYtcpInput(ownerInputs.city || "City", "Austin");
+        await selectYtcpDropdown("State", "Texas");
+        fillYtcpInput(ownerInputs.zip || "Zip code", "78701");
+
+        // 4. REMOVAL OPTIONS & AGREEMENTS
+        console.log("Checking agreements...");
+        const preventCopies = document.querySelector(conf.checkboxes?.prevent_copies || 'ytcp-checkbox-lit[aria-label*="Prevent future copies"]');
+        if (preventCopies && preventCopies.getAttribute('aria-checked') !== 'true') preventCopies.click();
+
+        const agreements = conf.checkboxes?.agreements || ["good faith", "accurate", "perjury"];
+        for (const text of agreements) {
+            const xpath = `//ytcp-checkbox-lit[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+            const checkbox = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            if (checkbox && checkbox.getAttribute('aria-checked') !== 'true') {
+                checkbox.click();
+            }
+        }
+
+        // Signature
+        fillYtcpInput(ownerInputs.signature || "Signature", data.fullName);
+
+        console.log("✅ YouTube Strategy Complete!");
     }
     
     async function fillInstagram(data) {
