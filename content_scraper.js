@@ -304,29 +304,50 @@
         const nearInput = el.querySelector('input, button');
         if (nearInput) target = nearInput;
     }
+    // --- NEW: Uniqueness Check Helper ---
+    const isUnique = (sel) => {
+        try {
+            if (sel.startsWith('//')) {
+                return document.evaluate(sel, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null).snapshotLength === 1;
+            }
+            return document.querySelectorAll(sel).length === 1;
+        } catch(e) { return false; }
+    };
 
-      // 2. Specific attributes (Best reliability)
-      if (target.hasAttribute('data-e2e')) return `[data-e2e="${target.getAttribute('data-e2e')}"]`;
-      if (target.id) return `#${target.id}`;
-      
-      if (target.name) {
-          if (target.type && (target.type === 'radio' || target.type === 'checkbox') && target.value) {
-              return `input[name="${target.name}"][value="${target.value}"]`;
-          }
-          return `[name="${target.name}"]`;
+       // 2. Specific attributes (Best reliability)
+    if (target.hasAttribute('data-e2e')) {
+        let sel = `[data-e2e="${target.getAttribute('data-e2e')}"]`;
+        if (isUnique(sel)) return sel;
     }
     
-    if (target.hasAttribute('aria-label')) return `[aria-label="${target.getAttribute('aria-label')}"]`;
+    if (target.id) {
+        let sel = `#${target.id}`;
+        if (isUnique(sel)) return sel;
+    }
     
+    if (target.name) {
+        let sel = (target.type && (target.type === 'radio' || target.type === 'checkbox') && target.value) 
+            ? `input[name="${target.name}"][value="${target.value}"]` 
+            : `[name="${target.name}"]`;
+        if (isUnique(sel)) return sel;
+    }
+    
+    if (target.hasAttribute('aria-label')) {
+        let sel = `[aria-label="${target.getAttribute('aria-label')}"]`;
+        if (isUnique(sel)) return sel;
+    }
     // --- SMART FALLBACK ---
     if (target.tagName === 'INPUT' && target.placeholder) {
-        return `input[placeholder*="${target.placeholder.split(' ')[0]}"]`;
+        let sel = `input[placeholder*="${target.placeholder.split(' ')[0]}"]`;
+        if (isUnique(sel)) return sel;
     }
     if (target.innerText && target.innerText.trim().length > 0 && target.innerText.trim().length < 50) {
         const cleanText = target.innerText.trim().toLowerCase().replace(/'/g, "\\'");
-        return `//${target.tagName.toLowerCase()}[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${cleanText}')]`;
+        let sel = `//${target.tagName.toLowerCase()}[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${cleanText}')]`;
+        if (isUnique(sel)) return sel;
     }
-    // --- ENDmps SMART FALLBACK ---
+    // --- END SMART FALLBACK ---
+    
       // 3. Fallback to CSS path (Rigid but works if nothing else is available)
       let path = [];
       let current = target;
@@ -453,11 +474,15 @@ ui.innerHTML = `
       e.target.style.backgroundColor = 'rgba(206, 14, 45, 0.3)';
       setTimeout(() => e.target.style.backgroundColor = originalBg, 500);
       
-      document.removeEventListener('mouseover', handleTrainingMouseOver, true);
+       document.removeEventListener('mouseover', handleTrainingMouseOver, true);
       document.removeEventListener('mouseout', handleTrainingMouseOut, true);
       document.removeEventListener('click', handleTrainingClick, true);
 
-      const newSelector = generateStableSelector(e.target);
+      // Deep-scan to pierce through transparent overlays/wrappers
+      const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+      const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || e.target;
+      const newSelector = generateStableSelector(actualTarget);
+
       console.log("PIRATE AI: Captured New Selector ->", newSelector);
       
       // Bring up the in-page UI so we don't rely on the side panel being open!
