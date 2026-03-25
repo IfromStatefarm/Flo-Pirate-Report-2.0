@@ -359,9 +359,13 @@ export async function patchConfigSelector(platform, section, field, newSelector)
 
     const existing = currentConfig.platform_selectors[platform][section][field];
     
-    // If it's an array (like TikTok views), prepend it so it's checked first
+    // If it's an array (like TikTok views), prepend it and prune old entries
     if (Array.isArray(existing)) {
-        if (!existing.includes(newSelector)) existing.unshift(newSelector);
+        if (!existing.includes(newSelector)) {
+            existing.unshift(newSelector);
+            // Limit to the 5 most recent selectors to prevent array bloat
+            if (existing.length > 5) existing.length = 5; 
+        }
     } else {
         // Otherwise overwrite the string
         currentConfig.platform_selectors[platform][section][field] = newSelector;

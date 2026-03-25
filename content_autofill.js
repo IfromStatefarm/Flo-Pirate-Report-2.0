@@ -179,16 +179,17 @@
         return true;
     };
 
-    const fillByLabel = (labelText, value) => {
+    const fillByLabel = (labelTexts, value) => {
         if (!value) return;
-        const lowerLabel = labelText.toLowerCase();
+        const labels = Array.isArray(labelTexts) ? labelTexts.map(l => l.toLowerCase()) : [labelTexts.toLowerCase()];
         
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
         let textNode;
         let targetInput = null;
         
         while ((textNode = walker.nextNode())) {
-            if (textNode.nodeValue.toLowerCase().includes(lowerLabel)) {
+            const nodeText = textNode.nodeValue.toLowerCase();
+            if (labels.some(l => nodeText.includes(l))) {
                 const parent = textNode.parentElement;
                 if (isVisible(parent)) {
                     const xpath = `following::input[not(@type='hidden') and not(@type='radio') and not(@type='checkbox')] | following::textarea`;
@@ -318,10 +319,10 @@
             name: data.fullName
         };
         
-        fillByLabel('your full name', defaults.name);
-        fillByLabel('name of the copyright owner', defaults.company);
-        fillByLabel('physical address', defaults.address);
-        fillByLabel('phone number', defaults.phone);
+        fillByLabel(['your full name', 'nombre completo'], defaults.name);
+        fillByLabel(['name of the copyright owner', 'nombre del propietario'], defaults.company);
+        fillByLabel(['physical address', 'dirección física'], defaults.address);
+        fillByLabel(['phone number', 'número de teléfono'], defaults.phone);
         
         const nextBtn = await waitForButton(['Next', 'Continue', 'button.submit-button'], 500);
         if (nextBtn && !nextBtn.disabled) {
@@ -360,37 +361,56 @@
         fillByLabel('description of copyrighted work', data.eventName || "FloSports Event");
         fillByLabel('content to report', Array.isArray(data.urls) ? data.urls.join('\n') : (data.urls || ''));
 
+        // --- 1. USE DYNAMIC CLOUD SELECTOR IF AVAILABLE ---
+        const conf = AUTOFILL_CONFIG.tiktok?.autofill || {};
+        if (conf.agreement) {
+            console.log("☑️ Using Cloud Config Selector for Checkboxes:", conf.agreement);
+            document.querySelectorAll(conf.agreement).forEach(box => checkReactCheckbox(box));
+        }
+
+        // --- 2. AGGRESSIVE CHECKBOX CLICKER ---
+        // Step 3 on TikTok only has the 3 agreement checkboxes. Check them all!
+        document.querySelectorAll('input[type="checkbox"], [role="checkbox"]').forEach(box => {
+            checkReactCheckbox(box);
+        });
+
+        // --- 3. FALLBACK: DEEP TEXT MATCHING ---
+        // If the checkboxes are hidden custom divs, find them by their adjacent text
         const agreementTexts = [
-            "Prevent future copies",
-            "good faith belief",
-            "accurate",
-            "penalty of perjury"
+            "good faith",
+            "perjury",
+            "acknowledge"
         ];
 
         agreementTexts.forEach(text => {
-            const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+            // Find the innermost element that contains the text
+            const lower = text.toLowerCase();
+            const xpath = `//*[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}') and not(*[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')])]`;
             const node = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
             
             if (node && isVisible(node)) {
-                const container = node.parentElement;
+                let container = node.closest('label, div.form-item, div.tux-row') || node.parentElement;
+                
                 const hiddenInput = container ? container.querySelector('input[type="checkbox"]') : null;
                 const ariaBox = container ? container.querySelector('[role="checkbox"], [role="switch"]') : null;
 
                 if (hiddenInput) {
-                    if (!hiddenInput.checked) checkReactCheckbox(hiddenInput);
+                    checkReactCheckbox(hiddenInput);
                 } else if (ariaBox) {
-                    if (ariaBox.getAttribute('aria-checked') !== 'true') {
-                        ariaBox.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-                        ariaBox.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-                        ariaBox.click();
-                        triggerReactUpdate(ariaBox);
-                    }
+                    checkReactCheckbox(ariaBox);
                 } else {
                     if (!node.hasAttribute('data-flo-clicked')) {
                         node.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
                         node.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
                         node.click();
-                        if(node.parentElement) node.parentElement.click();
+                        
+                        // Often the custom box is the previous sibling to the text
+                        if (node.previousElementSibling) {
+                            node.previousElementSibling.click();
+                        } else if (node.parentElement) {
+                            node.parentElement.click();
+                        }
+                        
                         node.setAttribute('data-flo-clicked', 'true');
                     }
                 }
@@ -405,7 +425,6 @@
             console.log("🛑 Step 3 complete. Waiting for user to review and manually click Send.");
         }
     }
-
 
     // ==========================================
     // 3. UI OVERLAYS & LAUNCHER TAB

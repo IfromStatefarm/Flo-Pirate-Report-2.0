@@ -14,7 +14,8 @@ import {
   updateRowStatus,
   formatCellAsTakenDown,
   updateCellWithRichText,
-  setColumnKRichText
+  setColumnKRichText,
+  patchConfigSelector
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';

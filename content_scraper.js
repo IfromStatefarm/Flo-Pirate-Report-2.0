@@ -294,19 +294,16 @@
   let trainingPlatform = null;
   
   function generateStableSelector(el) {
-      let target = el;
-
-      // 1. Try to find an actual input inside the clicked visual wrapper (prioritize checkboxes/radios)
-      const hiddenInput = target.querySelector('input[type="checkbox"], input[type="radio"]') || target.querySelector('input');
-      if (hiddenInput) {
-          target = hiddenInput;
-      } else {
-          // Or look up the tree for the interactive element (ignoring generic divs)
-          const interactiveNode = target.closest('input, textarea, select, button, label, [role="checkbox"], [role="radio"]');
-          if (interactiveNode) {
-              target = interactiveNode;
-          }
-      }
+    let target = el;
+    // Aggressively seek the nearest logical interactive element within or above the click
+    const interactiveTarget = el.closest('button, input, textarea, select, a, label, [role="button"], [role="checkbox"]');
+    if (interactiveTarget) {
+        target = interactiveTarget;
+    } else {
+        // If they clicked near a checkbox but missed, find the nearest one inside the container
+        const nearInput = el.querySelector('input, button');
+        if (nearInput) target = nearInput;
+    }
 
       // 2. Specific attributes (Best reliability)
       if (target.hasAttribute('data-e2e')) return `[data-e2e="${target.getAttribute('data-e2e')}"]`;
@@ -317,10 +314,19 @@
               return `input[name="${target.name}"][value="${target.value}"]`;
           }
           return `[name="${target.name}"]`;
-      }
-      
-      if (target.hasAttribute('aria-label')) return `[aria-label="${target.getAttribute('aria-label')}"]`;
-      
+    }
+    
+    if (target.hasAttribute('aria-label')) return `[aria-label="${target.getAttribute('aria-label')}"]`;
+    
+    // --- SMART FALLBACK ---
+    if (target.tagName === 'INPUT' && target.placeholder) {
+        return `input[placeholder*="${target.placeholder.split(' ')[0]}"]`;
+    }
+    if (target.innerText && target.innerText.trim().length > 0 && target.innerText.trim().length < 50) {
+        const cleanText = target.innerText.trim().toLowerCase().replace(/'/g, "\\'");
+        return `//${target.tagName.toLowerCase()}[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${cleanText}')]`;
+    }
+    // --- ENDmps SMART FALLBACK ---
       // 3. Fallback to CSS path (Rigid but works if nothing else is available)
       let path = [];
       let current = target;
@@ -364,9 +370,11 @@
           z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; width: 350px;
       `;
 
-      ui.innerHTML = `
-          <h3 style="margin: 0 0 10px 0; color: #ce0e2d; font-size: 18px;">Map Captured Selector</h3>
-          <p style="font-size: 12px; color: #666; margin-bottom: 5px;">Selector captured:</p>
+      const isGenericPath = selector.includes('div') || selector.includes('span');
+ui.innerHTML = `
+    <h3 style="margin: 0 0 10px 0; color: #ce0e2d; font-size: 18px;">Map Captured Selector</h3>
+    ${isGenericPath ? `<div style="background:#fff1f2; color:#be123c; padding:8px; border-radius:4px; font-size:11px; margin-bottom:10px; font-weight:bold;">⚠️ CAUTION: This selector looks generic. Ensure it targets an actual button or input.</div>` : ''}
+    <p style="font-size: 12px; color: #666; margin-bottom: 5px;">Selector captured:</p>
           <input type="text" readonly value='${selector.replace(/'/g, "&apos;")}' style="width: 100%; padding: 8px; margin-bottom: 12px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;">
 
           <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section:</label>
@@ -421,11 +429,20 @@
       });
   }
 
-  function handleTrainingClick(e) {
-      if (!isTrainingMode) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
+   function handleTrainingClick(e) {
+    if (!isTrainingMode) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+
+    const targetTag = e.target.tagName;
+    const isGeneric = ['DIV', 'SPAN', 'SECTION', 'MAIN', 'BODY'].includes(targetTag) && !e.target.getAttribute('role');
+
+    if (isGeneric) {
+        const confirmNuke = confirm(`⚠️ FAT FINGER WARNING:\nYou just clicked a generic ${targetTag} element.\n\nMapping background containers usually breaks the auto-reporter for the whole team.\n\nAre you sure you want to map this?`);
+        if (!confirmNuke) {
+            e.target.style.outline = '';
+            return; // Exit without showing the Patch UI
+        }
+    }
       
       e.target.style.outline = '';
       e.target.style.cursor = '';
