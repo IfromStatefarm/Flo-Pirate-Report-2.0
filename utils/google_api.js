@@ -330,8 +330,10 @@ export async function fetchConfig() {
     headers: { Authorization: `Bearer ${token}` }
   });
 }
-// --- NEW: UPDATE CONFIG FILE ON GOOGLE DRIVE ---
-export async function patchConfigSelector(platform, section, field, newSelector) {
+/**
+ * Patches the config file using etags to prevent race conditions.
+ */
+export async function patchConfigSelector(platform, section, field, newSelector, retryCount = 0) {
     const { driveRootId } = await getOptions();
     if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
     const token = await getAuthToken();
@@ -347,10 +349,14 @@ export async function patchConfigSelector(platform, section, field, newSelector)
     }
     const fileId = searchData.files[0].id;
 
-    // 2. Download the current JSON content
-    const currentConfig = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    // 2. Download the current JSON content and capture the ETag
+    const getRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
         headers: { Authorization: `Bearer ${token}` }
     });
+    if (!getRes.ok) throw new Error(`Failed to fetch config: ${getRes.statusText}`);
+    
+    const currentConfig = await getRes.json();
+    const currentEtag = getRes.headers.get('ETag');
 
     // 3. Patch the JSON with the new selector using the provided section (e.g., 'autofill' or 'scraper')
     if (!currentConfig.platform_selectors) currentConfig.platform_selectors = {};
@@ -359,30 +365,49 @@ export async function patchConfigSelector(platform, section, field, newSelector)
 
     const existing = currentConfig.platform_selectors[platform][section][field];
     
-    // If it's an array (like TikTok views), prepend it and prune old entries
+    // If it's already an array, prepend and prune
     if (Array.isArray(existing)) {
         if (!existing.includes(newSelector)) {
             existing.unshift(newSelector);
             // Limit to the 5 most recent selectors to prevent array bloat
             if (existing.length > 5) existing.length = 5; 
         }
+    } else if (existing && existing !== newSelector) {
+        // Convert existing string to an array, preserving both with the new one first
+        currentConfig.platform_selectors[platform][section][field] = [newSelector, existing];
     } else {
         // Otherwise overwrite the string
         currentConfig.platform_selectors[platform][section][field] = newSelector;
     }
 
-    // 4. Upload the modified JSON back to the same file
-    const updatedJson = JSON.stringify(currentConfig, null, 2);
-    await safeFetchJson(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-        method: 'PATCH',
-        headers: { 
-            Authorization: `Bearer ${token}`, 
-            'Content-Type': 'application/json' 
-        },
-        body: updatedJson
-    });
+    // 4. Update with If-Match header to ensure no one else modified it in the meantime
+    try {
+        const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
+        const res = await fetch(url, {
+            method: 'PATCH',
+            headers: { 
+                Authorization: `Bearer ${token}`, 
+                'Content-Type': 'application/json',
+                'If-Match': currentEtag
+            },
+            body: JSON.stringify(currentConfig, null, 2)
+        });
 
-    return currentConfig;
+        if (res.status === 412) { // Precondition Failed: Someone else updated the file
+            if (retryCount < 5) {
+                const delay = Math.pow(2, retryCount) * 1000;
+                await new Promise(r => setTimeout(r, delay));
+                return await patchConfigSelector(platform, section, field, newSelector, retryCount + 1);
+            }
+            throw new Error("Conflict: Config was updated by another user. Please try again.");
+        }
+
+        if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+        return currentConfig;
+    } catch (error) {
+        console.error("Patch error:", error);
+        throw error;
+    }
 }
 
 /**
