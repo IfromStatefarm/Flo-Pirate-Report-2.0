@@ -304,13 +304,16 @@
         const nearInput = el.querySelector('input, button');
         if (nearInput) target = nearInput;
     }
-    // --- NEW: Uniqueness Check Helper ---
+    // --- Uniqueness Check Helper ---
     const isUnique = (sel) => {
         try {
             if (sel.startsWith('//')) {
                 return document.evaluate(sel, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null).snapshotLength === 1;
             }
-            return document.querySelectorAll(sel).length === 1;
+            // Check inside the local Shadow Root or Document
+            const root = target.getRootNode();
+            const context = (root instanceof ShadowRoot) ? root : document;
+            return context.querySelectorAll(sel).length === 1;
         } catch(e) { return false; }
     };
 
@@ -347,7 +350,7 @@
         if (isUnique(sel)) return sel;
     }
     // --- END SMART FALLBACK ---
-    
+
       // 3. Fallback to CSS path (Rigid but works if nothing else is available)
       let path = [];
       let current = target;
@@ -368,14 +371,16 @@
 
   function handleTrainingMouseOver(e) {
       if (!isTrainingMode) return;
-      e.target.style.outline = '3px dashed #ce0e2d';
-      e.target.style.cursor = 'crosshair';
+      const target = (e.composedPath && e.composedPath()[0]) || e.target;
+      target.style.outline = '3px dashed #ce0e2d';
+      target.style.cursor = 'crosshair';
   }
 
   function handleTrainingMouseOut(e) {
       if (!isTrainingMode) return;
-      e.target.style.outline = '';
-      e.target.style.cursor = '';
+      const target = (e.composedPath && e.composedPath()[0]) || e.target;
+      target.style.outline = '';
+      target.style.cursor = '';
   }
 
   // Inject a native UI right on the page to avoid Side Panel communication drops
@@ -454,8 +459,9 @@ ui.innerHTML = `
     if (!isTrainingMode) return;
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
 
-    const targetTag = e.target.tagName;
-    const isGeneric = ['DIV', 'SPAN', 'SECTION', 'MAIN', 'BODY'].includes(targetTag) && !e.target.getAttribute('role');
+    const target = (e.composedPath && e.composedPath()[0]) || e.target;
+    const targetTag = target.tagName;
+    const isGeneric = ['DIV', 'SPAN', 'SECTION', 'MAIN', 'BODY'].includes(targetTag) && !target.getAttribute('role');
 
     if (isGeneric) {
         const confirmNuke = confirm(`⚠️ FAT FINGER WARNING:\nYou just clicked a generic ${targetTag} element.\n\nMapping background containers usually breaks the auto-reporter for the whole team.\n\nAre you sure you want to map this?`);
@@ -478,9 +484,10 @@ ui.innerHTML = `
       document.removeEventListener('mouseout', handleTrainingMouseOut, true);
       document.removeEventListener('click', handleTrainingClick, true);
 
-      // Deep-scan to pierce through transparent overlays/wrappers
+      // Deep-scan to pierce through transparent overlays/wrappers and Shadow DOM
+      const shadowTarget = (e.composedPath && e.composedPath()[0]) || e.target;
       const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
-      const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || e.target;
+      const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || shadowTarget;
       const newSelector = generateStableSelector(actualTarget);
 
       console.log("PIRATE AI: Captured New Selector ->", newSelector);
