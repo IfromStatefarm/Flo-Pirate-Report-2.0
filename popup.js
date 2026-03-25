@@ -1,5 +1,5 @@
 let configData = null;
-const ALLOWED_EMAIL = "social@flosports.tv";
+const ALLOWED_EMAIL = "@flosports.tv";
 
 // --- SECURITY LOCK OVERLAY (Duplicated for Popup context) ---
 async function enforceIdentity() {
@@ -37,7 +37,7 @@ async function enforceIdentity() {
     const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
     const currentEmail = response && response.email ? response.email.toLowerCase().trim() : "";
 
-    if (currentEmail === ALLOWED_EMAIL) {
+    if (currentEmail.endsWith("@flosports.tv")) {
       overlay.style.display = 'none'; // Unlocked
       return true;
     } else {
@@ -61,8 +61,8 @@ async function enforceIdentity() {
 async function verifyAccessBeforeAction() {
     const response = await chrome.runtime.sendMessage({ action: 'checkUserIdentity' });
     const currentEmail = response && response.email ? response.email.toLowerCase().trim() : "";
-    if (currentEmail !== ALLOWED_EMAIL) {
-        enforceIdentity(); // Re-trigger lock
+    if (!currentEmail.endsWith("@flosports.tv")) {
+        enforceIdentity(); // Re-trigger lock if somehow bypassed
         return false;
     }
     return true;

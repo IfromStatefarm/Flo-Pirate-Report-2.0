@@ -5,7 +5,7 @@ let isCrawling = false;
 let consecutiveFailures = 0;
 let crawlQueue = [];
 let configData = null;
-const ALLOWED_EMAIL = "social@flosports.tv";
+const ALLOWED_EMAIL = "@flosports.tv";
 
 document.addEventListener('DOMContentLoaded', async () => {
   const loadingEl = document.getElementById('loading');
@@ -39,6 +39,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const closeRogueBtn = document.getElementById('closeRogueBtn');
   let currentRogueData = null;
   const rogueToggle = document.getElementById('rogueToggle');
+// Platform Repair Elements
+  const startTrainingBtn = document.getElementById('startTrainingBtn');
+  const repairPlatformSelect = document.getElementById('repairPlatformSelect');
+  const selectorPatchUI = document.getElementById('selectorPatchUI');
+  const capturedSelectorRaw = document.getElementById('capturedSelectorRaw');
+  const selectorFieldMap = document.getElementById('selectorFieldMap');
+  const saveSelectorBtn = document.getElementById('saveSelectorBtn');
+  const patchStatus = document.getElementById('patchStatus');
+  let currentCapturedPlatform = null;
 
   // 🚨 CRITICAL FIX: Escaping unclosed HTML tags 🚨
   // sidepanel.html is missing a few closing </div> tags, causing the Walkthrough UI to get trapped 
@@ -127,7 +136,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const currentEmail = emailRes && emailRes.email ? emailRes.email.toLowerCase().trim() : "";
     
-    if (currentEmail !== ALLOWED_EMAIL) {
+    if (!currentEmail.endsWith("@flosports.tv")) {
        if (loadingEl) {
            loadingEl.innerHTML = `⚠️ <strong>Access Restricted</strong><br>Logged in as: ${currentEmail || "Unknown"}<br>Required: ${ALLOWED_EMAIL}`;
            loadingEl.style.color = "red";
@@ -524,6 +533,88 @@ document.addEventListener('DOMContentLoaded', async () => {
       stopScanBtn.addEventListener('click', () => {
           chrome.runtime.sendMessage({ action: 'stopSheetScanner' });
           if (crawlStatusEl) crawlStatusEl.innerText = "Stopping scan...";
+      });
+  }
+  // --- PLATFORM REPAIR LOGIC ---
+  if (startTrainingBtn) {
+      startTrainingBtn.addEventListener('click', async () => {
+          const platform = repairPlatformSelect ? repairPlatformSelect.value : 'tiktok';
+          startTrainingBtn.innerText = "Recording...";
+          startTrainingBtn.disabled = true;
+          
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab) {
+              chrome.tabs.sendMessage(tab.id, { action: 'startSelectorTraining', platform }, (res) => {
+                  if (res && res.success) {
+                      startTrainingBtn.innerText = "Select Element on Page";
+                  } else {
+                      startTrainingBtn.innerText = "Error (Refresh Page)";
+                      setTimeout(() => { startTrainingBtn.innerText = "Record Selectors"; startTrainingBtn.disabled = false; }, 3000);
+                  }
+              });
+          }
+      });
+  }
+
+  // Listen for completed training from content script
+  chrome.runtime.onMessage.addListener((msg) => {
+      if (msg.action === 'selectorTrainingComplete') {
+          if (startTrainingBtn) {
+              startTrainingBtn.innerText = "Record Selectors";
+              startTrainingBtn.disabled = false;
+          }
+          
+          // Show the mapping UI instead of just alerting
+          currentCapturedPlatform = msg.platform;
+          if (capturedSelectorRaw) capturedSelectorRaw.value = msg.selector;
+          if (selectorPatchUI) selectorPatchUI.style.display = 'block';
+          if (patchStatus) patchStatus.innerText = "";
+      }
+  });
+
+  // --- SAVE PATCHED SELECTOR TO GOOGLE DRIVE ---
+  if (saveSelectorBtn) {
+      saveSelectorBtn.addEventListener('click', () => {
+          const field = selectorFieldMap ? selectorFieldMap.value : null;
+          const selector = capturedSelectorRaw ? capturedSelectorRaw.value : null;
+          const section = document.getElementById('selectorSectionMap') ? document.getElementById('selectorSectionMap').value : 'scraper';
+
+          if (!field || !selector || !currentCapturedPlatform) {
+              alert("Missing data for configuration patch.");
+              return;
+          }
+
+          saveSelectorBtn.disabled = true;
+          saveSelectorBtn.innerText = "Syncing to Cloud...";
+          if (patchStatus) patchStatus.innerText = "Updating events_config.json...";
+
+          chrome.runtime.sendMessage({
+              action: 'patchSelectorConfig',
+              platform: currentCapturedPlatform,
+              section: section,
+              field: field,
+              selector: selector
+          }, (res) => {
+              if (res && res.success) {
+                  if (patchStatus) {
+                      patchStatus.style.color = "green";
+                      patchStatus.innerText = "✅ Cloud Config Updated!";
+                  }
+                  setTimeout(() => {
+                      if (selectorPatchUI) selectorPatchUI.style.display = 'none';
+                      saveSelectorBtn.disabled = false;
+                      saveSelectorBtn.innerText = "Patch Cloud Config";
+                      if (patchStatus) patchStatus.style.color = "#b91c1c";
+                  }, 2500);
+              } else {
+                  if (patchStatus) {
+                      patchStatus.style.color = "red";
+                      patchStatus.innerText = "❌ Error: " + (res?.error || "Failed to update config");
+                  }
+                  saveSelectorBtn.disabled = false;
+                  saveSelectorBtn.innerText = "Try Again";
+              }
+          });
       });
   }
 

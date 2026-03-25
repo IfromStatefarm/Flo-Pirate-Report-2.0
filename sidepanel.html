@@ -233,6 +233,18 @@
       
       <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
   </div>
+   <!-- DEV TOOLS CARD -->
+  <div class="card auto-card" style="margin-top: 12px; border-color: #fca5a5;">
+    <h3 class="section-title" style="color: #b91c1c;">🔧 Platform Repair</h3>
+    <div class="hint">Click to train new selectors on the active page.</div>
+    <div class="flex-row">
+        <select id="repairPlatformSelect" style="flex: 1;">
+          <option value="tiktok">TikTok</option>
+          <option value="youtube">YouTube</option>
+        </select>
+        <button id="startTrainingBtn" class="btn btn-danger" style="width: auto; padding: 9px 12px;">Record Selectors</button>
+    </div>
+  </div>
 
   <!-- ROGUE WALKTHROUGH CONTAINER -->
   <div id="rogue-walkthrough" style="display: none; padding-top: 10px;">

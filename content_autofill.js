@@ -885,11 +885,12 @@
     }
 
     // ==========================================
-    // 4. LEGACY LOGIC (YOUTUBE, ETC)
+    // 4. STRATEGY LOGIC (YOUTUBE, ETC)
     // ==========================================
-     async function runYtStep1(data) {
+    async function runYtStep1(data) {
         console.log("📝 Running YouTube Step 1: Videos...");
         const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
+        const defaults = conf.defaults || {};
         
         // 1. IMPOSE THE 10 VIDEO LIMIT
         const infringingUrls = data.urls || [];
@@ -937,16 +938,28 @@
         }
 
         // Helper for YouTube inputs
-        const fillYtcpInput = (selector, val) => {
-            if (!val) return;
-            const el = document.querySelector(selector);
-            if (el) {
-                // Find inner input if targeting a wrapper
-                const innerInput = el.querySelector('input, textarea') || (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ? el : null);
-                if (innerInput) typeValue(innerInput, val);
-            } else {
+        const fillYtcpInput = (selectors, val) => {
+            if (!selectors || !val) return;
+            // Split comma-separated strings into an array to check each selector safely
+            const sels = typeof selectors === 'string' ? selectors.split(',').map(s => s.trim()) : selectors;
+            let found = false;
+            for (const sel of sels) {
+                let el = sel.startsWith('//') 
+                    ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+                    : document.querySelector(sel);
+                if (el) {
+                    // Find inner input if targeting a wrapper
+                    const innerInput = el.querySelector('input, textarea') || (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ? el : null);
+                    if (innerInput) {
+                        typeValue(innerInput, val);
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found && typeof selectors === 'string' && !selectors.includes(',')) {
                 // Fallback using xPath to find the input by label
-                fillByLabel(selector.replace(/[[\]'"]/g, ''), val);
+                fillByLabel(selectors.replace(/[[\]'"]/g, ''), val);
             }
         };
 
@@ -957,16 +970,25 @@
             await sleep(1000);
 
             const dds = conf.dropdowns || {};
+            
+            // 1. Fill the infringing YouTube URL first
+            const badInputSel = conf.inputs?.infringing_url || "YouTube URL of video to be removed";
+            fillYtcpInput(badInputSel, badUrl);
+            
+            // 2. Select dropdowns to reveal the hidden fields
             await selectYtcpDropdown(dds.type_work?.label || "Type of work", dds.type_work?.value || "Video");
             await selectYtcpDropdown(dds.subcategory?.label || "Subcategory", dds.subcategory?.value || "Internet video");
+            
+            // CRITICAL FIX: Select 'Source' BEFORE filling the Source URL so the box actually exists!
             await selectYtcpDropdown(dds.source?.label || "Source of my content", dds.source?.value || "From outside of YouTube");
+            await sleep(500); // Wait for the "My video URL" box to render on screen
+            
+            // 3. Now fill the FloSports source URL and Title
+            const sourceUrlSel = conf.inputs?.source_url || "My video URL";
+            fillYtcpInput(sourceUrlSel, data.sourceUrl || defaults.source_url);
 
-            const videoTitleSel = conf.inputs?.video_title?.[0] || conf.inputs?.video_title || "Video title";
+            const videoTitleSel = conf.inputs?.video_title || "Video title";
             fillYtcpInput(videoTitleSel, data.eventName || "FloSports Event");
-
-            const badInputSel = conf.inputs?.infringing_url?.[0] || conf.inputs?.infringing_url || "YouTube URL of video to be removed";
-            fillYtcpInput(badInputSel, badUrl);
-
             const locDropdown = dds.location || { label: "Location of infringing content", value: "Entire video" };
             await selectYtcpDropdown(locDropdown.label, locDropdown.value);
 
@@ -978,26 +1000,27 @@
         console.log("Filling copyright owner details...");
         const ownerInputs = conf.inputs || {};
         
-        await selectYtcpDropdown(conf.dropdowns?.affected_party?.label || "Affected party", conf.dropdowns?.affected_party?.value || "Myself");
+        await selectYtcpDropdown(conf.dropdowns?.affected_party?.label || "Relationship", conf.dropdowns?.affected_party?.value || "My company, organization, or client");
 
         fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", data.fullName || "FloSports");
-        fillYtcpInput(ownerInputs.phone || "Phone", "5122702356"); // FloSports Default
-        fillYtcpInput(ownerInputs.secondary_email || "Secondary email", data.email || "copyright@flosports.tv");
-        fillYtcpInput(ownerInputs.authority || "Relationship", "Authorized Representative");
+        fillYtcpInput(ownerInputs.phone || "Phone", defaults.phone || "5122702356"); // FloSports Default
+        fillYtcpInput(ownerInputs.secondary_email || "Secondary email", defaults.secondary_email || data.email || "copyright@flosports.tv");
+        fillYtcpInput(ownerInputs.authority || "Relationship", defaults.authority || "Authorized Representative");
         
         await selectYtcpDropdown(conf.dropdowns?.country?.label || "Country", conf.dropdowns?.country?.value || "United States");
 
-        fillYtcpInput(ownerInputs.street || "Street address", "301 Congress Ave #1500");
-        fillYtcpInput(ownerInputs.city || "City", "Austin");
-        await selectYtcpDropdown("State", "Texas");
-        fillYtcpInput(ownerInputs.zip || "Zip code", "78701");
+        fillYtcpInput(ownerInputs.street || "Street address", defaults.street || "301 Congress Ave #1500");
+        fillYtcpInput(ownerInputs.city || "City", defaults.city || "Austin");
+        await sleep(1000); // Give the form time to re-render after Country selection
+        fillYtcpInput(ownerInputs.state || "ytcp-form-textarea#state textarea, #state textarea", defaults.state || "TX");
+        fillYtcpInput(ownerInputs.zip || "Zip code", defaults.zip || "78701");
 
         // 4. REMOVAL OPTIONS & AGREEMENTS
         console.log("Checking agreements...");
         const preventCopies = document.querySelector(conf.checkboxes?.prevent_copies || 'ytcp-checkbox-lit[aria-label*="Prevent future copies"]');
         if (preventCopies && preventCopies.getAttribute('aria-checked') !== 'true') preventCopies.click();
 
-        const agreements = conf.checkboxes?.agreements || ["good faith", "accurate", "perjury"];
+        const agreements = conf.checkboxes?.agreements || ["good faith", "accurate", "abuse"];
         for (const text of agreements) {
             const xpath = `//ytcp-checkbox-lit[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
             const checkbox = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
@@ -1012,6 +1035,71 @@
         console.log("✅ YouTube Strategy Complete!");
     }
     
+    async function runYtStep2(data) {
+        console.log("📝 Running YouTube Step 2: Copyright owner...");
+        const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
+        const defaults = conf.defaults || {};
+
+        // Helper for YouTube inputs (updated to handle comma-separated strings safely!)
+        const fillYtcpInput = (selectors, val) => {
+            if (!selectors || !val) return;
+            const sels = typeof selectors === 'string' ? selectors.split(',').map(s => s.trim()) : selectors;
+            let found = false;
+            for (const sel of sels) {
+                let el = sel.startsWith('//') 
+                    ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+                    : document.querySelector(sel);
+                if (el) {
+                    const innerInput = el.querySelector('input, textarea') || (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ? el : null);
+                    if (innerInput) {
+                        typeValue(innerInput, val);
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found && typeof selectors === 'string' && !selectors.includes(',')) {
+                fillByLabel(selectors.replace(/[[\]'"]/g, ''), val);
+            }
+        };
+
+        async function selectYtcpDropdown(labelText, valueText) {
+            if (!labelText || !valueText) return;
+            const dropdowns = Array.from(document.querySelectorAll('ytcp-form-select'));
+            const targetDropdown = dropdowns.find(el => el.innerText.toLowerCase().includes(labelText.toLowerCase()));
+            if (targetDropdown) {
+                const trigger = targetDropdown.querySelector('#trigger');
+                if (trigger) {
+                    const currentVal = targetDropdown.querySelector('.dropdown-trigger-text')?.innerText || '';
+                    if (currentVal.toLowerCase().includes(valueText.toLowerCase())) return;
+                    trigger.click();
+                    await sleep(500); 
+                    const options = Array.from(document.querySelectorAll('tp-yt-paper-item, ytcp-text-dropdown-item'));
+                    const targetOption = options.find(opt => isVisible(opt) && opt.innerText.toLowerCase().includes(valueText.toLowerCase()));
+                    if (targetOption) { targetOption.click(); await sleep(500); } 
+                    else { trigger.click(); }
+                }
+            }
+        }
+
+        const dd = conf.dropdowns || {};
+        await selectYtcpDropdown(dd.affected_party?.label || "Relationship", dd.affected_party?.value || "My company, organization, or client");
+
+        const ownerInputs = conf.inputs || {};
+        fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", data.fullName || "FloSports");
+        fillYtcpInput(ownerInputs.phone || "Phone", defaults.phone || "5122702356");
+        fillYtcpInput(ownerInputs.secondary_email || "Secondary email", defaults.secondary_email || data.email || "copyright@flosports.tv");
+        fillYtcpInput(ownerInputs.authority || "Relationship", defaults.authority || "Authorized Representative");
+        
+        await selectYtcpDropdown(conf.dropdowns?.country?.label || "Country", conf.dropdowns?.country?.value || "United States");
+
+        fillYtcpInput(ownerInputs.street || "Street address", defaults.street || "301 Congress Ave #1500");
+        fillYtcpInput(ownerInputs.city || "City", defaults.city || "Austin");
+        await sleep(1000); // Give the form time to re-render after Country selection
+        fillYtcpInput(ownerInputs.state || "ytcp-form-textarea#state textarea, #state textarea", defaults.state || "TX");
+        fillYtcpInput(ownerInputs.zip || "Zip code", defaults.zip || "78701");
+    }
+    
     async function fillInstagram(data) {
         const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
         if(conf.name) {
@@ -1019,7 +1107,63 @@
             if(el) el.value = data.fullName;
         }
     }
-    
+    async function runYtStep3(data) {
+        console.log("📝 Running YouTube Step 3: Legal agreements...");
+        const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
+        const ownerInputs = conf.inputs || {};
+
+        const fillYtcpInput = (selectors, val) => {
+            if (!selectors || !val) return;
+            const sels = typeof selectors === 'string' ? selectors.split(',').map(s => s.trim()) : selectors;
+            for (const sel of sels) {
+                let el = sel.startsWith('//') 
+                    ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+                    : document.querySelector(sel);
+                if (el) {
+                    const innerInput = el.querySelector('input, textarea') || (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ? el : null);
+                    if (innerInput) {
+                        typeValue(innerInput, val);
+                        return;
+                    }
+                }
+            }
+        };
+
+        console.log("Selecting removal timing...");
+        const timingSelector = conf.radios?.standard_timing || "tp-yt-paper-radio-button#immediate-takedown-radio-button";
+        const timingRadios = timingSelector.split(',').map(s => s.trim());
+        for (const sel of timingRadios) {
+            const radio = document.querySelector(sel);
+            if (radio) {
+                if (radio.getAttribute('aria-checked') !== 'true') {
+                    radio.click();
+                }
+                break;
+            }
+        }
+
+        console.log("Checking agreements...");
+        let preventCopies = document.querySelector(conf.checkboxes?.prevent_copies || '[aria-label*="Prevent future copies"]');
+        if (!preventCopies) preventCopies = document.querySelector('[aria-label*="Prevent future copies"]');
+
+        if (preventCopies && preventCopies.getAttribute('aria-checked') !== 'true') {
+            preventCopies.click();
+            await sleep(800); // Wait for the "Worldwide exclusive rights" popup to render
+        }
+
+        const agreements = conf.checkboxes?.agreements || ["good faith", "accurate", "abuse"];
+        for (const text of agreements) {
+            const xpath = `//ytcp-checkbox-lit[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+            const checkbox = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            if (checkbox && checkbox.getAttribute('aria-checked') !== 'true') {
+                checkbox.click();
+            }
+        }
+        
+        fillYtcpInput(ownerInputs.signature || "Signature", data.fullName);
+
+        console.log("✅ YouTube Step 3 Complete!");
+    }
     async function fillTwitter(data) {
         const conf = AUTOFILL_CONFIG.twitter?.autofill || {};
         if(conf.name) {

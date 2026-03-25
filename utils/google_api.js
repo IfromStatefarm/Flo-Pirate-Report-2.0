@@ -330,6 +330,56 @@ export async function fetchConfig() {
     headers: { Authorization: `Bearer ${token}` }
   });
 }
+// --- NEW: UPDATE CONFIG FILE ON GOOGLE DRIVE ---
+export async function patchConfigSelector(platform, section, field, newSelector) {
+    const { driveRootId } = await getOptions();
+    if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
+    const token = await getAuthToken();
+    
+    // 1. Find the events_config.json file
+    const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
+    const searchData = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    if (!searchData.files || searchData.files.length === 0) {
+        throw new Error("Config file not found in Drive.");
+    }
+    const fileId = searchData.files[0].id;
+
+    // 2. Download the current JSON content
+    const currentConfig = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    // 3. Patch the JSON with the new selector using the provided section (e.g., 'autofill' or 'scraper')
+    if (!currentConfig.platform_selectors) currentConfig.platform_selectors = {};
+    if (!currentConfig.platform_selectors[platform]) currentConfig.platform_selectors[platform] = {};
+    if (!currentConfig.platform_selectors[platform][section]) currentConfig.platform_selectors[platform][section] = {};
+
+    const existing = currentConfig.platform_selectors[platform][section][field];
+    
+    // If it's an array (like TikTok views), prepend it so it's checked first
+    if (Array.isArray(existing)) {
+        if (!existing.includes(newSelector)) existing.unshift(newSelector);
+    } else {
+        // Otherwise overwrite the string
+        currentConfig.platform_selectors[platform][section][field] = newSelector;
+    }
+
+    // 4. Upload the modified JSON back to the same file
+    const updatedJson = JSON.stringify(currentConfig, null, 2);
+    await safeFetchJson(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+        method: 'PATCH',
+        headers: { 
+            Authorization: `Bearer ${token}`, 
+            'Content-Type': 'application/json' 
+        },
+        body: updatedJson
+    });
+
+    return currentConfig;
+}
 
 /**
  * Appends a row and automatically formats URLs in Column H as hyperlinks.
