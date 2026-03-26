@@ -226,66 +226,43 @@
                     }
                     if (el && isVisible(el) && !el.disabled) return el;
                 }
-                await sleep(200);
-            }
-            return null;
+                await sleep(200); // Slight delay to let React update states
         }
-
-    // ==========================================
-    //  CONFIG-DRIVEN AUTOFILL ENGINE
-    // ==========================================
-
-    function findElementBySelector(selector) {
-        if (!selector) return null;
-        try {
-            if (selector.startsWith('//') || selector.startsWith('(')) {
-                return document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-            }
-            return document.querySelector(selector);
-        } catch (e) { return null; }
     }
+// ==========================================
+//. ExecuteMacro playback engine
+//===========================================
 
-    async function executeConfigStep(platform, stepName, fieldMappings) {
-        console.log(`🔹 Executing Config-Driven Step: ${stepName}`);
-        const conf = AUTOFILL_CONFIG[platform.toLowerCase()]?.autofill || {};
-        
-        for (const mapping of fieldMappings) {
-            const { section, field, value, fallbackLabels } = mapping;
-            const strategies = conf[section]?.[field];
-            let fieldFilled = false;
 
-            if (strategies) {
-                const stratList = Array.isArray(strategies) ? strategies : [strategies];
-                
-                for (const strategy of stratList) {
-                    // Handle both string formats and {selector: "", action: ""} object formats
-                    const selector = typeof strategy === 'object' ? strategy.selector : strategy;
-                    const actionType = typeof strategy === 'object' ? strategy.action : (value !== undefined ? 'type' : 'click');
-
-                    const el = findElementBySelector(selector);
-                    if (el && isVisible(el)) {
-                        console.log(`   ✅ Config matched ${field} via ${selector}`);
-                        if (actionType === 'type' && value !== undefined) {
-                            typeValue(el, value);
-                            fieldFilled = true;
-                            break;
-                        } else if (actionType === 'click' || actionType === 'checkbox') {
-                            if (actionType === 'checkbox') checkReactCheckbox(el);
-                            else el.click();
-                            fieldFilled = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Fallback to label search if cloud config fails or hasn't been mapped yet
-            if (!fieldFilled && fallbackLabels && value !== undefined) {
-                console.log(`   ⚠️ Config missed ${field}. Attempting fallback labels...`);
-                fillByLabel(fallbackLabels, value);
-            }
-            await sleep(200); // Slight delay to let React update states
+    async function executeMacro(macroSteps) {
+        if (typeof macroSteps === 'string') {
+            try { macroSteps = JSON.parse(macroSteps); } catch(e) { return false; }
         }
+        if (!Array.isArray(macroSteps)) return false;
+        
+        console.log("▶️ Executing Macro Sequence...");
+        for (const step of macroSteps) {
+            if (step.delay) await sleep(step.delay);
+            
+            const el = step.selector.startsWith('//') 
+                ? document.evaluate(step.selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+                : document.querySelector(step.selector);
+                
+            if (!el) {
+                console.warn(`⚠️ Macro step failed: Could not find ${step.selector}`);
+                continue;
+            }
+            
+            if (step.action === 'click') {
+                el.scrollIntoView({block: 'center', behavior: 'smooth'});
+                el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                el.click();
+            } else if (step.action === 'input' || step.action === 'type') {
+                typeValue(el, step.value);
+            }
+        }
+        return true;
     }
 
     // ==========================================

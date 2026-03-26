@@ -555,6 +555,18 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
       });
   }
+if (selectorPatchUI) selectorPatchUI.style.display = 'block';
+  const startMacroBtn = document.getElementById('startMacroBtn');
+  if (startMacroBtn) {
+      startMacroBtn.addEventListener('click', async () => {
+          const platform = repairPlatformSelect ? repairPlatformSelect.value : 'tiktok';
+          startMacroBtn.innerText = "Recording (5s)...";
+          startMacroBtn.disabled = true;
+          
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab) chrome.tabs.sendMessage(tab.id, { action: 'startMacroTraining', platform });
+      });
+  }
 
   // Listen for completed training from content script
   chrome.runtime.onMessage.addListener((msg) => {
@@ -567,6 +579,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           // Show the mapping UI instead of just alerting
           currentCapturedPlatform = msg.platform;
           if (capturedSelectorRaw) capturedSelectorRaw.value = msg.selector;
+          if (selectorPatchUI) selectorPatchUI.style.display = 'block';
+          if (patchStatus) patchStatus.innerText = "";
+      }
+
+      if (msg.action === 'macroTrainingComplete') {
+          if (startMacroBtn) {
+              startMacroBtn.innerText = "Record Macro";
+              startMacroBtn.disabled = false;
+          }
+          currentCapturedPlatform = msg.platform;
+          if (capturedSelectorRaw) capturedSelectorRaw.value = JSON.stringify(msg.macro);
           if (selectorPatchUI) selectorPatchUI.style.display = 'block';
           if (patchStatus) patchStatus.innerText = "";
       }

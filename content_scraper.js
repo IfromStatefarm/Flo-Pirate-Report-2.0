@@ -389,6 +389,7 @@ function showPatchUI(platform, selector) {
               <option value="click">Click</option>
               <option value="type">Type Text</option>
               <option value="dropdown">Select Dropdown</option>
+              <option value="macro">Macro Sequence</option>
           </select>
           
           <div style="display: flex; justify-content: space-between;">
@@ -521,6 +522,50 @@ function showPatchUI(platform, selector) {
       console.log("PIRATE AI: Selector Training Mode ACTIVE");
   }
 
+  let isMacroMode = false;
+  let macroEvents = [];
+
+  function handleMacroEvent(e) {
+      if (!isMacroMode) return;
+      const target = (e.composedPath && e.composedPath()[0]) || e.target;
+      const selectors = generateStableSelector(target);
+      if (!selectors || selectors.length === 0) return;
+      
+      macroEvents.push({
+          action: e.type === 'click' ? 'click' : 'input',
+          selector: selectors[0],
+          value: e.type === 'input' ? target.value : undefined,
+          timestamp: Date.now()
+      });
+  }
+
+  function startMacroTraining(platform) {
+      if (isMacroMode) return;
+      isMacroMode = true;
+      trainingPlatform = platform;
+      macroEvents = [];
+      
+      document.addEventListener('click', handleMacroEvent, true);
+      document.addEventListener('input', handleMacroEvent, true);
+      console.log("PIRATE AI: Macro Recording Started for 5 seconds...");
+      
+      setTimeout(() => {
+          isMacroMode = false;
+          document.removeEventListener('click', handleMacroEvent, true);
+          document.removeEventListener('input', handleMacroEvent, true);
+          
+          const processedMacro = macroEvents.map((ev, i) => ({
+              action: ev.action, 
+              selector: ev.selector, 
+              value: ev.value, 
+              delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
+          }));
+          
+          showPatchUI(trainingPlatform, JSON.stringify(processedMacro));
+          chrome.runtime.sendMessage({ action: 'macroTrainingComplete', platform: trainingPlatform, macro: processedMacro }).catch(() => {});
+      }, 5000);
+  }
+
   // ==========================================
   // 2. MESSAGE LISTENER
   // ==========================================
@@ -534,6 +579,9 @@ function showPatchUI(platform, selector) {
       }
     } else if (request.action === 'startSelectorTraining') {
         startSelectorTraining(request.platform);
+        sendResponse({ success: true });
+    } else if (request.action === 'startMacroTraining') {
+        startMacroTraining(request.platform);
         sendResponse({ success: true });
     }
     return true;
