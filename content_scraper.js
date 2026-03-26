@@ -535,7 +535,34 @@
   
     let isMacroMode = false;
     let macroEvents = [];
-  
+    let macroEndTime = 0;
+    let macroTimerInt = null;
+    let macroTimeout = null;
+
+    const MACRO_STATE_KEY = 'flo_macro_state';
+
+    function saveMacroState() {
+        if (!isMacroMode) return;
+        localStorage.setItem(MACRO_STATE_KEY, JSON.stringify({
+            isRecording: true,
+            platform: trainingPlatform,
+            endTime: macroEndTime,
+            events: macroEvents
+        }));
+    }
+
+    function loadMacroState() {
+        try {
+            const data = localStorage.getItem(MACRO_STATE_KEY);
+            if (data) return JSON.parse(data);
+        } catch(e) {}
+        return null;
+    }
+
+    function clearMacroState() {
+        localStorage.removeItem(MACRO_STATE_KEY);
+    }
+
     function handleMacroEvent(e) {
         if (!isMacroMode) return;
         const target = (e.composedPath && e.composedPath()[0]) || e.target;
@@ -548,6 +575,7 @@
             value: e.type === 'input' ? target.value : undefined,
             timestamp: Date.now()
         });
+        saveMacroState();
     }
   
     function startMacroTraining(platform) {

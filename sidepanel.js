@@ -560,7 +560,7 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
   if (startMacroBtn) {
       startMacroBtn.addEventListener('click', async () => {
           const platform = repairPlatformSelect ? repairPlatformSelect.value : 'tiktok';
-          startMacroBtn.innerText = "Recording (5s)...";
+          startMacroBtn.innerText = "Recording (10s)...";
           startMacroBtn.disabled = true;
           
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -568,7 +568,7 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
       });
   }
 
-  // Listen for completed training from content script
+  // Listen for completed training from content script and show mapping UI with captured selector/macro data 
   chrome.runtime.onMessage.addListener((msg) => {
       if (msg.action === 'selectorTrainingComplete') {
           if (startTrainingBtn) {
