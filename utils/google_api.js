@@ -333,9 +333,13 @@ export async function fetchConfig() {
 /**
  * Patches the config file using etags to prevent race conditions.
  */
-export async function patchConfigSelector(platform, section, field, newSelector, retryCount = 0) {
+export async function patchConfigSelector(platform, section, field, newSelector, actionType, retryCount = 0) {
     const { driveRootId } = await getOptions();
     if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
+    
+    // Force fresh token to prevent 401s/hangs if SW idled during the recording phase
+    let cachedToken = await getAuthToken();
+    await new Promise(resolve => chrome.identity.removeCachedAuthToken({ token: cachedToken }, resolve));
     const token = await getAuthToken();
     
     // 1. Find the events_config.json file
@@ -364,20 +368,22 @@ export async function patchConfigSelector(platform, section, field, newSelector,
     if (!currentConfig.platform_selectors[platform][section]) currentConfig.platform_selectors[platform][section] = {};
 
     const existing = currentConfig.platform_selectors[platform][section][field];
+    const newEntry = actionType ? { "selector": newSelector, "action": actionType } : newSelector;
     
     // If it's already an array, prepend and prune
     if (Array.isArray(existing)) {
-        if (!existing.includes(newSelector)) {
-            existing.unshift(newSelector);
+        const isDuplicate = existing.some(item => (item.selector || item) === newSelector);
+        if (!isDuplicate) {
+            existing.unshift(newEntry);
             // Limit to the 5 most recent selectors to prevent array bloat
             if (existing.length > 5) existing.length = 5; 
         }
-    } else if (existing && existing !== newSelector) {
+    } else if (existing && (existing.selector || existing) !== newSelector) {
         // Convert existing string to an array, preserving both with the new one first
-        currentConfig.platform_selectors[platform][section][field] = [newSelector, existing];
+        currentConfig.platform_selectors[platform][section][field] = [newEntry, existing];
     } else {
         // Otherwise overwrite the string
-        currentConfig.platform_selectors[platform][section][field] = newSelector;
+        currentConfig.platform_selectors[platform][section][field] = newEntry;
     }
 
     // 4. Update with If-Match header to ensure no one else modified it in the meantime

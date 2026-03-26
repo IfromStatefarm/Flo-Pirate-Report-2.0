@@ -401,7 +401,8 @@ ui.innerHTML = `
     <h3 style="margin: 0 0 10px 0; color: #ce0e2d; font-size: 18px;">Map Captured Selector</h3>
     ${isGenericPath ? `<div style="background:#fff1f2; color:#be123c; padding:8px; border-radius:4px; font-size:11px; margin-bottom:10px; font-weight:bold;">⚠️ CAUTION: This selector looks generic. Ensure it targets an actual button or input.</div>` : ''}
     <p style="font-size: 12px; color: #666; margin-bottom: 5px;">Selector captured:</p>
-          <input type="text" readonly value='${selector.replace(/'/g, "&apos;")}' style="width: 100%; padding: 8px; margin-bottom: 12px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;">
+          <input type="text" id="flo-patch-selector-input" value='${selector.replace(/'/g, "&apos;")}' style="width: 100%; padding: 8px; margin-bottom: 6px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;">
+          <button id="flo-patch-test" style="background: #0288d1; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 12px;">Test Selector</button>
 
           <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section:</label>
           <select id="flo-patch-section" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
@@ -411,7 +412,14 @@ ui.innerHTML = `
 
           <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Field Name in Config:</label>
           <input type="text" id="flo-patch-field" placeholder="e.g., agreementCheckbox" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
-
+          
+          <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Action Type:</label>
+          <select id="flo-patch-action" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+              <option value="click">Click</option>
+              <option value="type">Type Text</option>
+              <option value="dropdown">Select Dropdown</option>
+          </select>
+          
           <div style="display: flex; justify-content: space-between;">
               <button id="flo-patch-cancel" style="background: #ccc; color: #333; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Cancel</button>
               <button id="flo-patch-save" style="background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Save to Cloud</button>
@@ -420,12 +428,28 @@ ui.innerHTML = `
       `;
 
       document.body.appendChild(ui);
-
       document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
+
+      document.getElementById('flo-patch-test').addEventListener('click', () => {
+          const testSel = document.getElementById('flo-patch-selector-input').value.trim();
+          const el = findElement(testSel);
+          const status = document.getElementById('flo-patch-status');
+          if (el) {
+              const origOutline = el.style.outline;
+              el.style.outline = '4px solid #0288d1';
+              status.innerText = "✅ Found! (Highlighted in blue)";
+              status.style.color = "green";
+              setTimeout(() => { el.style.outline = origOutline; }, 2000);
+          } else {
+              status.innerText = "❌ Element not found.";
+              status.style.color = "red";
+          }
+      });
 
       document.getElementById('flo-patch-save').addEventListener('click', () => {
           const section = document.getElementById('flo-patch-section').value;
           const field = document.getElementById('flo-patch-field').value.trim();
+          const actionType = document.getElementById('flo-patch-action').value;
 
           if (!field) {
               alert("Please enter a field name (e.g., agreementCheckbox).");
@@ -441,7 +465,8 @@ ui.innerHTML = `
               platform: platform,
               section: section,
               field: field,
-              selector: selector
+              selector: selector,
+              actionType: actionType
           }, (res) => {
               if (res && res.success) {
                   status.innerText = "✅ Cloud Config Updated!";

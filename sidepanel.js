@@ -578,6 +578,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const field = selectorFieldMap ? selectorFieldMap.value : null;
           const selector = capturedSelectorRaw ? capturedSelectorRaw.value : null;
           const section = document.getElementById('selectorSectionMap') ? document.getElementById('selectorSectionMap').value : 'scraper';
+          const actionType = document.getElementById('flo-patch-action') ? document.getElementById('flo-patch-action').value : 'click';
 
           if (!field || !selector || !currentCapturedPlatform) {
               alert("Missing data for configuration patch.");
@@ -593,7 +594,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               platform: currentCapturedPlatform,
               section: section,
               field: field,
-              selector: selector
+              selector: selector,
+              actionType: actionType
           }, (res) => {
               if (res && res.success) {
                   if (patchStatus) {

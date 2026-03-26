@@ -570,7 +570,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // --- PATCH SELECTOR LISTENER ---
   if (request.action === 'patchSelectorConfig') {
       // Added request.section so we can target 'autofill' (forms) or 'scraper' (views/handles)
-      patchConfigSelector(request.platform, request.section, request.field, request.selector)
+      patchConfigSelector(request.platform, request.section, request.field, request.selector, request.actionType)
           .then(config => sendResponse({ success: true, config }))
           .catch(error => sendResponse({ success: false, error: error.message }));
       return true;
