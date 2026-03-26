@@ -230,9 +230,8 @@
         }
     }
 // ==========================================
-//. ExecuteMacro playback engine
+//. --- MACRO PLAYBACK ENGINE ---
 //===========================================
-
 
     async function executeMacro(macroSteps) {
         if (typeof macroSteps === 'string') {
