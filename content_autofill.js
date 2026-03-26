@@ -210,61 +210,110 @@
     };
 
     async function waitForButton(variants, timeout) {
-        const start = Date.now();
-        if (!Array.isArray(variants)) variants = [variants];
-    
-        while (Date.now() - start < timeout) {
-            for (const v of variants) {
-                let el;
-                if (v.startsWith('//')) {
-                    try { el = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; } catch(e){}
-                } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
-                    try { el = document.querySelector(v); } catch(e){}
-                } else {
-                    const xpath = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${v.toLowerCase()}')]`;
-                    try { el = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; } catch(e){}
+            const start = Date.now();
+            if (!Array.isArray(variants)) variants = [variants];
+        
+            while (Date.now() - start < timeout) {
+                for (const v of variants) {
+                    let el;
+                    if (v.startsWith('//')) {
+                        try { el = document.evaluate(v, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; } catch(e){}
+                    } else if (v.includes('[') || v.includes('.') || v.includes('#')) {
+                        try { el = document.querySelector(v); } catch(e){}
+                    } else {
+                        const xpath = `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${v.toLowerCase()}')]`;
+                        try { el = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; } catch(e){}
+                    }
+                    if (el && isVisible(el) && !el.disabled) return el;
                 }
-                if (el && isVisible(el) && !el.disabled) return el;
+                await sleep(200);
             }
-            await sleep(200);
+            return null;
         }
-        return null;
+
+    // ==========================================
+    //  CONFIG-DRIVEN AUTOFILL ENGINE
+    // ==========================================
+
+    function findElementBySelector(selector) {
+        if (!selector) return null;
+        try {
+            if (selector.startsWith('//') || selector.startsWith('(')) {
+                return document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            }
+            return document.querySelector(selector);
+        } catch (e) { return null; }
+    }
+
+    async function executeConfigStep(platform, stepName, fieldMappings) {
+        console.log(`🔹 Executing Config-Driven Step: ${stepName}`);
+        const conf = AUTOFILL_CONFIG[platform.toLowerCase()]?.autofill || {};
+        
+        for (const mapping of fieldMappings) {
+            const { section, field, value, fallbackLabels } = mapping;
+            const strategies = conf[section]?.[field];
+            let fieldFilled = false;
+
+            if (strategies) {
+                const stratList = Array.isArray(strategies) ? strategies : [strategies];
+                
+                for (const strategy of stratList) {
+                    // Handle both string formats and {selector: "", action: ""} object formats
+                    const selector = typeof strategy === 'object' ? strategy.selector : strategy;
+                    const actionType = typeof strategy === 'object' ? strategy.action : (value !== undefined ? 'type' : 'click');
+
+                    const el = findElementBySelector(selector);
+                    if (el && isVisible(el)) {
+                        console.log(`   ✅ Config matched ${field} via ${selector}`);
+                        if (actionType === 'type' && value !== undefined) {
+                            typeValue(el, value);
+                            fieldFilled = true;
+                            break;
+                        } else if (actionType === 'click' || actionType === 'checkbox') {
+                            if (actionType === 'checkbox') checkReactCheckbox(el);
+                            else el.click();
+                            fieldFilled = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Fallback to label search if cloud config fails or hasn't been mapped yet
+            if (!fieldFilled && fallbackLabels && value !== undefined) {
+                console.log(`   ⚠️ Config missed ${field}. Attempting fallback labels...`);
+                fillByLabel(fallbackLabels, value);
+            }
+            await sleep(200); // Slight delay to let React update states
+        }
     }
 
     // ==========================================
-    // 2. DISCRETE STEP FUNCTIONS (MANUAL TRIGGERS)
+    // 2. DISCRETE STEP FUNCTIONS
     // ==========================================
 
     async function runStep1(data) {
         console.log("🔹 Step 1: Init Form & Email Verification");
 
         async function selectTuxDropdown(searchText) {
-            // Find all listbox trigger buttons
             const dropdowns = document.querySelectorAll('button[aria-haspopup="listbox"]');
             for (const dd of dropdowns) {
-                // If it already displays the value, we can skip
                 if (dd.innerText.toLowerCase().includes(searchText.toLowerCase())) return true;
                 
-                // Open the dropdown
                 dd.click(); 
-                await sleep(500); // Give the React Portal time to mount in the DOM
+                await sleep(500); 
                 
-                // Search for the option globally (handles Portal rendering at the bottom of <body>)
                 const xpath = `//div[@role="option" or @role="menuitem"]//text()[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${searchText.toLowerCase()}')]/parent::* | //li[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${searchText.toLowerCase()}')]`;
                 const option = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
                 
                 if (option) {
                     option.scrollIntoView({block: 'center', behavior: 'smooth'});
-                    
-                    // Emulate a human click explicitly on the option
                     option.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
                     option.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
                     option.click();
-                    
-                    await sleep(500); // Wait for the UI state to update and next box to appear
+                    await sleep(500); 
                     return true;
                 } else {
-                    // Click again to close it if the option wasn't found in this specific dropdown
                     dd.click(); 
                     await sleep(300);
                 }
@@ -272,46 +321,32 @@
             return false;
         }
 
-        // Click Target 1 (Initialize dropdowns for TikTok)
-        await selectTuxDropdown("copyright infringement");
+        const platform = "tiktok";
+        const conf = AUTOFILL_CONFIG[platform]?.autofill || {};
         
-        // Click Target 2 (The Next Box)
-        await selectTuxDropdown("i am the copyright owner");
+        // 1. Execute Dropdowns from Config or Fallback
+        const wizardSteps = conf.wizard_steps || ["copyright infringement", "i am the copyright owner"];
+        for (const stepText of wizardSteps) {
+            await selectTuxDropdown(stepText);
+        }
 
+        // 2. Execute Input Mapping
         const email = data.email || "copyright@flosports.tv";
+        await executeConfigStep(platform, "Step 1", [
+            { section: 'field_strategies', field: 'email', value: email, fallbackLabels: ['email'] }
+        ]);
         
-        let targetInput = document.querySelector('input[placeholder*="email" i]');
-        if (!targetInput) {
-            const labels = Array.from(document.querySelectorAll('p.field-title, label, .form-label'));
-            const targetLabel = labels.find(l => l.innerText.toLowerCase().includes('email') && isVisible(l));
-            if (targetLabel) {
-                const xpath = `following::input[not(@type='hidden') and not(@type='radio') and not(@type='checkbox')]`;
-                const iterator = document.evaluate(xpath, targetLabel, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
-                let node = iterator.iterateNext();
-                while (node) { 
-                    if (isVisible(node)) { targetInput = node; break; } 
-                    node = iterator.iterateNext(); 
-                }
-            }
-        }
-
-        if (targetInput && targetInput.value !== email) {
-            typeValue(targetInput, email);
-        }
-        
-        const nextBtn = await waitForButton(['Next', 'Continue', 'button.submit-button'], 500);
+        const nextBtn = await waitForButton(conf.buttons?.next || ['Next', 'Continue', 'button.submit-button'], 500);
         if (nextBtn && !nextBtn.disabled) {
             console.log("➡️ Clicking Next...");
-            nextBtn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-            nextBtn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
             nextBtn.click();
-            return true; // Successfully moved to the next page
+            return true; 
         }
         return false;
     }
 
     async function runStep2(data) {
-        console.log("🔹 Step 2: Personal Info");
+        const platform = "tiktok";
         const defaults = {
             company: "FloSports",
             phone: "5122702356",
@@ -319,18 +354,22 @@
             name: data.fullName
         };
         
-        fillByLabel(['your full name', 'nombre completo'], defaults.name);
-        fillByLabel(['name of the copyright owner', 'nombre del propietario'], defaults.company);
-        fillByLabel(['physical address', 'dirección física'], defaults.address);
-        fillByLabel(['phone number', 'número de teléfono'], defaults.phone);
+        // Map logical fields to their respective sections in the config and fallback labels
+        const fieldMappings = [
+            { section: 'field_strategies', field: 'name', value: defaults.name, fallbackLabels: ['your full name', 'nombre completo'] },
+            { section: 'field_strategies', field: 'company', value: defaults.company, fallbackLabels: ['name of the copyright owner', 'nombre del propietario'] },
+            { section: 'field_strategies', field: 'address', value: defaults.address, fallbackLabels: ['physical address', 'dirección física'] },
+            { section: 'field_strategies', field: 'phone', value: defaults.phone, fallbackLabels: ['phone number', 'número de teléfono'] }
+        ];
+
+        await executeConfigStep(platform, "Step 2", fieldMappings);
         
-        const nextBtn = await waitForButton(['Next', 'Continue', 'button.submit-button'], 500);
+        const conf = AUTOFILL_CONFIG[platform]?.autofill || {};
+        const nextBtn = await waitForButton(conf.buttons?.next || ['Next', 'Continue', 'button.submit-button'], 500);
         if (nextBtn && !nextBtn.disabled) {
             console.log("➡️ Clicking Next...");
-            nextBtn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-            nextBtn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
             nextBtn.click();
-            return true; // Successfully moved to the next page
+            return true;
         }
         return false;
     }

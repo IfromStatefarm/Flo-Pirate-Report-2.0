@@ -401,8 +401,6 @@ function showPatchUI(platform, selector) {
       document.body.appendChild(ui);
       document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
 
-      document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
-
     document.getElementById('flo-patch-test').addEventListener('click', () => {
         let testSel = document.getElementById('flo-patch-selector-input').value.trim();
         let el = findElement(testSel);
@@ -511,8 +509,6 @@ function showPatchUI(platform, selector) {
         selector: newSelectors[0]
     }).catch(() => {});
 }
-
-function startSelectorTraining(platform) {
 
   function startSelectorTraining(platform) {
       if (isTrainingMode) return;
