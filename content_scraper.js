@@ -287,284 +287,296 @@
     return null;
   }
 
-   // ==========================================
-  // 1.5 SELECTOR TRAINING (RECORD MODE)
-  // ==========================================
-  let isTrainingMode = false;
-  let trainingPlatform = null;
+    // ==========================================
+    // 1.5 SELECTOR TRAINING (RECORD MODE)
+    // ==========================================
+    let isTrainingMode = false;
+    let trainingPlatform = null;
+    
+    function generateStableSelector(el) {
+      let target = el;
+      // Aggressively seek the nearest logical interactive element within or above the click
+      const interactiveTarget = el.closest('button, input, textarea, select, a, label, [role="button"], [role="checkbox"]');
+      if (interactiveTarget) {
+          target = interactiveTarget;
+      } else {
+          // If they clicked near a checkbox but missed, find the nearest one inside the container
+          const nearInput = el.querySelector('input, button');
+          if (nearInput) target = nearInput;
+      }
   
-  function generateStableSelector(el) {
-    let target = el;
-    // Aggressively seek the nearest logical interactive element within or above the click
-    const interactiveTarget = el.closest('button, input, textarea, select, a, label, [role="button"], [role="checkbox"]');
-    if (interactiveTarget) {
-        target = interactiveTarget;
-    } else {
-        // If they clicked near a checkbox but missed, find the nearest one inside the container
-        const nearInput = el.querySelector('input, button');
-        if (nearInput) target = nearInput;
-    }
-
-    let strategies = [];
-
-    // Strategy 1: Data-Attribute Path (like [data-e2e])
-    if (target.hasAttribute('data-e2e')) {
-        strategies.push(`[data-e2e="${target.getAttribute('data-e2e')}"]`);
-    }
-    
-    // Strategy 2: ID-based Path
-    if (target.id) {
-        strategies.push(`#${target.id}`);
-    }
-    
-    // Strategy 3: Full CSS Path
-    let path = [];
-    let current = target;
-    while (current && current.nodeType === Node.ELEMENT_NODE) {
-        let selector = current.nodeName.toLowerCase();
-        if (current.id) { selector += `#${current.id}`; path.unshift(selector); break; }
-        let sibling = current, nth = 1;
-        while (sibling = sibling.previousElementSibling) { if (sibling.nodeName.toLowerCase() === selector) nth++; }
-        if (nth !== 1) selector += `:nth-of-type(${nth})`;
-        path.unshift(selector);
-        if (current.tagName.toLowerCase() === 'body') break;
-        current = current.parentNode;
-    }
-    strategies.push(path.join(' > '));
-
-    return strategies.filter(Boolean);
-}
-
-function handleTrainingMouseOver(e) {
-    if (!isTrainingMode) return;
-      const target = (e.composedPath && e.composedPath()[0]) || e.target;
-      target.style.outline = '3px dashed #ce0e2d';
-      target.style.cursor = 'crosshair';
+      let strategies = [];
+  
+      // Strategy 1: Data-Attribute Path (like [data-e2e])
+      if (target.hasAttribute('data-e2e')) {
+          strategies.push(`[data-e2e="${target.getAttribute('data-e2e')}"]`);
+      }
+      
+      // Strategy 2: ID-based Path
+      if (target.id) {
+          strategies.push(`#${target.id}`);
+      }
+      
+      // Strategy 3: Full CSS Path
+      let path = [];
+      let current = target;
+      while (current && current.nodeType === Node.ELEMENT_NODE) {
+          let selector = current.nodeName.toLowerCase();
+          if (current.id) { selector += `#${current.id}`; path.unshift(selector); break; }
+          let sibling = current, nth = 1;
+          while (sibling = sibling.previousElementSibling) { if (sibling.nodeName.toLowerCase() === selector) nth++; }
+          if (nth !== 1) selector += `:nth-of-type(${nth})`;
+          path.unshift(selector);
+          if (current.tagName.toLowerCase() === 'body') break;
+          current = current.parentNode;
+      }
+      strategies.push(path.join(' > '));
+  
+      return strategies.filter(Boolean);
   }
-
-  function handleTrainingMouseOut(e) {
+  
+  function handleTrainingMouseOver(e) {
       if (!isTrainingMode) return;
-      const target = (e.composedPath && e.composedPath()[0]) || e.target;
-      target.style.outline = '';
-      target.style.cursor = '';
-  }
-
-  // Inject a native UI right on the page to avoid Side Panel communication drops
-function showPatchUI(platform, selector) {
-    const existing = document.getElementById('flo-patch-ui');
-    if (existing) existing.remove();
-
-    // Setup strategies array
-    const strategyList = Array.isArray(selector) ? selector : [selector];
-    let currentStrategy = 0;
-    const initialSelector = strategyList[0] || '';
-
-    const ui = document.createElement('div');
-    ui.id = 'flo-patch-ui';
-    ui.style.cssText = `
-        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-        background: white; border: 3px solid #ce0e2d; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-        z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; width: 350px;
-    `;
-
-    const isGenericPath = initialSelector.includes('div') || initialSelector.includes('span');
-    ui.innerHTML = `
-        <h3 style="margin: 0 0 10px 0; color: #ce0e2d; font-size: 18px;">Map Captured Selector</h3>
-        ${isGenericPath ? `<div style="background:#fff1f2; color:#be123c; padding:8px; border-radius:4px; font-size:11px; margin-bottom:10px; font-weight:bold;">⚠️ CAUTION: This selector looks generic. Ensure it targets an actual button or input.</div>` : ''}
-        <p style="font-size: 12px; color: #666; margin-bottom: 5px;">Selector captured:</p>
-        <input type="text" id="flo-patch-selector-input" value='${initialSelector.replace(/'/g, "&apos;")}' style="width: 100%; padding: 8px; margin-bottom: 6px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;">
-        <button id="flo-patch-test" style="background: #0288d1; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 12px;">Test Selector</button>
-
-        <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section:</label>
-          <select id="flo-patch-section" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
-              <option value="autofill">Autofill (Forms, Checkboxes)</option>
-              <option value="scraper">Scraper (Views, Handles)</option>
-          </select>
-
-          <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Field Name in Config:</label>
-          <input type="text" id="flo-patch-field" placeholder="e.g., agreementCheckbox" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
-          
-          <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Action Type:</label>
-          <select id="flo-patch-action" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
-              <option value="click">Click</option>
-              <option value="type">Type Text</option>
-              <option value="dropdown">Select Dropdown</option>
-              <option value="macro">Macro Sequence</option>
-          </select>
-          
-          <div style="display: flex; justify-content: space-between;">
-              <button id="flo-patch-cancel" style="background: #ccc; color: #333; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Cancel</button>
-              <button id="flo-patch-save" style="background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Save to Cloud</button>
-          </div>
-          <div id="flo-patch-status" style="margin-top: 12px; font-size: 13px; font-weight: bold; text-align: center;"></div>
-      `;
-
-      document.body.appendChild(ui);
-      document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
-
-    document.getElementById('flo-patch-test').addEventListener('click', () => {
-        let testSel = document.getElementById('flo-patch-selector-input').value.trim();
-        let el = findElement(testSel);
-        const status = document.getElementById('flo-patch-status');
-
-        // Cycle through strategies if not found
-        if (!el && currentStrategy < strategyList.length - 1) {
-            currentStrategy++;
-            testSel = strategyList[currentStrategy];
-            document.getElementById('flo-patch-selector-input').value = testSel;
-            el = findElement(testSel);
-        }
-
-        if (el) {
-            const origOutline = el.style.outline;
-            el.style.outline = '4px solid #ce0e2d'; // Red highlight
-            console.log("PIRATE AI: Test Element Value/Text ->", el.value || el.innerText);
-            status.innerText = `✅ Found Strategy ${currentStrategy + 1}! (Highlighted in red)`;
-            status.style.color = "green";
-            setTimeout(() => { el.style.outline = origOutline; }, 2000);
-        } else {
-            status.innerText = "❌ All strategies failed. Please enter manually.";
-            status.style.color = "red";
-        }
-    });
-
-    document.getElementById('flo-patch-save').addEventListener('click', () => {
-        const section = document.getElementById('flo-patch-section').value;
-          const field = document.getElementById('flo-patch-field').value.trim();
-          const actionType = document.getElementById('flo-patch-action').value;
-
-          if (!field) {
-              alert("Please enter a field name (e.g., agreementCheckbox).");
-              return;
-          }
-
-          const status = document.getElementById('flo-patch-status');
-          status.innerText = "Syncing to Cloud...";
-          status.style.color = "#ce0e2d";
-
-          chrome.runtime.sendMessage({
-              action: 'patchSelectorConfig',
-              platform: platform,
-              section: section,
-              field: field,
-              selector: selector,
-              actionType: actionType
-          }, (res) => {
-              if (res && res.success) {
-                  status.innerText = "✅ Cloud Config Updated!";
-                  status.style.color = "green";
-                  setTimeout(() => ui.remove(), 2500);
-              } else {
-                  status.innerText = "❌ Failed: " + (res?.error || "Unknown error");
-                  status.style.color = "red";
-              }
-          });
-      });
-  }
-
-   function handleTrainingClick(e) {
-    if (!isTrainingMode) return;
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-
-    const target = (e.composedPath && e.composedPath()[0]) || e.target;
-    const targetTag = target.tagName;
-    const isGeneric = ['DIV', 'SPAN', 'SECTION', 'MAIN', 'BODY'].includes(targetTag) && !target.getAttribute('role');
-
-    if (isGeneric) {
-        const confirmNuke = confirm(`⚠️ FAT FINGER WARNING:\nYou just clicked a generic ${targetTag} element.\n\nMapping background containers usually breaks the auto-reporter for the whole team.\n\nAre you sure you want to map this?`);
-        if (!confirmNuke) {
-            e.target.style.outline = '';
-            return; // Exit without showing the Patch UI
-        }
+        const target = (e.composedPath && e.composedPath()[0]) || e.target;
+        target.style.outline = '3px dashed #ce0e2d';
+        target.style.cursor = 'crosshair';
     }
+  
+    function handleTrainingMouseOut(e) {
+        if (!isTrainingMode) return;
+        const target = (e.composedPath && e.composedPath()[0]) || e.target;
+        target.style.outline = '';
+        target.style.cursor = '';
+    }
+  
+    // Inject a native UI right on the page to avoid Side Panel communication drops
+  function showPatchUI(platform, selector) {
+      const existing = document.getElementById('flo-patch-ui');
+      if (existing) existing.remove();
+  
+      // Setup strategies array
+      const strategyList = Array.isArray(selector) ? selector : [selector];
+      let currentStrategy = 0;
+      const initialSelector = strategyList[0] || '';
       
-      e.target.style.outline = '';
-      e.target.style.cursor = '';
-      isTrainingMode = false;
+      // Identify if the payload is a Macro Array
+      const isMacro = typeof initialSelector === 'string' && initialSelector.trim().startsWith('[{');
+  
+      const ui = document.createElement('div');
+      ui.id = 'flo-patch-ui';
+      ui.style.cssText = `
+          position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+          background: white; border: 3px solid #ce0e2d; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+          z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; width: 350px;
+      `;
+  
+      // Ensure we don't accidentally flag macros as generic
+      const isGenericPath = !isMacro && (initialSelector.includes('div') || initialSelector.includes('span'));
       
-      // Visual feedback flash
-      const originalBg = e.target.style.backgroundColor;
-      e.target.style.backgroundColor = 'rgba(206, 14, 45, 0.3)';
-      setTimeout(() => e.target.style.backgroundColor = originalBg, 500);
-      
-       document.removeEventListener('mouseover', handleTrainingMouseOver, true);
-      document.removeEventListener('mouseout', handleTrainingMouseOut, true);
-      document.removeEventListener('click', handleTrainingClick, true);
-
-      // Deep-scan to pierce through transparent overlays/wrappers and Shadow DOM
-    const shadowTarget = (e.composedPath && e.composedPath()[0]) || e.target;
-    const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
-    const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || shadowTarget;
-    
-    const newSelectors = generateStableSelector(actualTarget);
-
-    console.log("PIRATE AI: Captured New Selectors ->", newSelectors);
-    
-    // Bring up the in-page UI so we don't rely on the side panel being open!
-    showPatchUI(trainingPlatform, newSelectors);
-    
-    // Attempt to update the side panel silently as a backup, ignoring dropped connections
-    chrome.runtime.sendMessage({
-        action: 'selectorTrainingComplete',
-        platform: trainingPlatform,
-        selector: newSelectors[0]
-    }).catch(() => {});
-}
-
-  function startSelectorTraining(platform) {
-      if (isTrainingMode) return;
-      isTrainingMode = true;
-      trainingPlatform = platform;
-      
-      document.addEventListener('mouseover', handleTrainingMouseOver, true);
-      document.addEventListener('mouseout', handleTrainingMouseOut, true);
-      document.addEventListener('click', handleTrainingClick, true);
-      console.log("PIRATE AI: Selector Training Mode ACTIVE");
-  }
-
-  let isMacroMode = false;
-  let macroEvents = [];
-
-  function handleMacroEvent(e) {
-      if (!isMacroMode) return;
-      const target = (e.composedPath && e.composedPath()[0]) || e.target;
-      const selectors = generateStableSelector(target);
-      if (!selectors || selectors.length === 0) return;
-      
-      macroEvents.push({
-          action: e.type === 'click' ? 'click' : 'input',
-          selector: selectors[0],
-          value: e.type === 'input' ? target.value : undefined,
-          timestamp: Date.now()
+      ui.innerHTML = `
+          <h3 style="margin: 0 0 10px 0; color: #ce0e2d; font-size: 18px;">Map Captured Selector</h3>
+          ${isGenericPath ? `<div style="background:#fff1f2; color:#be123c; padding:8px; border-radius:4px; font-size:11px; margin-bottom:10px; font-weight:bold;">⚠️ CAUTION: This selector looks generic. Ensure it targets an actual button or input.</div>` : ''}
+          <p style="font-size: 12px; color: #666; margin-bottom: 5px;">Selector captured:</p>
+          <input type="text" id="flo-patch-selector-input" value='${initialSelector.replace(/'/g, "&apos;")}' style="width: 100%; padding: 8px; margin-bottom: 6px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;">
+          <button id="flo-patch-test" style="background: #0288d1; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 12px;">Test Selector</button>
+  
+          <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section:</label>
+            <select id="flo-patch-section" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+                <option value="autofill">Autofill (Forms, Checkboxes)</option>
+                <option value="scraper">Scraper (Views, Handles)</option>
+            </select>
+  
+            <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Field Name in Config:</label>
+            <input type="text" id="flo-patch-field" placeholder="e.g., agreementCheckbox" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+            
+            <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Action Type:</label>
+            <select id="flo-patch-action" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+                <option value="click">Click</option>
+                <option value="type">Type Text</option>
+                <option value="dropdown">Select Dropdown</option>
+                <option value="macro">Macro Sequence</option>
+            </select>
+            
+            <div style="display: flex; justify-content: space-between;">
+                <button id="flo-patch-cancel" style="background: #ccc; color: #333; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Cancel</button>
+                <button id="flo-patch-save" style="background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Save to Cloud</button>
+            </div>
+            <div id="flo-patch-status" style="margin-top: 12px; font-size: 13px; font-weight: bold; text-align: center;"></div>
+        `;
+  
+        document.body.appendChild(ui);
+        document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
+  
+      document.getElementById('flo-patch-test').addEventListener('click', () => {
+          let testSel = document.getElementById('flo-patch-selector-input').value.trim();
+          let searchSel = testSel;
+          try { if (testSel.startsWith('[{')) searchSel = JSON.parse(testSel)[0]?.selector || testSel; } catch(e){}
+          let el = findElement(searchSel);
+          const status = document.getElementById('flo-patch-status');
+  
+          // Cycle through strategies if not found
+          if (!el && currentStrategy < strategyList.length - 1) {
+              currentStrategy++;
+              testSel = strategyList[currentStrategy];
+              document.getElementById('flo-patch-selector-input').value = testSel;
+              
+              searchSel = testSel;
+              try { if (testSel.startsWith('[{')) searchSel = JSON.parse(testSel)[0]?.selector || testSel; } catch(e){}
+              el = findElement(searchSel);
+          }
+  
+          if (el) {
+              const origOutline = el.style.outline;
+              el.style.outline = '4px solid #ce0e2d'; // Red highlight
+              console.log("PIRATE AI: Test Element Value/Text ->", el.value || el.innerText);
+              status.innerText = `✅ Found Strategy ${currentStrategy + 1}! (Highlighted in red)`;
+              status.style.color = "green";
+              setTimeout(() => { el.style.outline = origOutline; }, 2000);
+          } else {
+              status.innerText = "❌ All strategies failed. Please enter manually.";
+              status.style.color = "red";
+          }
       });
-  }
-
-  function startMacroTraining(platform) {
-      if (isMacroMode) return;
-      isMacroMode = true;
-      trainingPlatform = platform;
-      macroEvents = [];
+  
+      document.getElementById('flo-patch-save').addEventListener('click', () => {
+          const section = document.getElementById('flo-patch-section').value;
+            const field = document.getElementById('flo-patch-field').value.trim();
+            const actionType = document.getElementById('flo-patch-action').value;
+            const finalSelector = document.getElementById('flo-patch-selector-input').value.trim();
+  
+            if (!field) {
+                alert("Please enter a field name (e.g., agreementCheckbox).");
+                return;
+            }
+  
+            const status = document.getElementById('flo-patch-status');
+            status.innerText = "Syncing to Cloud...";
+            status.style.color = "#ce0e2d";
+  
+            chrome.runtime.sendMessage({
+                action: 'patchSelectorConfig',
+                platform: platform,
+                section: section,
+                field: field,
+                selector: finalSelector,
+                actionType: actionType
+            }, (res) => {
+                if (res && res.success) {
+                    status.innerText = "✅ Cloud Config Updated!";
+                    status.style.color = "green";
+                    setTimeout(() => ui.remove(), 2500);
+                } else {
+                    status.innerText = "❌ Failed: " + (res?.error || "Unknown error");
+                    status.style.color = "red";
+                }
+            });
+        });
+    }
+  
+     function handleTrainingClick(e) {
+      if (!isTrainingMode) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  
+      const target = (e.composedPath && e.composedPath()[0]) || e.target;
+      const targetTag = target.tagName;
+      const isGeneric = ['DIV', 'SPAN', 'SECTION', 'MAIN', 'BODY'].includes(targetTag) && !target.getAttribute('role');
+  
+      if (isGeneric) {
+          const confirmNuke = confirm(`⚠️ FAT FINGER WARNING:\nYou just clicked a generic ${targetTag} element.\n\nMapping background containers usually breaks the auto-reporter for the whole team.\n\nAre you sure you want to map this?`);
+          if (!confirmNuke) {
+              e.target.style.outline = '';
+              return; // Exit without showing the Patch UI
+          }
+      }
+        
+        e.target.style.outline = '';
+        e.target.style.cursor = '';
+        isTrainingMode = false;
+        
+        // Visual feedback flash
+        const originalBg = e.target.style.backgroundColor;
+        e.target.style.backgroundColor = 'rgba(206, 14, 45, 0.3)';
+        setTimeout(() => e.target.style.backgroundColor = originalBg, 500);
+        
+         document.removeEventListener('mouseover', handleTrainingMouseOver, true);
+        document.removeEventListener('mouseout', handleTrainingMouseOut, true);
+        document.removeEventListener('click', handleTrainingClick, true);
+  
+        // Deep-scan to pierce through transparent overlays/wrappers and Shadow DOM
+      const shadowTarget = (e.composedPath && e.composedPath()[0]) || e.target;
+      const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+      const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || shadowTarget;
       
-      document.addEventListener('click', handleMacroEvent, true);
-      document.addEventListener('input', handleMacroEvent, true);
-      console.log("PIRATE AI: Macro Recording Started for 5 seconds...");
+      const newSelectors = generateStableSelector(actualTarget);
+  
+      console.log("PIRATE AI: Captured New Selectors ->", newSelectors);
       
-      setTimeout(() => {
-          isMacroMode = false;
-          document.removeEventListener('click', handleMacroEvent, true);
-          document.removeEventListener('input', handleMacroEvent, true);
-          
-          const processedMacro = macroEvents.map((ev, i) => ({
-              action: ev.action, 
-              selector: ev.selector, 
-              value: ev.value, 
-              delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
-          }));
-          
-          showPatchUI(trainingPlatform, JSON.stringify(processedMacro));
-          chrome.runtime.sendMessage({ action: 'macroTrainingComplete', platform: trainingPlatform, macro: processedMacro }).catch(() => {});
-      }, 5000);
+      // Bring up the in-page UI so we don't rely on the side panel being open!
+      showPatchUI(trainingPlatform, newSelectors);
+      
+      // Attempt to update the side panel silently as a backup, ignoring dropped connections
+      chrome.runtime.sendMessage({
+          action: 'selectorTrainingComplete',
+          platform: trainingPlatform,
+          selector: newSelectors[0]
+      }).catch(() => {});
   }
+  
+    function startSelectorTraining(platform) {
+        if (isTrainingMode) return;
+        isTrainingMode = true;
+        trainingPlatform = platform;
+        
+        document.addEventListener('mouseover', handleTrainingMouseOver, true);
+        document.addEventListener('mouseout', handleTrainingMouseOut, true);
+        document.addEventListener('click', handleTrainingClick, true);
+        console.log("PIRATE AI: Selector Training Mode ACTIVE");
+    }
+  
+    let isMacroMode = false;
+    let macroEvents = [];
+  
+    function handleMacroEvent(e) {
+        if (!isMacroMode) return;
+        const target = (e.composedPath && e.composedPath()[0]) || e.target;
+        const selectors = generateStableSelector(target);
+        if (!selectors || selectors.length === 0) return;
+        
+        macroEvents.push({
+            action: e.type === 'click' ? 'click' : 'input',
+            selector: selectors[0],
+            value: e.type === 'input' ? target.value : undefined,
+            timestamp: Date.now()
+        });
+    }
+  
+    function startMacroTraining(platform) {
+        if (isMacroMode) return;
+        isMacroMode = true;
+        trainingPlatform = platform;
+        macroEvents = [];
+        
+        document.addEventListener('click', handleMacroEvent, true);
+        document.addEventListener('input', handleMacroEvent, true);
+        console.log("PIRATE AI: Macro Recording Started for 5 seconds...");
+        
+        setTimeout(() => {
+            isMacroMode = false;
+            document.removeEventListener('click', handleMacroEvent, true);
+            document.removeEventListener('input', handleMacroEvent, true);
+            
+            const processedMacro = macroEvents.map((ev, i) => ({
+                action: ev.action, 
+                selector: ev.selector, 
+                value: ev.value, 
+                delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
+            }));
+            
+            showPatchUI(trainingPlatform, JSON.stringify(processedMacro));
+            chrome.runtime.sendMessage({ action: 'macroTrainingComplete', platform: trainingPlatform, macro: processedMacro }).catch(() => {});
+        }, 5000);
+    }
+  
 
   // ==========================================
   // 2. MESSAGE LISTENER
