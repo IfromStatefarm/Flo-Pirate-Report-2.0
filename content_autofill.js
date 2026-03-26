@@ -204,8 +204,8 @@
         }
 
         if (targetInput && targetInput.value !== value) {
-            console.log(`   ✅ Found field by label: "${labelText}"`);
-            typeValue(targetInput, value);
+        console.log(`   ✅ Found field by label: "${labelTexts}"`); // ✅ FIXED
+        typeValue(targetInput, value);
         }
     };
 
@@ -267,6 +267,39 @@
     // ==========================================
     // 2. DISCRETE STEP FUNCTIONS
     // ==========================================
+
+    async function executeConfigStep(platform, stepName, mappings) {
+        const conf = AUTOFILL_CONFIG[platform]?.autofill || {};
+        for (const map of mappings) {
+            let filled = false;
+            const selectors = conf[map.section]?.[map.field];
+            if (selectors) {
+                const selArray = Array.isArray(selectors) ? selectors : [selectors];
+                for (let sel of selArray) {
+                    try {
+                        // Extract string if it's an object or Macro JSON
+                        if (typeof sel === 'object' && sel !== null) sel = sel.selector;
+                        if (typeof sel === 'string' && sel.trim().startsWith('[{')) {
+                            sel = JSON.parse(sel)[0]?.selector || sel;
+                        }
+
+                        let el = (typeof sel === 'string' && sel.startsWith('//'))
+                            ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+                            : document.querySelector(sel);
+                        
+                        if (el && isVisible(el)) {
+                            typeValue(el, map.value);
+                            filled = true;
+                            break;
+                        }
+                    } catch(e) {}
+                }
+            }
+            if (!filled && map.fallbackLabels) {
+                fillByLabel(map.fallbackLabels, map.value);
+            }
+        }
+    }
 
     async function runStep1(data) {
         console.log("🔹 Step 1: Init Form & Email Verification");
@@ -380,7 +413,23 @@
         const conf = AUTOFILL_CONFIG.tiktok?.autofill || {};
         if (conf.agreement) {
             console.log("☑️ Using Cloud Config Selector for Checkboxes:", conf.agreement);
-            document.querySelectorAll(conf.agreement).forEach(box => checkReactCheckbox(box));
+            const agreements = Array.isArray(conf.agreement) ? conf.agreement : [conf.agreement];
+            
+            agreements.forEach(item => {
+                try {
+                    // Extract the string whether it's an object {selector: '...'} or a Macro JSON string
+                    let selStr = (typeof item === 'object' && item !== null) ? item.selector : item;
+                    if (typeof selStr === 'string' && selStr.trim().startsWith('[{')) {
+                        selStr = JSON.parse(selStr)[0]?.selector || selStr;
+                    }
+                    
+                    if (typeof selStr === 'string') {
+                        document.querySelectorAll(selStr).forEach(box => checkReactCheckbox(box));
+                    }
+                } catch(e) {
+                    console.warn("Invalid agreement config:", e);
+                }
+            });
         }
 
         // --- 2. AGGRESSIVE CHECKBOX CLICKER ---
