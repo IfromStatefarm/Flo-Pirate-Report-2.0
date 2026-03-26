@@ -304,73 +304,39 @@
         const nearInput = el.querySelector('input, button');
         if (nearInput) target = nearInput;
     }
-    // --- Uniqueness Check Helper ---
-    const isUnique = (sel) => {
-        try {
-            if (sel.startsWith('//')) {
-                return document.evaluate(sel, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null).snapshotLength === 1;
-            }
-            // Check inside the local Shadow Root or Document
-            const root = target.getRootNode();
-            const context = (root instanceof ShadowRoot) ? root : document;
-            return context.querySelectorAll(sel).length === 1;
-        } catch(e) { return false; }
-    };
 
-       // 2. Specific attributes (Best reliability)
+    let strategies = [];
+
+    // Strategy 1: Data-Attribute Path (like [data-e2e])
     if (target.hasAttribute('data-e2e')) {
-        let sel = `[data-e2e="${target.getAttribute('data-e2e')}"]`;
-        if (isUnique(sel)) return sel;
+        strategies.push(`[data-e2e="${target.getAttribute('data-e2e')}"]`);
     }
     
+    // Strategy 2: ID-based Path
     if (target.id) {
-        let sel = `#${target.id}`;
-        if (isUnique(sel)) return sel;
+        strategies.push(`#${target.id}`);
     }
     
-    if (target.name) {
-        let sel = (target.type && (target.type === 'radio' || target.type === 'checkbox') && target.value) 
-            ? `input[name="${target.name}"][value="${target.value}"]` 
-            : `[name="${target.name}"]`;
-        if (isUnique(sel)) return sel;
+    // Strategy 3: Full CSS Path
+    let path = [];
+    let current = target;
+    while (current && current.nodeType === Node.ELEMENT_NODE) {
+        let selector = current.nodeName.toLowerCase();
+        if (current.id) { selector += `#${current.id}`; path.unshift(selector); break; }
+        let sibling = current, nth = 1;
+        while (sibling = sibling.previousElementSibling) { if (sibling.nodeName.toLowerCase() === selector) nth++; }
+        if (nth !== 1) selector += `:nth-of-type(${nth})`;
+        path.unshift(selector);
+        if (current.tagName.toLowerCase() === 'body') break;
+        current = current.parentNode;
     }
-    
-    if (target.hasAttribute('aria-label')) {
-        let sel = `[aria-label="${target.getAttribute('aria-label')}"]`;
-        if (isUnique(sel)) return sel;
-    }
-    // --- SMART FALLBACK ---
-    if (target.tagName === 'INPUT' && target.placeholder) {
-        let sel = `input[placeholder*="${target.placeholder.split(' ')[0]}"]`;
-        if (isUnique(sel)) return sel;
-    }
-    if (target.innerText && target.innerText.trim().length > 0 && target.innerText.trim().length < 50) {
-        const cleanText = target.innerText.trim().toLowerCase().replace(/'/g, "\\'");
-        let sel = `//${target.tagName.toLowerCase()}[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${cleanText}')]`;
-        if (isUnique(sel)) return sel;
-    }
-    // --- END SMART FALLBACK ---
+    strategies.push(path.join(' > '));
 
-      // 3. Fallback to CSS path (Rigid but works if nothing else is available)
-      let path = [];
-      let current = target;
-      while (current && current.nodeType === Node.ELEMENT_NODE) {
-          let selector = current.nodeName.toLowerCase();
-          if (current.id) { selector += `#${current.id}`; path.unshift(selector); break; }
-          let sibling = current, nth = 1;
-          while (sibling = sibling.previousElementSibling) { if (sibling.nodeName.toLowerCase() === selector) nth++; }
-          if (nth !== 1) selector += `:nth-of-type(${nth})`;
-            path.unshift(selector);
-            
-          // Stop traversing up if we hit a reasonable container limit
-          if (current.tagName.toLowerCase() === 'body') break;
-          current = current.parentNode;
-      }
-      return path.join(' > ');
-  }
+    return strategies.filter(Boolean);
+}
 
-  function handleTrainingMouseOver(e) {
-      if (!isTrainingMode) return;
+function handleTrainingMouseOver(e) {
+    if (!isTrainingMode) return;
       const target = (e.composedPath && e.composedPath()[0]) || e.target;
       target.style.outline = '3px dashed #ce0e2d';
       target.style.cursor = 'crosshair';
@@ -384,27 +350,32 @@
   }
 
   // Inject a native UI right on the page to avoid Side Panel communication drops
-  function showPatchUI(platform, selector) {
-      const existing = document.getElementById('flo-patch-ui');
-      if (existing) existing.remove();
+function showPatchUI(platform, selector) {
+    const existing = document.getElementById('flo-patch-ui');
+    if (existing) existing.remove();
 
-      const ui = document.createElement('div');
-      ui.id = 'flo-patch-ui';
-      ui.style.cssText = `
-          position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-          background: white; border: 3px solid #ce0e2d; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-          z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; width: 350px;
-      `;
+    // Setup strategies array
+    const strategyList = Array.isArray(selector) ? selector : [selector];
+    let currentStrategy = 0;
+    const initialSelector = strategyList[0] || '';
 
-      const isGenericPath = selector.includes('div') || selector.includes('span');
-ui.innerHTML = `
-    <h3 style="margin: 0 0 10px 0; color: #ce0e2d; font-size: 18px;">Map Captured Selector</h3>
-    ${isGenericPath ? `<div style="background:#fff1f2; color:#be123c; padding:8px; border-radius:4px; font-size:11px; margin-bottom:10px; font-weight:bold;">⚠️ CAUTION: This selector looks generic. Ensure it targets an actual button or input.</div>` : ''}
-    <p style="font-size: 12px; color: #666; margin-bottom: 5px;">Selector captured:</p>
-          <input type="text" id="flo-patch-selector-input" value='${selector.replace(/'/g, "&apos;")}' style="width: 100%; padding: 8px; margin-bottom: 6px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;">
-          <button id="flo-patch-test" style="background: #0288d1; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 12px;">Test Selector</button>
+    const ui = document.createElement('div');
+    ui.id = 'flo-patch-ui';
+    ui.style.cssText = `
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: white; border: 3px solid #ce0e2d; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; width: 350px;
+    `;
 
-          <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section:</label>
+    const isGenericPath = initialSelector.includes('div') || initialSelector.includes('span');
+    ui.innerHTML = `
+        <h3 style="margin: 0 0 10px 0; color: #ce0e2d; font-size: 18px;">Map Captured Selector</h3>
+        ${isGenericPath ? `<div style="background:#fff1f2; color:#be123c; padding:8px; border-radius:4px; font-size:11px; margin-bottom:10px; font-weight:bold;">⚠️ CAUTION: This selector looks generic. Ensure it targets an actual button or input.</div>` : ''}
+        <p style="font-size: 12px; color: #666; margin-bottom: 5px;">Selector captured:</p>
+        <input type="text" id="flo-patch-selector-input" value='${initialSelector.replace(/'/g, "&apos;")}' style="width: 100%; padding: 8px; margin-bottom: 6px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;">
+        <button id="flo-patch-test" style="background: #0288d1; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 12px;">Test Selector</button>
+
+        <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section:</label>
           <select id="flo-patch-section" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
               <option value="autofill">Autofill (Forms, Checkboxes)</option>
               <option value="scraper">Scraper (Views, Handles)</option>
@@ -430,24 +401,36 @@ ui.innerHTML = `
       document.body.appendChild(ui);
       document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
 
-      document.getElementById('flo-patch-test').addEventListener('click', () => {
-          const testSel = document.getElementById('flo-patch-selector-input').value.trim();
-          const el = findElement(testSel);
-          const status = document.getElementById('flo-patch-status');
-          if (el) {
-              const origOutline = el.style.outline;
-              el.style.outline = '4px solid #0288d1';
-              status.innerText = "✅ Found! (Highlighted in blue)";
-              status.style.color = "green";
-              setTimeout(() => { el.style.outline = origOutline; }, 2000);
-          } else {
-              status.innerText = "❌ Element not found.";
-              status.style.color = "red";
-          }
-      });
+      document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
 
-      document.getElementById('flo-patch-save').addEventListener('click', () => {
-          const section = document.getElementById('flo-patch-section').value;
+    document.getElementById('flo-patch-test').addEventListener('click', () => {
+        let testSel = document.getElementById('flo-patch-selector-input').value.trim();
+        let el = findElement(testSel);
+        const status = document.getElementById('flo-patch-status');
+
+        // Cycle through strategies if not found
+        if (!el && currentStrategy < strategyList.length - 1) {
+            currentStrategy++;
+            testSel = strategyList[currentStrategy];
+            document.getElementById('flo-patch-selector-input').value = testSel;
+            el = findElement(testSel);
+        }
+
+        if (el) {
+            const origOutline = el.style.outline;
+            el.style.outline = '4px solid #ce0e2d'; // Red highlight
+            console.log("PIRATE AI: Test Element Value/Text ->", el.value || el.innerText);
+            status.innerText = `✅ Found Strategy ${currentStrategy + 1}! (Highlighted in red)`;
+            status.style.color = "green";
+            setTimeout(() => { el.style.outline = origOutline; }, 2000);
+        } else {
+            status.innerText = "❌ All strategies failed. Please enter manually.";
+            status.style.color = "red";
+        }
+    });
+
+    document.getElementById('flo-patch-save').addEventListener('click', () => {
+        const section = document.getElementById('flo-patch-section').value;
           const field = document.getElementById('flo-patch-field').value.trim();
           const actionType = document.getElementById('flo-patch-action').value;
 
@@ -510,23 +493,26 @@ ui.innerHTML = `
       document.removeEventListener('click', handleTrainingClick, true);
 
       // Deep-scan to pierce through transparent overlays/wrappers and Shadow DOM
-      const shadowTarget = (e.composedPath && e.composedPath()[0]) || e.target;
-      const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
-      const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || shadowTarget;
-      const newSelector = generateStableSelector(actualTarget);
+    const shadowTarget = (e.composedPath && e.composedPath()[0]) || e.target;
+    const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+    const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || shadowTarget;
+    
+    const newSelectors = generateStableSelector(actualTarget);
 
-      console.log("PIRATE AI: Captured New Selector ->", newSelector);
-      
-      // Bring up the in-page UI so we don't rely on the side panel being open!
-      showPatchUI(trainingPlatform, newSelector);
-      
-      // Attempt to update the side panel silently as a backup, ignoring dropped connections
-      chrome.runtime.sendMessage({
-          action: 'selectorTrainingComplete',
-          platform: trainingPlatform,
-          selector: newSelector
-      }).catch(() => {});
-  }
+    console.log("PIRATE AI: Captured New Selectors ->", newSelectors);
+    
+    // Bring up the in-page UI so we don't rely on the side panel being open!
+    showPatchUI(trainingPlatform, newSelectors);
+    
+    // Attempt to update the side panel silently as a backup, ignoring dropped connections
+    chrome.runtime.sendMessage({
+        action: 'selectorTrainingComplete',
+        platform: trainingPlatform,
+        selector: newSelectors[0]
+    }).catch(() => {});
+}
+
+function startSelectorTraining(platform) {
 
   function startSelectorTraining(platform) {
       if (isTrainingMode) return;
