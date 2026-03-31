@@ -432,6 +432,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (closerToggle) {
       closerToggle.addEventListener('change', async (e) => {
           const isChecked = e.target.checked;
+          chrome.storage.local.set({ closer_enabled: isChecked });
           
           if (closerToggleLabel) {
               closerToggleLabel.innerText = isChecked ? "On" : "Off";

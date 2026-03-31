@@ -966,13 +966,23 @@
   }
 
   let lastUrl = location.href; 
-  new MutationObserver(() => {
-    if (location.href !== lastUrl) {
-      lastUrl = location.href;
-      if (!document.getElementById('flo-overlay')) initOverlay();
-    }
-  }).observe(document, {subtree: true, childList: true});
-
-  setTimeout(initOverlay, 1500);
-
-})();
+      new MutationObserver(() => {
+        if (location.href !== lastUrl) {
+          lastUrl = location.href;
+          if (!document.getElementById('flo-overlay')) initOverlay();
+          
+          if (isMacroMode) finishMacroTraining(); // 🛑 Auto-stop on Lynx/SPA URL change
+        }
+      }).observe(document, {subtree: true, childList: true});
+  
+      // --- MACRO RECOVERY ON LOAD ---
+      const savedState = loadMacroState();
+      if (savedState && savedState.isRecording) {
+          trainingPlatform = savedState.platform;
+          macroEvents = savedState.events;
+          finishMacroTraining(); // 🛑 Auto-stop on Hard Reload/Crash
+      }
+  
+      setTimeout(initOverlay, 1500);
+  
+  })();

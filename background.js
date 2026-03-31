@@ -58,9 +58,10 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: 60 });
 });
 
-chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === ALARM_NAME) {
-    runSheetScanner(1); // Default to row 1 on auto-run
+    const { closer_enabled } = await chrome.storage.local.get('closer_enabled');
+    if (closer_enabled) runSheetScanner(1); // Default to row 1 on auto-run
   }
 });
 
