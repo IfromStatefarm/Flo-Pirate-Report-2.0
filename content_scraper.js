@@ -383,11 +383,20 @@
           <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section:</label>
             <select id="flo-patch-section" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
                 <option value="autofill">Autofill (Forms, Checkboxes)</option>
+                <option value="buttons">Buttons (Next, Send)</option>
                 <option value="scraper">Scraper (Views, Handles)</option>
             </select>
   
             <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Field Name in Config:</label>
-            <input type="text" id="flo-patch-field" placeholder="e.g., agreementCheckbox" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+            <input type="text" id="flo-patch-field" list="flo-field-suggestions" placeholder="e.g., next, send, email" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+            <datalist id="flo-field-suggestions">
+                <option value="next">
+                <option value="send">
+                <option value="email">
+                <option value="agreement">
+                <option value="urls">
+                <option value="views">
+            </datalist>
             
             <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Action Type:</label>
             <select id="flo-patch-action" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
@@ -539,69 +548,39 @@
     let macroTimerInt = null;
     let macroTimeout = null;
 
-    const MACRO_STATE_KEY = 'flo_macro_state';
-
-    function saveMacroState() {
-        if (!isMacroMode) return;
-        localStorage.setItem(MACRO_STATE_KEY, JSON.stringify({
-            isRecording: true,
-            platform: trainingPlatform,
-            endTime: macroEndTime,
-            events: macroEvents
-        }));
-    }
-
-    function loadMacroState() {
-        try {
-            const data = localStorage.getItem(MACRO_STATE_KEY);
-            if (data) return JSON.parse(data);
-        } catch(e) {}
-        return null;
-    }
-
-    function clearMacroState() {
-        localStorage.removeItem(MACRO_STATE_KEY);
-    }
-
     function handleMacroEvent(e) {
         if (!isMacroMode) return;
         const target = (e.composedPath && e.composedPath()[0]) || e.target;
         const selectors = generateStableSelector(target);
         if (!selectors || selectors.length === 0) return;
         
-        macroEvents.push({
+        const step = {
             action: e.type === 'click' ? 'click' : 'input',
             selector: selectors[0],
             value: e.type === 'input' ? target.value : undefined,
             timestamp: Date.now()
-        });
-        saveMacroState();
+        };
+        // Fire immediately to Service Worker (Dumb Sensor approach)
+        chrome.runtime.sendMessage({ action: 'recordMacroStep', step: step }).catch(() => {});
     }
   
     function startMacroTraining(platform) {
         if (isMacroMode) return;
         isMacroMode = true;
         trainingPlatform = platform;
-        macroEvents = [];
         
         document.addEventListener('click', handleMacroEvent, true);
         document.addEventListener('input', handleMacroEvent, true);
-        console.log("PIRATE AI: Macro Recording Started for 5 seconds...");
+        console.log("PIRATE AI: Real-Time Macro Stream Started...");
         
+        // Notify background to initialize session and handle the timeout logic robustly
+        chrome.runtime.sendMessage({ action: 'startMacroSession', platform: trainingPlatform }).catch(() => {});
+        
+        // We only detach listeners locally, state is safe in the SW
         setTimeout(() => {
             isMacroMode = false;
             document.removeEventListener('click', handleMacroEvent, true);
             document.removeEventListener('input', handleMacroEvent, true);
-            
-            const processedMacro = macroEvents.map((ev, i) => ({
-                action: ev.action, 
-                selector: ev.selector, 
-                value: ev.value, 
-                delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
-            }));
-            
-            showPatchUI(trainingPlatform, JSON.stringify(processedMacro));
-            chrome.runtime.sendMessage({ action: 'macroTrainingComplete', platform: trainingPlatform, macro: processedMacro }).catch(() => {});
         }, 5000);
     }
   

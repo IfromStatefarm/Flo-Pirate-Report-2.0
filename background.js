@@ -576,6 +576,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           .catch(error => sendResponse({ success: false, error: error.message }));
       return true;
   }
+  // --- NEW: MACRO REAL-TIME STREAMING ---
+  if (request.action === 'startMacroSession') {
+      chrome.storage.session.set({ activeMacroPlatform: request.platform, macroEvents: [] });
+      
+      // Service worker securely manages the compilation timeout
+      setTimeout(async () => {
+          const { macroEvents, activeMacroPlatform } = await chrome.storage.session.get(['macroEvents', 'activeMacroPlatform']);
+          if (!macroEvents || macroEvents.length === 0) return;
+          
+          const processedMacro = macroEvents.map((ev, i) => ({
+              action: ev.action, 
+              selector: ev.selector, 
+              value: ev.value, 
+              delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
+          }));
+          
+          // Broadcast completed macro to the Side Panel UI
+          chrome.runtime.sendMessage({ action: 'macroTrainingComplete', platform: activeMacroPlatform, macro: processedMacro }).catch(() => {});
+          chrome.storage.session.remove(['macroEvents', 'activeMacroPlatform']);
+      }, 5000);
+      return false;
+  }
+
+  if (request.action === 'recordMacroStep') {
+      // Append streaming step to session storage memory
+      chrome.storage.session.get('macroEvents').then((data) => {
+          const events = data.macroEvents || [];
+          events.push(request.step);
+          chrome.storage.session.set({ macroEvents: events });
+      });
+      return false;
+  }
 
   if (request.action === 'addToCart') {
     handleAddVideo(sender.tab, request.data).then(sendResponse);
