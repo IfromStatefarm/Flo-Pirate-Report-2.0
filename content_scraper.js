@@ -51,7 +51,7 @@
       // Suppress heavy logging
     }
   })();
-
+// Utility to check if the extension context is still valid (handles cases where the page might have navigated or reloaded)
   function isExtensionValid() {
     try { return !!chrome.runtime && !!chrome.runtime.id; } 
     catch (e) { return false; }
@@ -157,7 +157,7 @@
           return null; 
       }
 
-      // *** LAZY SCRAPING CHANGE ***
+      // *** SCRAPING CHANGE ***
       // We do NOT scrape views here anymore to avoid stale data.
       // Background.js will perform a fresh scrape before reporting.
       views = "PENDING";
@@ -627,6 +627,17 @@
           return; 
       }
       
+      // --- TRACK A: SCOUT SCORING ---
+      data.scoutScore = 10; // Standard Find
+      let parsedViews = 0;
+      const vStr = String(data.views || "0").toLowerCase();
+      if (vStr.includes('k')) parsedViews = parseFloat(vStr) * 1000;
+      else if (vStr.includes('m')) parsedViews = parseFloat(vStr) * 1000000;
+      else parsedViews = parseFloat(vStr.replace(/[^\d.]/g, '')) || 0;
+      
+      if (parsedViews > 10000) data.scoutScore += 25; // High-Impact Discovery
+      if (data.url.includes('/live/') || document.querySelector('[aria-label="LIVE"]')) data.scoutScore += 50; // Event Bonus (Live)
+      
       const originalText = "+ Add";
       btnAdd.innerText = "Capturing...";
       btnAdd.disabled = true;
@@ -671,7 +682,7 @@
                   }, 1500);
                   return;
               }
-
+              // --- HANDLE BACKGROUND RESPONSE ---
               if (res && res.status === 'whitelisted') {
                   alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
                   btnAdd.innerText = "Whitelisted";
@@ -683,9 +694,18 @@
                       btnAdd.style.backgroundColor = "#ce0e2d"; 
                   }, 2000);
               } else if (res && res.success) {
+                  // --- MILESTONE TOAST ---
+                  if (res.milestoneHit) {
+                      const toast = document.createElement('div');
+                      toast.style.cssText = "position:fixed; bottom:30px; right:30px; background:#ce0e2d; color:#fff; padding:15px 20px; border-radius:8px; font-weight:bold; box-shadow:0 6px 20px rgba(0,0,0,0.4); z-index:2147483647; font-family:sans-serif; pointer-events:none;";
+                      toast.innerHTML = `🎉 Milestone Unlocked!<br><span style="font-size:12px; font-weight:normal;">${res.milestoneMessage || "Pirate Spotted! Bonus Points Added."}</span>`;
+                      document.body.appendChild(toast);
+                      setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(() => toast.remove(), 500); }, 4000);
+                  }
+                  
                   btnAdd.innerText = "Saved!"; 
                   btnAdd.style.backgroundColor = "#4CAF50";
-                  setTimeout(() => { 
+                  setTimeout(() => {
                       btnAdd.innerText = originalText; 
                       btnAdd.disabled = false; 
                       btnAdd.style.backgroundColor = "#ce0e2d";
@@ -708,7 +728,7 @@
       }
   }
 
-
+// Check if the extension context is still valid (handles cases where the page might have navigated or reloaded)
   async function initOverlay() {
     if (document.getElementById('flo-overlay')) return;
     if (!isExtensionValid()) return;
@@ -925,7 +945,7 @@
       }
     }
   }
-
+// Listen for storage changes to update count in real-time across tabs and handle Nuke Button visibility
   if (isExtensionValid()) {
       try {
           chrome.storage.onChanged.addListener((changes, namespace) => {

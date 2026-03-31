@@ -144,6 +144,19 @@ document.addEventListener('DOMContentLoaded', async () => {
        return; 
     }
 
+    // Fetch User Stats & Leaderboard
+    chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
+        if (stats) {
+            document.getElementById('gamification-header').style.display = 'block';
+            document.getElementById('user-rank').innerText = stats.rank || 'Rookie Spotter';
+            document.getElementById('scout-points').innerText = stats.scoutPoints || 0;
+            document.getElementById('enforcer-points').innerText = stats.enforcerPoints || 0;
+            if(stats.leaderboard && stats.leaderboard.length > 0) {
+                document.getElementById('leaderboard-list').innerHTML = stats.leaderboard.map((u, i) => `<li><strong>#${i+1}</strong> ${u.name} - ${u.points} pts</li>`).join('');
+            }
+        }
+    });
+
     // Load Config
     const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
     if (response && response.success) {
@@ -173,6 +186,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           renderRogueWalkthrough(rogueRes.rogue_target_data);
       }
   });
+
+  // Dynamic Sync: Fetch Leaderboard stats periodically to keep UI fresh
+  setInterval(() => {
+      chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
+          if (stats && stats.leaderboard) {
+              document.getElementById('scout-points').innerText = stats.scoutPoints || 0;
+              document.getElementById('enforcer-points').innerText = stats.enforcerPoints || 0;
+              document.getElementById('leaderboard-list').innerHTML = stats.leaderboard.map((u, i) => `<li><strong>#${i+1}</strong> ${u.name} - ${u.points} pts</li>`).join('');
+          }
+      });
+  }, 30000);
 
   // 2. Event Listeners
   if (verticalSelect) {

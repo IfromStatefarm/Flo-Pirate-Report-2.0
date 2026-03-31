@@ -443,7 +443,8 @@ export async function appendToSheet(token, logData) {
         "DMCA takedown request",
         "Reported",
         "",
-        logData.reporterName || "Unknown",
+        logData.scoutedBy || logData.reporterName || "Unknown",
+        logData.enforcedBy || logData.reporterName || "Unknown",
       ]];
   }
 
@@ -769,4 +770,63 @@ export async function bulkAddToCart(items) {
     
     await chrome.storage.local.set({ 'piracy_cart': uniqueCart });
     return uniqueCart.length;
+}
+// ==========================================
+// 8. GAMIFICATION & LEADERBOARD (WEEKLY RESET)
+// ==========================================
+export async function fetchLeaderboardData(userEmail) {
+    const { reportSheetId } = await getOptions();
+    if (!reportSheetId) return null;
+    
+    const token = await getAuthToken();
+    const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
+
+    const range = `'${sheetName}'!A:O`;
+    const data = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${token}` } });
+    
+    const rows = data.values || [];
+    if (rows.length < 2) return { scoutPoints: 0, enforcerPoints: 0, leaderboard: [], rank: "Rookie Spotter" };
+
+    // Get Last Sunday Midnight Central Time
+    const ctDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+    ctDate.setDate(ctDate.getDate() - ctDate.getDay());
+    ctDate.setHours(0, 0, 0, 0);
+
+    const scores = {};
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row[0]) continue;
+        
+        // Only count rows that occurred on or after the most recent Sunday
+        if (new Date(row[0]) >= ctDate) {
+            const scout = (row[6] || "").trim().toLowerCase();     // Column G (Index 6)
+            const enforcer = (row[12] || "").trim().toLowerCase(); // Column M (Index 12)
+            
+            if (scout) {
+                if (!scores[scout]) scores[scout] = { s: 0, e: 0 };
+                scores[scout].s += parseInt(row[13]) || 0; // Col N (Scout Points)
+            }
+            if (enforcer) {
+                if (!scores[enforcer]) scores[enforcer] = { s: 0, e: 0 };
+                scores[enforcer].e += parseInt(row[14]) || 0; // Col O (Enforcer Points)
+            }
+        }
+    }
+
+    const emailLower = userEmail.toLowerCase();
+    const myStats = scores[emailLower] || { s: 0, e: 0 };
+    const total = myStats.s + myStats.e;
+    
+    let rank = "Rookie Spotter";
+    if (total > 500) rank = "Elite Sentinel";
+    else if (total > 200) rank = "Senior Investigator";
+    else if (total > 50) rank = "Junior Agent";
+
+    // Build Top 5 Leaderboard
+    const leaderboard = Object.keys(scores)
+        .map(email => ({ name: email.split('@')[0], points: scores[email].s + scores[email].e }))
+        .sort((a, b) => b.points - a.points)
+        .slice(0, 5);
+
+    return { scoutPoints: myStats.s, enforcerPoints: myStats.e, leaderboard, rank };
 }

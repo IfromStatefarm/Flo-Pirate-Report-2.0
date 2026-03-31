@@ -15,7 +15,8 @@ import {
   formatCellAsTakenDown,
   updateCellWithRichText,
   setColumnKRichText,
-  patchConfigSelector
+  patchConfigSelector,
+  fetchLeaderboardData
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
@@ -568,6 +569,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+
+  // --- GAMIFICATION LISTENER ---
+  if (request.action === 'getGamificationStats') {
+      getUserEmail().then(email => {
+          if (!email) return sendResponse(null);
+          fetchLeaderboardData(email).then(sendResponse).catch(e => {
+              console.error("Leaderboard fetch error:", e);
+              sendResponse(null);
+          });
+      });
+      return true;
+  }
   // --- PATCH SELECTOR LISTENER ---
   if (request.action === 'patchSelectorConfig') {
       // Added request.section so we can target 'autofill' (forms) or 'scraper' (views/handles)
@@ -737,7 +750,8 @@ async function handleAddVideo(tab, data) {
     const screenshotId = crypto.randomUUID();
     if (screenshotUrl) await saveImage(screenshotId, screenshotUrl);
 
-    const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null, timestamp: new Date().toISOString() };
+    const scoutedByEmail = await getUserEmail() || "Unknown";
+    const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null, timestamp: new Date().toISOString(), scoutedBy: scoutedByEmail };
     const storage = await chrome.storage.local.get('piracy_cart');
     let cart = storage.piracy_cart || [];
     
@@ -768,6 +782,8 @@ async function handleProcessNewItem(tab, data) {
     try {
         const isAuthorized = await checkIfAuthorized(data.platform, data.handle);
         if (isAuthorized) {
+            const userEmail = await getUserEmail() || "Unknown";
+            await appendToSheet(await getAuthToken(), { values: [new Date().toLocaleDateString("en-US"), data.vertical || "Unknown", "Penalty", data.platform, "N/A", "0", userEmail, data.url, "Whitelist Penalty", "Failed", "", userEmail, userEmail, -15, 0, "", "", "", "", "PENALTY"] });
             // If whitelisted, discard the screenshot in memory and stop
             return { success: false, status: 'whitelisted' };
         }
@@ -781,10 +797,11 @@ async function handleProcessNewItem(tab, data) {
         await saveImage(screenshotId, screenshotUrl);
     }
 
-    const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null, timestamp: new Date().toISOString() };
+    const scoutedByEmail = await getUserEmail() || "Unknown";
+    const newItem = { ...data, screenshotId: screenshotUrl ? screenshotId : null, timestamp: new Date().toISOString(), scoutedBy: scoutedByEmail };
+    
     const storage = await chrome.storage.local.get('piracy_cart');
     let cart = storage.piracy_cart || [];
-
     if (!cart.some(item => item.url === data.url)) {
       cart.push(newItem);
       await chrome.storage.local.set({ 'piracy_cart': cart });
@@ -805,6 +822,7 @@ async function handleBatchReport(formData) {
     let cart = storage.piracy_cart || [];
     const savedName = storage.last_reporter || "Unknown User";
     const finalReporterName = formData.reporterName || savedName;
+    const enforcedByEmail = await getUserEmail() || "Unknown";
 
     // --- PHASE 1: FRESH SCRAPE (LAZY LOADING) ---
     const updatedCart = [];
@@ -961,8 +979,18 @@ async function handleBatchReport(formData) {
       const pdfUpload = await uploadToDrive(token, yearFolderId, pdfName, pdfBlob, 'application/pdf');
 
       // 5. LOG TO SHEET
-      const appendResponse = await appendToSheet(token, { values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", "Generating Links...", finalReporterName, "", "", "", "", "", "", "", reportId] });
+      const streakRes = await chrome.storage.local.get(['streak_count', 'last_report_date']);
+      const currentStreak = streakRes.last_report_date === new Date(Date.now() - 86400000).toISOString().split('T')[0] ? (streakRes.streak_count || 0) + 1 : 1;
+      await chrome.storage.local.set({ streak_count: currentStreak, last_report_date: dateStr });
       
+      const xpMult = formData.eventConfig?.double_xp ? 2 : 1; // Bounty Event Check
+      const enforcerScore = ((items.length * 20) * xpMult) + (currentStreak >= 3 ? 50 : 0);
+      const scoutedByEmails = [...new Set(items.map(i => i.scoutedBy || "Unknown"))].join(', ');
+      const totalScoutScore = items.reduce((acc, item) => acc + ((item.scoutScore || 10) * xpMult), 0);
+      
+      const appendResponse = await appendToSheet(token, { 
+          values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", "Generating Links...", scoutedByEmails, enforcedByEmail, totalScoutScore, enforcerScore, "", "", "", "", reportId] 
+      });
       // 6. APPLY RICH TEXT LINKS TO COLUMN K
       const updatedRange = appendResponse?.updates?.updatedRange;
       if (updatedRange) {
@@ -1006,9 +1034,10 @@ async function handleUrlSave(data) {
 async function handleScanSheetForActiveLinks(platform, vertical, startRowUI = 1) {
     stopScannerSignal = false; // Reset signal
     try {
+        const scannerEmail = await getUserEmail() || "Unknown";
         const rows = await getColumnHDataWithFormatting();
         if (!rows || rows.length === 0) return { success: false, error: "Failed to fetch sheet data" };
-
+       
         let activeLinks = [];
         const startIdx = Math.max(0, startRowUI - 1);
         
@@ -1072,7 +1101,8 @@ async function handleScanSheetForActiveLinks(platform, vertical, startRowUI = 1)
                         platform: platform,
                         handle: handle,
                         views: "N/A", // Skip heavy view scraping on bulk runs
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        scoutedBy: `Auto-Scanner (${scannerEmail})`
                     });
                 }
                 await new Promise(r => setTimeout(r, 1000)); // Rate limit tab creation 
