@@ -148,11 +148,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
         if (stats) {
             document.getElementById('gamification-header').style.display = 'block';
-            document.getElementById('user-rank').innerText = stats.rank || 'Rookie Spotter';
+            document.getElementById('scout-rank').innerText = stats.scoutRank || 'Spotter';
+            document.getElementById('enforcer-rank').innerText = stats.enforcerRank || 'Agent';
             document.getElementById('scout-points').innerText = stats.scoutPoints || 0;
             document.getElementById('enforcer-points').innerText = stats.enforcerPoints || 0;
-            if(stats.leaderboard && stats.leaderboard.length > 0) {
-                document.getElementById('leaderboard-list').innerHTML = stats.leaderboard.map((u, i) => `<li><strong>#${i+1}</strong> ${u.name} - ${u.points} pts</li>`).join('');
+            
+            if (stats.mvp) document.getElementById('mvp-name').innerText = stats.mvp.name;
+            document.getElementById('team-takedowns').innerText = stats.teamTotal || 0;
+            
+            if (stats.teamTotal >= 1000 && !window.teamGoalMet) {
+                window.teamGoalMet = true;
+                new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
+                document.getElementById('gamification-header').style.backgroundColor = '#d1fae5';
+            }
+
+            if(stats.topScouts) {
+                document.getElementById('scout-leaderboard').innerHTML = stats.topScouts.map((u, i) => `<li><strong>#${i+1}</strong> <span style="text-transform:capitalize">${u.name}</span> - ${u.points} pts</li>`).join('');
+                document.getElementById('enforcer-leaderboard').innerHTML = stats.topEnforcers.map((u, i) => `<li><strong>#${i+1}</strong> <span style="text-transform:capitalize">${u.name}</span> - ${u.points} pts</li>`).join('');
             }
         }
     });
@@ -190,10 +202,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Dynamic Sync: Fetch Leaderboard stats periodically to keep UI fresh
   setInterval(() => {
       chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
-          if (stats && stats.leaderboard) {
+          if (stats && stats.topScouts) {
+              document.getElementById('scout-rank').innerText = stats.scoutRank || 'Spotter';
+              document.getElementById('enforcer-rank').innerText = stats.enforcerRank || 'Agent';
               document.getElementById('scout-points').innerText = stats.scoutPoints || 0;
               document.getElementById('enforcer-points').innerText = stats.enforcerPoints || 0;
-              document.getElementById('leaderboard-list').innerHTML = stats.leaderboard.map((u, i) => `<li><strong>#${i+1}</strong> ${u.name} - ${u.points} pts</li>`).join('');
+              
+              if (stats.mvp) document.getElementById('mvp-name').innerText = stats.mvp.name;
+              document.getElementById('team-takedowns').innerText = stats.teamTotal || 0;
+              
+              if (stats.teamTotal >= 1000 && !window.teamGoalMet) {
+                  window.teamGoalMet = true;
+                  new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
+                  document.getElementById('gamification-header').style.backgroundColor = '#d1fae5';
+              }
+
+              document.getElementById('scout-leaderboard').innerHTML = stats.topScouts.map((u, i) => `<li><strong>#${i+1}</strong> <span style="text-transform:capitalize">${u.name}</span> - ${u.points} pts</li>`).join('');
+              document.getElementById('enforcer-leaderboard').innerHTML = stats.topEnforcers.map((u, i) => `<li><strong>#${i+1}</strong> <span style="text-transform:capitalize">${u.name}</span> - ${u.points} pts</li>`).join('');
           }
       });
   }, 30000);

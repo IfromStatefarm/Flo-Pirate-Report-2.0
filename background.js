@@ -356,6 +356,12 @@ async function runSheetScanner(startRowUI = 1) {
             console.log(`Row ${i+1}: Resolved (All ${totalDead} links down).`);
             sendProgress(`Row ${i+1}: Resolved`, "Updating Sheet...");
             await updateRowStatus(i, "Resolved");
+            
+            // --- THE CLOSER: ACCURACY BONUS (CLEAN SWEEP) ---
+            if (deadCount > 0) {
+                // Grants +15 bonus enforcer points per newly confirmed dead link
+                await addEnforcerBonusPoints(i, deadCount * 15);
+            }
         } else if (activeCount > 0 && totalDead > 0) {
              console.log(`Row ${i+1}: Investigating (${activeCount} active, ${totalDead} down).`);
              sendProgress(`Row ${i+1}: Investigating`, `${totalDead} dead links struck.`);
@@ -983,7 +989,9 @@ async function handleBatchReport(formData) {
       const currentStreak = streakRes.last_report_date === new Date(Date.now() - 86400000).toISOString().split('T')[0] ? (streakRes.streak_count || 0) + 1 : 1;
       await chrome.storage.local.set({ streak_count: currentStreak, last_report_date: dateStr });
       
-      const xpMult = formData.eventConfig?.double_xp ? 2 : 1; // Bounty Event Check
+      // --- LIVE EVENT BOUNTY (DOUBLE XP) ---
+      const xpMult = formData.eventConfig?.double_xp ? 2 : 1; // Triggered via events_config.json
+      
       const enforcerScore = ((items.length * 20) * xpMult) + (currentStreak >= 3 ? 50 : 0);
       const scoutedByEmails = [...new Set(items.map(i => i.scoutedBy || "Unknown"))].join(', ');
       const totalScoutScore = items.reduce((acc, item) => acc + ((item.scoutScore || 10) * xpMult), 0);

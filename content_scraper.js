@@ -635,8 +635,13 @@
       else if (vStr.includes('m')) parsedViews = parseFloat(vStr) * 1000000;
       else parsedViews = parseFloat(vStr.replace(/[^\d.]/g, '')) || 0;
       
-      if (parsedViews > 10000) data.scoutScore += 25; // High-Impact Discovery
-      if (data.url.includes('/live/') || document.querySelector('[aria-label="LIVE"]')) data.scoutScore += 50; // Event Bonus (Live)
+      // --- TRACK A: SCOUT SCORING (GOLD MINE MULTIPLIER) ---
+      let baseScore = 10;
+      if (parsedViews >= 100000) data.scoutScore = baseScore * 5; // 5x Viral Pirate
+      else if (parsedViews >= 10000) data.scoutScore = baseScore * 2; // 2x High-Impact
+      else data.scoutScore = baseScore; // 1x Standard
+      
+      if (data.url.includes('/live/') || document.querySelector('[aria-label="LIVE"]')) data.scoutScore *= 2; // Live Event Bonus
       
       const originalText = "+ Add";
       btnAdd.innerText = "Capturing...";

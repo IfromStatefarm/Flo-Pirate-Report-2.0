@@ -692,6 +692,23 @@ export async function updateRowStatus(rowIndex, status) {
       await formatCellAsTakenDown(rowIndex);
   }
 }
+// --- THE CLOSER: ADD ENFORCER BONUS POINTS ---
+export async function addEnforcerBonusPoints(rowIndex, bonusPoints) {
+    const { reportSheetId } = await getOptions();
+    const token = await getAuthToken();
+    const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
+    
+    // Fetch current Enforcer Points (Column O / Index 14) and append the bonus
+    const range = `'${sheetName}'!O${rowIndex + 1}`;
+    const cellData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${token}` } });
+    
+    const currentScore = parseInt(cellData.values?.[0]?.[0]) || 0;
+    await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [[currentScore + bonusPoints]] })
+    });
+}
 
 export async function formatCellAsTakenDown(rowIndex) {
   const { reportSheetId } = await getOptions();
@@ -792,41 +809,55 @@ export async function fetchLeaderboardData(userEmail) {
     ctDate.setDate(ctDate.getDate() - ctDate.getDay());
     ctDate.setHours(0, 0, 0, 0);
 
-    const scores = {};
+    const scoutScores = {};
+    const enforcerScores = {};
+    const overallScores = {};
+
     for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
         if (!row[0]) continue;
         
         // Only count rows that occurred on or after the most recent Sunday
         if (new Date(row[0]) >= ctDate) {
-            const scout = (row[6] || "").trim().toLowerCase();     // Column G (Index 6)
-            const enforcer = (row[12] || "").trim().toLowerCase(); // Column M (Index 12)
+            let scout = (row[6] || "").trim().toLowerCase();     // Column G (Index 6)
+            let enforcer = (row[12] || "").trim().toLowerCase(); // Column M (Index 12)
             
+            scout = scout.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
+            enforcer = enforcer.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
+            
+            const sPts = parseInt(row[13]) || 0; // Col N (Scout Points)
+            const ePts = parseInt(row[14]) || 0; // Col O (Enforcer Points)
+
             if (scout) {
-                if (!scores[scout]) scores[scout] = { s: 0, e: 0 };
-                scores[scout].s += parseInt(row[13]) || 0; // Col N (Scout Points)
+                scoutScores[scout] = (scoutScores[scout] || 0) + sPts;
+                overallScores[scout] = (overallScores[scout] || 0) + sPts;
             }
             if (enforcer) {
-                if (!scores[enforcer]) scores[enforcer] = { s: 0, e: 0 };
-                scores[enforcer].e += parseInt(row[14]) || 0; // Col O (Enforcer Points)
+                enforcerScores[enforcer] = (enforcerScores[enforcer] || 0) + ePts;
+                overallScores[enforcer] = (overallScores[enforcer] || 0) + ePts;
             }
         }
     }
 
-    const emailLower = userEmail.toLowerCase();
-    const myStats = scores[emailLower] || { s: 0, e: 0 };
-    const total = myStats.s + myStats.e;
+    let emailLower = userEmail.toLowerCase();
+    emailLower = emailLower.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
+    const myStats = { s: scoutScores[emailLower] || 0, e: enforcerScores[emailLower] || 0 };
     
-    let rank = "Rookie Spotter";
-    if (total > 500) rank = "Elite Sentinel";
-    else if (total > 200) rank = "Senior Investigator";
-    else if (total > 50) rank = "Junior Agent";
+    let scoutRank = "Deckahnd";
+    if (myStats.s > 500) scoutRank = "First Mate";
+    else if (myStats.s > 100) scoutRank = "Captain";
 
-    // Build Top 5 Leaderboard
-    const leaderboard = Object.keys(scores)
-        .map(email => ({ name: email.split('@')[0], points: scores[email].s + scores[email].e }))
-        .sort((a, b) => b.points - a.points)
-        .slice(0, 5);
+    let enforcerRank = "Privateer";
+    if (myStats.e > 500) enforcerRank = "Plank Master";
+    else if (myStats.e > 100) enforcerRank = "Davy's Hand";
 
-    return { scoutPoints: myStats.s, enforcerPoints: myStats.e, leaderboard, rank };
+    const sortDesc = (obj) => Object.keys(obj).map(n => ({ name: n, points: obj[n] })).sort((a, b) => b.points - a.points);
+    const topScouts = sortDesc(scoutScores).slice(0, 5);
+    const topEnforcers = sortDesc(enforcerScores).slice(0, 5);
+    const overallLeaderboard = sortDesc(overallScores);
+    
+    const mvp = overallLeaderboard.length > 0 ? overallLeaderboard[0] : null;
+    const teamTotal = Object.values(enforcerScores).reduce((sum, pts) => sum + Math.floor(pts / 20), 0);
+
+    return { scoutPoints: myStats.s, enforcerPoints: myStats.e, topScouts, topEnforcers, overallLeaderboard, scoutRank, enforcerRank, mvp, teamTotal };
 }
