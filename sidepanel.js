@@ -57,11 +57,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (nukeBtn) document.body.appendChild(nukeBtn);
   if (nukeStatus) document.body.appendChild(nukeStatus);
 
-  // New Toggle Elements
+  // Toggle Elements
   const closerToggle = document.getElementById('closerToggle');
   const closerToggleLabel = document.getElementById('closerToggleLabel');
   const closerStatusEl = document.getElementById('closerStatus'); 
-  
+
+  // --- VERSION RELEASE NOTES ---
+  const currentVersion = chrome.runtime.getManifest().version;
+  chrome.storage.local.get(['last_seen_version'], (res) => {
+      if (res.last_seen_version !== currentVersion) {
+          alert(`🎉 What's New in v${currentVersion}!\n\nShoutout to Justin M. for catching that TikTok selector bug! We've patched it up and dropped +50 bonus points into your account.\n\nKeep hunting! 🏴‍☠️`);
+          chrome.storage.local.set({ last_seen_version: currentVersion });
+      }
+  });
   // --- Message Listener for Crawler & Closer ---
   chrome.runtime.onMessage.addListener((msg) => {
     // New listener for Double Tap progress
@@ -201,11 +209,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Dynamic Sync: Fetch Leaderboard stats periodically to keep UI fresh
   setInterval(() => {
-      chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
-          if (stats && stats.topScouts) {
-              document.getElementById('scout-rank').innerText = stats.scoutRank || 'Spotter';
-              document.getElementById('enforcer-rank').innerText = stats.enforcerRank || 'Agent';
-              document.getElementById('scout-points').innerText = stats.scoutPoints || 0;
+      // Fetch User Stats & Leaderboard
+    chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
+        if (stats) {
+            document.getElementById('gamification-header').style.display = 'block';
+
+            let themeColor = '#ce0e2d'; // Default Flo Red
+            if (stats.scoutRank === 'Sentinel' || stats.enforcerRank === 'The Purge') themeColor = '#9333ea'; // Diamond / Purple Tier
+            else if (stats.scoutRank === 'Pathfinder' || stats.enforcerRank === 'Sheriff') themeColor = '#fbbf24'; // Gold Tier
+            document.getElementById('gamification-header').style.borderColor = themeColor;
+
+            document.getElementById('scout-rank').innerText = stats.scoutRank || 'Spotter';
+            document.getElementById('enforcer-rank').innerText = stats.enforcerRank || 'Agent';
+            document.getElementById('scout-points').innerText = stats.scoutPoints || 0;
               document.getElementById('enforcer-points').innerText = stats.enforcerPoints || 0;
               
               if (stats.mvp) document.getElementById('mvp-name').innerText = stats.mvp.name;
@@ -475,6 +491,34 @@ document.addEventListener('DOMContentLoaded', async () => {
        copyUrlBtn.innerText = "Copied!";
        setTimeout(() => copyUrlBtn.innerText = "Copy 'Stolen From' URL", 2000);
     });
+  }
+
+  // --- BOUNTY EVENTS (DOUBLE XP) TOGGLE ---
+  const bountyBtn = document.getElementById('bountyBtn');
+  const bountyContainer = document.getElementById('bounty-list-container');
+  const bountyList = document.getElementById('bounty-list');
+  
+  if (bountyBtn) {
+      bountyBtn.addEventListener('click', () => {
+          if (bountyContainer.style.display === 'block') {
+              bountyContainer.style.display = 'none';
+              return;
+          }
+          bountyList.innerHTML = '';
+          let foundBounties = false;
+          if (configData && configData.verticals) {
+              configData.verticals.forEach(v => {
+                  (v.events || []).forEach(e => {
+                      if (e.double_xp) {
+                          foundBounties = true;
+                          bountyList.innerHTML += `<li><strong>${v.name}:</strong> ${e.eventName || e.name}</li>`;
+                      }
+                  });
+              });
+          }
+          if (!foundBounties) bountyList.innerHTML = '<li>No active bounties right now.</li>';
+          bountyContainer.style.display = 'block';
+      });
   }
 
   // --- TOGGLE CLOSER SCANNER LOGIC ---

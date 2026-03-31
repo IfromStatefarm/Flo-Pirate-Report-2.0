@@ -843,13 +843,20 @@ export async function fetchLeaderboardData(userEmail) {
     emailLower = emailLower.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
     const myStats = { s: scoutScores[emailLower] || 0, e: enforcerScores[emailLower] || 0 };
     
-    let scoutRank = "Deckahnd";
-    if (myStats.s > 500) scoutRank = "First Mate";
-    else if (myStats.s > 100) scoutRank = "Captain";
+    let scoutRank = "Deckhand";
+    if (myStats.s > 500) scoutRank = "Captain";
+    else if (myStats.s > 100) scoutRank = "First Mate";
 
     let enforcerRank = "Privateer";
-    if (myStats.e > 500) enforcerRank = "Plank Master";
-    else if (myStats.e > 100) enforcerRank = "Davy's Hand";
+    if (myStats.e > 500) enforcerRank = "Davy's Hand";
+    else if (myStats.e > 100) enforcerRank = "Plank Master";
+
+    // --- BETA TESTER PERK (PIONEER BADGE) ---
+    const { beta_opt_in } = await chrome.storage.sync.get('beta_opt_in');
+    if (beta_opt_in) {
+        scoutRank = `🚀 Pioneer ${scoutRank}`;
+        enforcerRank = `🚀 Pioneer ${enforcerRank}`;
+    }
 
     const sortDesc = (obj) => Object.keys(obj).map(n => ({ name: n, points: obj[n] })).sort((a, b) => b.points - a.points);
     const topScouts = sortDesc(scoutScores).slice(0, 5);

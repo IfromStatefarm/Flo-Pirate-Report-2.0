@@ -985,14 +985,22 @@ async function handleBatchReport(formData) {
       const pdfUpload = await uploadToDrive(token, yearFolderId, pdfName, pdfBlob, 'application/pdf');
 
       // 5. LOG TO SHEET
-      const streakRes = await chrome.storage.local.get(['streak_count', 'last_report_date']);
-      const currentStreak = streakRes.last_report_date === new Date(Date.now() - 86400000).toISOString().split('T')[0] ? (streakRes.streak_count || 0) + 1 : 1;
-      await chrome.storage.local.set({ streak_count: currentStreak, last_report_date: dateStr });
+      const streakRes = await chrome.storage.local.get(['streak_count', 'last_report_date', 'streak_freezes']);
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      let currentStreak = streakRes.streak_count || 0;
+      let freezes = streakRes.streak_freezes || 0;
       
-      // --- LIVE EVENT BOUNTY (DOUBLE XP) ---
-      const xpMult = formData.eventConfig?.double_xp ? 2 : 1; // Triggered via events_config.json
+      if (streakRes.last_report_date !== dateStr) {
+          if (streakRes.last_report_date === yesterday) currentStreak += 1;
+          else if (freezes > 0) { freezes -= 1; currentStreak += 1; }
+          else currentStreak = 1;
+          if (currentStreak > 0 && currentStreak % 5 === 0) freezes += 1;
+      }
+      await chrome.storage.local.set({ streak_count: currentStreak, last_report_date: dateStr, streak_freezes: freezes });
       
-      const enforcerScore = ((items.length * 20) * xpMult) + (currentStreak >= 3 ? 50 : 0);
+      const xpMult = formData.eventConfig?.double_xp ? 2 : 1; // Bounty Event Check
+      const queueMult = cart.length > 50 ? 1.2 : 1; // Dynamic Queue Bloat Bonus
+      const enforcerScore = Math.floor(((items.length * 20) * xpMult * queueMult)) + (currentStreak >= 3 ? 50 : 0);
       const scoutedByEmails = [...new Set(items.map(i => i.scoutedBy || "Unknown"))].join(', ');
       const totalScoutScore = items.reduce((acc, item) => acc + ((item.scoutScore || 10) * xpMult), 0);
       

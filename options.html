@@ -58,4 +58,24 @@
 
   <script src="options.js"></script>
 </body>
+<div class="form-group">
+    <label for="event_sheet_id">Event Config & Whitelist Sheet ID:</label>
+    <input type="text" id="event_sheet_id" placeholder="Paste the Spreadsheet ID here">
+    <div style="font-size: 11px; color: #666; margin-top: 4px;">
+      Required for Dynamic URLs and the "Handles White List" check.
+    </div>
+  </div>
+
+  <div class="form-group" style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 15px;">
+    <label style="color: #ce0e2d;">🔬 The Lab (Community & Beta)</label>
+    <label style="font-weight: normal; font-size: 13px; display: flex; align-items: center; gap: 8px;"><input type="checkbox" id="beta_opt_in" style="width: auto; margin: 0;"> Enable Experimental Scrapers (Rumble, Discord) - <em>Earn the Pioneer Badge!</em></label>
+    <div style="font-size: 11px; color: #666; margin-top: 8px;">
+      <strong>Wall of Fame (Bug Hunters & Feature Suggesters):</strong><br>
+      🏆 Justin M. (TikTok Selector Fix)<br>
+      🏆 Sarah T. (Double Tap Bulk Idea)
+    </div>
+  </div>
+
+  <button id="save">Save Settings</button>
+  <div id="status"></div>
 </html>
