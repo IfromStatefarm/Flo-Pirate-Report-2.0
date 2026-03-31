@@ -315,7 +315,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (eventInput) {
         eventInput.addEventListener('change', () => {
             const ev = window.currentEventMap && window.currentEventMap[eventInput.value.toLowerCase().trim()];
-            if (ev && sourceDisplay) sourceDisplay.value = Object.values(ev.urls).find(u => u) || "";
+            if (ev && sourceDisplay) {
+                sourceDisplay.value = Object.values(ev.urls).find(u => u) || "";
+                if (grabBtn) grabBtn.disabled = sourceDisplay.value.trim() !== "";
+            }
         });
         
         eventInput.addEventListener('keydown', (e) => {
@@ -331,18 +334,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (reporterInput) {
       reporterInput.addEventListener('change', () => {
-          chrome.storage.local.set({ last_reporter: reporterInput.value });
-      });
-  }
+            chrome.storage.local.set({ last_reporter: reporterInput.value });
+        });
+    }
 
-  if (grabBtn) {
-      grabBtn.addEventListener('click', async () => {
-          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          if (tab && tab.url) {
-              if (sourceDisplay) sourceDisplay.value = tab.url;
-          }
-      });
-  }
+    if (sourceDisplay && grabBtn) {
+        sourceDisplay.addEventListener('input', () => {
+            grabBtn.disabled = sourceDisplay.value.trim() !== "";
+        });
+    }
+
+    if (grabBtn) {
+        grabBtn.addEventListener('click', async () => {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab && tab.url) {
+                if (sourceDisplay) {
+                    sourceDisplay.value = tab.url;
+                    grabBtn.disabled = true;
+                }
+            }
+        });
+    }
 
   // --- ROGUE SITE SCRAPE LOGIC (Consolidated for all buttons) ---
   const handleNukeClick = async (btn) => {
@@ -384,7 +396,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
   };
 
-  if (nukeStreamBtn) nukeStreamBtn.addEventListener('click', () => handleNukeClick(nukeStreamBtn));
+  if (nukeStreamBtn) nukeStreamBtn.addEventListener('click', () => {
+      if (rogueToggle && !rogueToggle.checked) return; // Prevent click if Safety is ON
+      handleNukeClick(nukeStreamBtn);
+  });
   if (nukeBtn) nukeBtn.addEventListener('click', () => handleNukeClick(nukeBtn));
 
   // --- START REPORT LOGIC ---
@@ -793,6 +808,7 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
           nukeStreamBtn.style.backgroundColor = isChecked ? '#ce0e2d' : '#1a1a1a';
           nukeStreamBtn.style.color = 'white';
           nukeStreamBtn.innerText = isChecked ? '☢️ 3rd Party Site Safety OFF' : '🛡️ 3rd Party Safety: ON';
+          nukeStreamBtn.style.cursor = isChecked ? 'pointer' : 'not-allowed';
       });
 
       // Listen for toggle changes
@@ -801,6 +817,7 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
           chrome.storage.local.set({ showNukeButton: isChecked });
           nukeStreamBtn.style.backgroundColor = isChecked ? '#ce0e2d' : '#1a1a1a';
           nukeStreamBtn.innerText = isChecked ? '☢️ 3rd Party Site Safety OFF' : '🛡️ 3rd Party Safety: ON';
+          nukeStreamBtn.style.cursor = isChecked ? 'pointer' : 'not-allowed';
       });
   }
 });

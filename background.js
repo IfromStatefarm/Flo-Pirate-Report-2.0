@@ -12,7 +12,6 @@ import {
   checkIfAuthorized,
   getColumnHDataWithFormatting,
   updateRowStatus,
-  formatCellAsTakenDown,
   updateCellWithRichText,
   setColumnKRichText,
   patchConfigSelector,
