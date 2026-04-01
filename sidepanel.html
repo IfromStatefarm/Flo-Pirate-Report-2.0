@@ -278,19 +278,15 @@
   <div id="rogue-walkthrough" style="display: none; padding-top: 10px;">
     <h3 style="color: #1a1a1a; margin-top: 0;">Rogue Site Takedown</h3>
     <div style="font-size: 12px; margin-bottom: 10px;">
-      <strong>Step 1: Infrastructure Takedown</strong><br>
-      <textarea id="dmcaNotice" rows="8" style="width: 100%; margin-top: 5px; font-size: 11px; padding: 6px; box-sizing: border-box;" placeholder="DMCA Notice will generate here..."></textarea>
-      <button id="generateDmcaBtn" class="btn" style="background: #1a1a1a; padding: 8px;">Generate DMCA Email</button>
+      <strong>Scraped Data:</strong><br>
+      <textarea id="rogueScrapedData" rows="6" readonly style="width: 100%; margin-top: 5px; font-size: 11px; padding: 6px; box-sizing: border-box; background: #e5e7eb; color: #374151;"></textarea>
     </div>
     <div style="font-size: 12px; margin-bottom: 10px;">
-      <strong>Step 2: Hosting Lookup</strong><br>
-      <a href="https://lookup.icann.org/" target="_blank" style="color: #0288d1;">Open ICANN Lookup</a> (Find Host Abuse Email)
+      <strong>User Notes:</strong><br>
+      <textarea id="rogueUserNotes" rows="4" style="width: 100%; margin-top: 5px; font-size: 11px; padding: 6px; box-sizing: border-box;" placeholder="Enter details about the stream..."></textarea>
     </div>
-    <div style="font-size: 12px; margin-bottom: 10px;">
-      <strong>Step 3: Google De-index</strong><br>
-      <button id="googleDeindexBtn" class="btn" style="background: #4285f4; padding: 8px; margin-top: 5px;">Report to Google</button>
-    </div>
-    <button id="closeRogueBtn" class="btn" style="background: #ccc; color: #333; padding: 8px;">Cancel / Close</button>
+    <button id="saveRogueBtn" class="btn" style="background: #ce0e2d; color: white; padding: 8px; margin-bottom: 10px; width: 100%;">Save to Pirate Websites Sheet</button>
+    <button id="closeRogueBtn" class="btn" style="background: #ccc; color: #333; padding: 8px; width: 100%;">Cancel / Close</button>
   </div>
 
   <!-- Nuke Button -->

@@ -85,6 +85,9 @@ let sniffedNetworkTraffic = new Map();
 // 1. Catch WebSockets (C2 Infrastructure)
 chrome.webRequest.onBeforeRequest.addListener(
    (details) => {
+       const url = details.url.toLowerCase();
+       if (url.includes('flosports') || url.includes('varsity') || url.includes('milesplit')) return;
+       
        if (details.url.startsWith('wss://')) {
            sniffedNetworkTraffic.set(details.url, 'WebSocket/C2');
        }
@@ -95,7 +98,11 @@ chrome.webRequest.onBeforeRequest.addListener(
 // 2. Catch Video Pipes and resolve their Server IP
 chrome.webRequest.onResponseStarted.addListener(
     (details) => {
-        if (details.url.includes('.m3u8') || details.url.includes('.mp4') || details.url.includes('.ts')) {
+        const url = details.url.toLowerCase();
+        // Global Exclusion List: Ignore internal CDN segments
+        if (url.includes('flosports') || url.includes('varsity') || url.includes('milesplit') || url.includes('lom.flosports.net')) return;
+
+        if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts')) {
             // details.ip provides the actual resolved IP of the server delivering the payload
             sniffedNetworkTraffic.set(details.url, details.ip || 'IP Hidden/Cloudflare');
         }

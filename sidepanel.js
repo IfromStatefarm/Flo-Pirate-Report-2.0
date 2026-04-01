@@ -371,23 +371,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           const results = await chrome.scripting.executeScript({
               target: { tabId: tab.id },
               func: () => {
-                  // Video Tag Sniffing (deduplicated source tags)
-                  const rawVideos = Array.from(document.querySelectorAll('video, source')).map(v => v.src).filter(Boolean);
-                  const videos = [...new Set(rawVideos)];
-                  
-                  // Iframe Depth (deduplicated hosting providers)
-                  const rawIframes = Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean);
-                  const iframes = [...new Set(rawIframes)];
-                  
-                  // Metadata & Abuse Emails (deduplicated)
-                  const title = document.title;
-                  const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
-                  const rawEmails = document.body.innerText.match(emailRegex) || [];
-                  const emails = [...new Set(rawEmails)].filter(e => 
-                      e.toLowerCase().includes('abuse') || e.toLowerCase().includes('dmca')
-                  );
-                  
-                  return { videos, iframes, title, emails };
+                  return {
+                      title: document.title,
+                      url: window.location.href,
+                      iframes: [...new Set(Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean))],
+                      videos: [...new Set(Array.from(document.querySelectorAll('video, source')).map(v => v.src || v.srcset).filter(Boolean))],
+                      emails: [...new Set((document.body.innerText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || []).filter(e => e.toLowerCase().includes('abuse')))]
+                  };
               }
           });
 
@@ -762,24 +752,31 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
       });
   }
 
-  // --- ROGUE SITE WALKTHROUGH LOGIC ---
+ // --- ROGUE SITE WALKTHROUGH LOGIC ---
   function renderRogueWalkthrough(data) {
       currentRogueData = data;
       if (mainUiContainer) mainUiContainer.style.display = 'none';
       if (nukeBtn) nukeBtn.style.display = 'none'; // Hide Nuke button to keep UI clean
       if (rogueWalkthrough) rogueWalkthrough.style.display = 'block';
       
+      // 1. Format the raw forensic log for verification
+      const iframeSummary = (data?.iframes?.length > 0) ? data.iframes.map(i => `[IFRAME]: ${i}`).join('\n') : 'No Iframes';
+      const videoSummary = (data?.videos?.length > 0) ? data.videos.map(v => `[VIDEO/SRC]: ${v}`).join('\n') : 'No Video Tags';
+      const trafficSummary = (data?.networkTraffic?.length > 0) ? data.networkTraffic.map(t => `[NETWORK]: ${t.url} -> IP: ${t.ip}`).join('\n') : 'No Intercepted Traffic';
+      
+      const forensicLog = `SOURCE: ${data?.url || 'Unknown'}\n\n${iframeSummary}\n\n${videoSummary}\n\n${trafficSummary}`;
+      const logArea = document.getElementById('rogueScrapedData');
+      if (logArea) logArea.value = forensicLog;
+
+      // 2. Format the DMCA Notice
       const iframesStr = (data?.iframes?.length > 0) ? data.iframes.join('\n') : 'None found';
-      const videosStr = (data?.videos?.length > 0) ? data.videos.join('\n') : 'None found';
-      const trafficStr = (data?.networkTraffic?.length > 0) 
-          ? data.networkTraffic.map(t => `${t.ip} - ${t.url}`).join('\n') 
-          : 'None found';
+      const sniffedStr = (data?.networkTraffic?.length > 0) ? data.networkTraffic.map(t => t.url).join('\n') : 'None found';
+      const abuseEmails = (data?.emails?.length > 0) ? data.emails.join(', ') : '[INSERT ABUSE EMAIL]';
       const urlStr = data?.url || 'Unknown URL';
       
-      if (rogueScrapedData) {
-          rogueScrapedData.value = `URL: ${urlStr}\n\nIFRAMES:\n${iframesStr}\n\nVIDEOS:\n${videosStr}\n\nNETWORK TRAFFIC (IPs):\n${trafficStr}`;
+      if (dmcaNoticeArea) {
+          dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - FloSports\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of FloSports regarding unauthorized broadcasting of our copyrighted content.\n\nInfringing URL: ${urlStr}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\nFloSports Anti-Piracy Team`;
       }
-      if (rogueUserNotes) rogueUserNotes.value = ''; // Clear previous notes
   }
 
   chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -792,23 +789,47 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
       if (res.rogue_target_data) renderRogueWalkthrough(res.rogue_target_data);
   });
 
-  if (saveRogueBtn) {
-      saveRogueBtn.addEventListener('click', () => {
-          const notes = rogueUserNotes ? rogueUserNotes.value : '';
-          saveRogueBtn.innerText = "Saving to Sheet...";
-          saveRogueBtn.disabled = true;
+  if (generateDmcaBtn) {
+      generateDmcaBtn.addEventListener('click', () => {
+          const emails = (currentRogueData?.emails?.length > 0) ? currentRogueData.emails.join(',') : '';
+          const body = encodeURIComponent(dmcaNoticeArea ? dmcaNoticeArea.value : '');
+          window.open(`mailto:${emails}?subject=DMCA Takedown Notice - FloSports&body=${body}`);
+      });
+  }
+
+  if (googleDeindexBtn) googleDeindexBtn.addEventListener('click', () => window.open('https://reportcontent.google.com/'));
+
+  // Handle the 'Save to Sheets' action for rogue infrastructure
+  const rogueLogBtn = document.getElementById('saveRogueToSheetBtn');
+  if (rogueLogBtn) {
+      rogueLogBtn.addEventListener('click', () => {
+          if (!currentRogueData) return;
+          rogueLogBtn.innerText = "Logging...";
+          rogueLogBtn.disabled = true;
 
           chrome.runtime.sendMessage({ 
-              action: 'logRogueToSheet', 
-              data: currentRogueData, 
-              notes: notes 
+              action: "logToSheet", 
+              data: {
+                  ...currentRogueData,
+                  reporterName: reporterInput?.value || "Unknown",
+                  vertical: verticalSelect?.value || "Rogue Site",
+                  eventName: "Rogue Site Takedown",
+                  urls: [currentRogueData.url] // Packages as a single-entry list for compatibility
+              } 
           }, (res) => {
-              saveRogueBtn.innerText = "Saved!";
-              setTimeout(() => {
-                  saveRogueBtn.innerText = "Save to Pirate Websites Sheet";
-                  saveRogueBtn.disabled = false;
-                  if (closeRogueBtn) closeRogueBtn.click(); // Auto-close on success
-              }, 1500);
+              if (res?.success) {
+                  rogueLogBtn.innerText = "✅ Logged!";
+                  setTimeout(() => { 
+                      rogueLogBtn.innerText = "Log to Sheet"; 
+                      rogueLogBtn.disabled = false; 
+                  }, 2000);
+              } else {
+                  rogueLogBtn.innerText = "❌ Error";
+                  setTimeout(() => { 
+                      rogueLogBtn.innerText = "Log to Sheet"; 
+                      rogueLogBtn.disabled = false; 
+                  }, 2000);
+              }
           });
       });
   }
@@ -817,8 +838,18 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
       closeRogueBtn.addEventListener('click', () => {
           chrome.storage.local.remove('rogue_target_data');
           if (rogueWalkthrough) rogueWalkthrough.style.display = 'none';
-          if (mainUiContainer) mainUiContainer.style.display = 'flex'; // Restore container as flex
-          if (nukeBtn) nukeBtn.style.display = 'block'; // Bring Nuke button back
+          
+          // Restore the main UI container as a flex element
+          if (mainUiContainer) {
+              mainUiContainer.style.display = 'flex';
+          }
+          // Restore the Nuke button to the default view
+          if (nukeBtn) {
+              nukeBtn.style.display = 'block';
+          }
+          // Reset forensic log display
+          const logArea = document.getElementById('rogueScrapedData');
+          if (logArea) logArea.value = "";
       });
   }
 
