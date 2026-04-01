@@ -39,6 +39,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const closeRogueBtn = document.getElementById('closeRogueBtn');
   let currentRogueData = null;
   const rogueToggle = document.getElementById('rogueToggle');
+  const generateDmcaBtn = document.getElementById('generateDmcaBtn');
+  const dmcaNoticeArea = document.getElementById('dmcaNoticeArea');
+  const googleDeindexBtn = document.getElementById('googleDeindexBtn');
 // Platform Repair Elements
   const startTrainingBtn = document.getElementById('startTrainingBtn');
   const repairPlatformSelect = document.getElementById('repairPlatformSelect');
@@ -803,32 +806,38 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
   const rogueLogBtn = document.getElementById('saveRogueToSheetBtn');
   if (rogueLogBtn) {
       rogueLogBtn.addEventListener('click', () => {
-          if (!currentRogueData) return;
+          if (!currentRogueData) {
+              alert("No scraped data available to save.");
+              return;
+          }
+
+          // Explicitly grab the latest notes from the UI
+          const userNotes = document.getElementById('rogueUserNotes')?.value || "";
+
           rogueLogBtn.innerText = "Logging...";
           rogueLogBtn.disabled = true;
 
+          // Call the correct background action specifically built for rogue sites
           chrome.runtime.sendMessage({ 
-              action: "logToSheet", 
-              data: {
-                  ...currentRogueData,
-                  reporterName: reporterInput?.value || "Unknown",
-                  vertical: verticalSelect?.value || "Rogue Site",
-                  eventName: "Rogue Site Takedown",
-                  urls: [currentRogueData.url] // Packages as a single-entry list for compatibility
-              } 
+              action: "logRogueToSheet", 
+              data: currentRogueData,
+              notes: userNotes
           }, (res) => {
               if (res?.success) {
-                  rogueLogBtn.innerText = "✅ Logged!";
+                  rogueLogBtn.innerText = "✅ Saved!";
                   setTimeout(() => { 
-                      rogueLogBtn.innerText = "Log to Sheet"; 
+                      rogueLogBtn.innerText = "Save to Pirate Websites Sheet"; 
                       rogueLogBtn.disabled = false; 
-                  }, 2000);
+                      // Auto-close the walkthrough on success
+                      if (closeRogueBtn) closeRogueBtn.click();
+                  }, 1500);
               } else {
-                  rogueLogBtn.innerText = "❌ Error";
+                  rogueLogBtn.innerText = "❌ Error (See Console)";
+                  console.error("Rogue Log Error:", res?.error);
                   setTimeout(() => { 
-                      rogueLogBtn.innerText = "Log to Sheet"; 
+                      rogueLogBtn.innerText = "Save to Pirate Websites Sheet"; 
                       rogueLogBtn.disabled = false; 
-                  }, 2000);
+                  }, 2500);
               }
           });
       });

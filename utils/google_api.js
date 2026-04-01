@@ -99,8 +99,8 @@ function getColLetter(index) {
 
 export async function logRogueToSheet(token, data, userNotes) {
   const { eventSheetId } = await getOptions();
-  const domain = normalizeRogueDomain(data.url);
   const tabName = 'Pirate Websites';
+  const domain = normalizeRogueDomain(data.url);
   
   // 1. Fetch Row 1 to find if Domain Column already exists
   const headerData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!1:1`, { headers: { Authorization: `Bearer ${token}` } });
@@ -918,4 +918,20 @@ export async function fetchLeaderboardData(userEmail) {
     const teamTotal = Object.values(enforcerScores).reduce((sum, pts) => sum + Math.floor(pts / 20), 0);
 
     return { scoutPoints: myStats.s, enforcerPoints: myStats.e, topScouts, topEnforcers, overallLeaderboard, scoutRank, enforcerRank, mvp, teamTotal };
+}
+
+export async function submitSuggestionToSheet(token, text, userEmail) {
+    const { eventSheetId } = await getOptions();
+    if (!eventSheetId) throw new Error("Event Sheet ID not configured in Options.");
+
+    const now = new Date().toLocaleString("en-US");
+    // Values: Date, User, Suggestion/Bug Text
+    const values = [[now, userEmail, text]];
+    const range = `'Suggestions'!A1`;
+
+    return await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values })
+    });
 }

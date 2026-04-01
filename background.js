@@ -16,7 +16,9 @@ import {
   updateCellWithRichText,
   setColumnKRichText,
   patchConfigSelector,
-  fetchLeaderboardData
+  fetchLeaderboardData,
+  addEnforcerBonusPoints,
+  submitSuggestionToSheet
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
@@ -602,7 +604,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           .catch(error => sendResponse({ success: false, error: error.message }));
       return true;
   }
-  // --- NEW: MACRO REAL-TIME STREAMING ---
+  if (request.action === 'submitSuggestion') {
+      getAuthToken().then(async token => {
+          try {
+              const userEmail = await getUserEmail() || "Unknown User";
+              await submitSuggestionToSheet(token, request.text, userEmail);
+              sendResponse({ success: true });
+          } catch (err) {
+              sendResponse({ success: false, error: err.message });
+          }
+      }).catch(err => sendResponse({ success: false, error: err.message }));
+      return true;
+  }
+  // ---  MACRO REAL-TIME STREAMING ---
   if (request.action === 'startMacroSession') {
       chrome.storage.session.set({ activeMacroPlatform: request.platform, macroEvents: [] });
       

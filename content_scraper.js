@@ -985,12 +985,12 @@
       }).observe(document, {subtree: true, childList: true});
   
       // --- MACRO RECOVERY ON LOAD ---
-      const savedState = loadMacroState();
+     /* const savedState = loadMacroState();
       if (savedState && savedState.isRecording) {
           trainingPlatform = savedState.platform;
           macroEvents = savedState.events;
           finishMacroTraining(); // 🛑 Auto-stop on Hard Reload/Crash
-      }
+      } */
   
       setTimeout(initOverlay, 1500);
   
