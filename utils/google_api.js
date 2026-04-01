@@ -77,6 +77,57 @@ export async function isConfigComplete() {
     return !!(driveRootId && reportSheetId && eventSheetId);
 }
 
+// --- HELPER: ROGUE DOMAIN NORMALIZATION & LOGGING ---
+export function normalizeRogueDomain(urlStr) {
+  try {
+    const url = new URL(urlStr);
+    return url.hostname.replace(/^www\./, '').toLowerCase();
+  } catch (e) {
+    return urlStr || "unknown_domain";
+  }
+}
+
+// Helper to convert index to Sheets column letters (e.g. 0->A, 26->AA)
+function getColLetter(index) {
+  let letter = '';
+  while (index >= 0) {
+    letter = String.fromCharCode((index % 26) + 65) + letter;
+    index = Math.floor(index / 26) - 1;
+  }
+  return letter;
+}
+
+export async function logRogueToSheet(token, data, userNotes) {
+  const { eventSheetId } = await getOptions();
+  const domain = normalizeRogueDomain(data.url);
+  const tabName = 'Pirate Websites';
+  
+  // 1. Fetch Row 1 to find if Domain Column already exists
+  const headerData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!1:1`, { headers: { Authorization: `Bearer ${token}` } });
+  const headers = headerData.values ? headerData.values[0] : [];
+  let targetColIdx = headers.indexOf(domain);
+  
+  // 2. Create new Column-Pair if Domain is new (ensuring it starts on an even index like 0, 2, 4...)
+  if (targetColIdx === -1) {
+    targetColIdx = headers.length % 2 === 0 ? headers.length : headers.length + 1;
+    await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!${getColLetter(targetColIdx)}1:${getColLetter(targetColIdx + 1)}1?valueInputOption=USER_ENTERED`, {
+      method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [[domain, "Notes"]] })
+    });
+  }
+
+  // 3. Find the first empty row strictly within this column pair
+  const colData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!${getColLetter(targetColIdx)}:${getColLetter(targetColIdx + 1)}`, { headers: { Authorization: `Bearer ${token}` } });
+  const nextRow = (colData.values ? colData.values.length : 1) + 1;
+  const scrapedInfo = `URL: ${data.url}\nIframes:\n${data.iframes?.join('\n') || 'None'}\nVideos:\n${data.videos?.join('\n') || 'None'}`;
+  
+  // 4. Append scraped details (Odd Col) and user notes (Even Col)
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!${getColLetter(targetColIdx)}${nextRow}:${getColLetter(targetColIdx + 1)}${nextRow}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: [[scrapedInfo, userNotes || ""]] })
+  });
+}
+
 // --- HELPER: CLEAN HANDLES FOR COMPARISON ---
 function normalizeHandle(input) {
   if (!input) return "";
@@ -246,6 +297,14 @@ export async function addNewEventToSheet(vertical, eventName, eventUrl, platform
 // 2. DRIVE & FOLDER MANAGEMENT
 // ==========================================
 
+export async function ensureRogueScreenshotFolder(token) {
+  const { driveRootId } = await getOptions();
+  if (!driveRootId) throw new Error("Drive Root ID not configured.");
+  
+  const currentYear = new Date().getFullYear();
+  return await findOrCreateFolder(token, driveRootId, `${currentYear} 3rd party pirate screen shots`);
+}
+
 export async function ensureYearlyReportFolder(token, year) {
   const { driveRootId } = await getOptions();
   if (!driveRootId) throw new Error("Drive Root ID not configured.");
@@ -261,14 +320,6 @@ export async function ensureDailyScreenshotFolder(token, dateStr) {
   const masterScreenshotFolderId = await findOrCreateFolder(token, driveRootId, "All Screenshots");
   const dailyFolderId = await findOrCreateFolder(token, masterScreenshotFolderId, dateStr);
   return dailyFolderId;
-}
-
-export async function ensureFolderHierarchy(token, eventName, date) {
-  const { driveRootId } = await getOptions();
-  if (!driveRootId) throw new Error("Drive Root ID not configured.");
-  
-  const eventFolderId = await findOrCreateFolder(token, driveRootId, eventName);
-  return await findOrCreateFolder(token, eventFolderId, date);
 }
 
 async function findOrCreateFolder(token, parentId, name) {

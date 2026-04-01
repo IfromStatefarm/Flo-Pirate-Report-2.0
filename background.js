@@ -4,7 +4,8 @@ import {
   uploadToDrive, 
   appendToSheet, 
   ensureYearlyReportFolder,
-  ensureDailyScreenshotFolder, 
+  ensureDailyScreenshotFolder,
+  logRogueToSheet, 
   fetchConfig, 
   getEventData,       
   updateEventUrl,     
@@ -688,6 +689,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
      sendResponse({ success: true });
      return true;
  }
+
+  if (request.action === 'logRogueToSheet') {
+      getAuthToken().then(async token => {
+          try {
+              let finalNotes = request.notes || "";
+              
+              if (request.data.screenshot) {
+                  const imageBlob = base64ToBlob(request.data.screenshot);
+                  const folderId = await ensureRogueScreenshotFolder(token);
+                  
+                  const urlObj = new URL(request.data.url);
+                  const domain = urlObj.hostname.replace(/^www\./, '').toLowerCase();
+                  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                  
+                  // Clean the URL to prevent invalid filename characters
+                  const safeLink = request.data.url.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
+                  const filename = `${domain}_${timestamp}_${safeLink}.jpg`;
+                  
+                  const uploadRes = await uploadToDrive(token, folderId, filename, imageBlob, 'image/jpeg');
+                  finalNotes += `\n\nEvidence Screenshot: ${uploadRes.webViewLink}`;
+              }
+              
+              await logRogueToSheet(token, request.data, finalNotes);
+              sendResponse({ success: true });
+              } catch (err) {
+              sendResponse({ success: false, error: err.message });
+          }
+      }).catch(err => sendResponse({ success: false, error: err.message }));
+      return true; // Keep channel open for async response
+  }
 });
 
 // ==========================================

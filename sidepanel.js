@@ -33,9 +33,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const nukeStatus = document.getElementById('nukeStatus');
   const mainUiContainer = document.querySelector('.container'); // Fallback to class since ID was missing in HTML
   const rogueWalkthrough = document.getElementById('rogue-walkthrough');
-  const dmcaNoticeArea = document.getElementById('dmcaNotice');
-  const generateDmcaBtn = document.getElementById('generateDmcaBtn');
-  const googleDeindexBtn = document.getElementById('googleDeindexBtn');
+  const rogueScrapedData = document.getElementById('rogueScrapedData');
+  const rogueUserNotes = document.getElementById('rogueUserNotes');
+  const saveRogueBtn = document.getElementById('saveRogueBtn');
   const closeRogueBtn = document.getElementById('closeRogueBtn');
   let currentRogueData = null;
   const rogueToggle = document.getElementById('rogueToggle');
@@ -371,13 +371,23 @@ document.addEventListener('DOMContentLoaded', async () => {
           const results = await chrome.scripting.executeScript({
               target: { tabId: tab.id },
               func: () => {
-                  return {
-                      title: document.title,
-                      url: window.location.href,
-                      iframes: Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean),
-                      videos: Array.from(document.querySelectorAll('video')).map(v => v.src).filter(Boolean),
-                      emails: (document.body.innerText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || []).filter(e => e.toLowerCase().includes('abuse'))
-                  };
+                  // Video Tag Sniffing (deduplicated source tags)
+                  const rawVideos = Array.from(document.querySelectorAll('video, source')).map(v => v.src).filter(Boolean);
+                  const videos = [...new Set(rawVideos)];
+                  
+                  // Iframe Depth (deduplicated hosting providers)
+                  const rawIframes = Array.from(document.querySelectorAll('iframe')).map(i => i.src).filter(Boolean);
+                  const iframes = [...new Set(rawIframes)];
+                  
+                  // Metadata & Abuse Emails (deduplicated)
+                  const title = document.title;
+                  const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+                  const rawEmails = document.body.innerText.match(emailRegex) || [];
+                  const emails = [...new Set(rawEmails)].filter(e => 
+                      e.toLowerCase().includes('abuse') || e.toLowerCase().includes('dmca')
+                  );
+                  
+                  return { videos, iframes, title, emails };
               }
           });
 
@@ -759,15 +769,17 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
       if (nukeBtn) nukeBtn.style.display = 'none'; // Hide Nuke button to keep UI clean
       if (rogueWalkthrough) rogueWalkthrough.style.display = 'block';
       
-      // Use optional chaining (?.) to prevent fatal crashes if data is missing
       const iframesStr = (data?.iframes?.length > 0) ? data.iframes.join('\n') : 'None found';
-      const sniffedStr = (data?.sniffedUrls?.length > 0) ? data.sniffedUrls.join('\n') : 'None found';
-      const abuseEmails = (data?.emails?.length > 0) ? data.emails.join(', ') : '[INSERT ABUSE EMAIL]';
+      const videosStr = (data?.videos?.length > 0) ? data.videos.join('\n') : 'None found';
+      const trafficStr = (data?.networkTraffic?.length > 0) 
+          ? data.networkTraffic.map(t => `${t.ip} - ${t.url}`).join('\n') 
+          : 'None found';
       const urlStr = data?.url || 'Unknown URL';
       
-      if (dmcaNoticeArea) {
-          dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - FloSports\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of FloSports regarding unauthorized broadcasting of our copyrighted content.\n\nInfringing URL: ${urlStr}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\nFloSports Anti-Piracy Team`;
+      if (rogueScrapedData) {
+          rogueScrapedData.value = `URL: ${urlStr}\n\nIFRAMES:\n${iframesStr}\n\nVIDEOS:\n${videosStr}\n\nNETWORK TRAFFIC (IPs):\n${trafficStr}`;
       }
+      if (rogueUserNotes) rogueUserNotes.value = ''; // Clear previous notes
   }
 
   chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -780,15 +792,26 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
       if (res.rogue_target_data) renderRogueWalkthrough(res.rogue_target_data);
   });
 
-  if (generateDmcaBtn) {
-      generateDmcaBtn.addEventListener('click', () => {
-          const emails = (currentRogueData?.emails?.length > 0) ? currentRogueData.emails.join(',') : '';
-          const body = encodeURIComponent(dmcaNoticeArea ? dmcaNoticeArea.value : '');
-          window.open(`mailto:${emails}?subject=DMCA Takedown Notice - FloSports&body=${body}`);
+  if (saveRogueBtn) {
+      saveRogueBtn.addEventListener('click', () => {
+          const notes = rogueUserNotes ? rogueUserNotes.value : '';
+          saveRogueBtn.innerText = "Saving to Sheet...";
+          saveRogueBtn.disabled = true;
+
+          chrome.runtime.sendMessage({ 
+              action: 'logRogueToSheet', 
+              data: currentRogueData, 
+              notes: notes 
+          }, (res) => {
+              saveRogueBtn.innerText = "Saved!";
+              setTimeout(() => {
+                  saveRogueBtn.innerText = "Save to Pirate Websites Sheet";
+                  saveRogueBtn.disabled = false;
+                  if (closeRogueBtn) closeRogueBtn.click(); // Auto-close on success
+              }, 1500);
+          });
       });
   }
-
-  if (googleDeindexBtn) googleDeindexBtn.addEventListener('click', () => window.open('https://reportcontent.google.com/'));
 
   if (closeRogueBtn) {
       closeRogueBtn.addEventListener('click', () => {
