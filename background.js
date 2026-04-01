@@ -208,18 +208,24 @@ function sendProgress(status, details) {
     }).catch(() => {}); // Ignore error if panel closed
 }
 
+// --- UPDATED UTILITY: Improved Strikethrough Detection ---
 function isUrlCrossedOut(startIndex, endIndex, formatRuns, cellStrikethrough) {
-    if (cellStrikethrough) return true; // Base cell format covers it entirely
+    // RULE 1: If the entire cell has strikethrough applied at the base level, all content is "dead"
+    if (cellStrikethrough === true) return true; 
+    
     if (!formatRuns || formatRuns.length === 0) return false;
 
-    let runApply = null;
-    for (let i = formatRuns.length - 1; i >= 0; i--) {
-        if (formatRuns[i].startIndex <= startIndex) {
-            runApply = formatRuns[i];
-            break;
+    // RULE 2: Find the specific formatting run that covers this URL's start index
+    let appliedFormat = null;
+    for (let i = 0; i < formatRuns.length; i++) {
+        const run = formatRuns[i];
+        if (run.startIndex <= startIndex) {
+            appliedFormat = run.format;
+        } else {
+            break; 
         }
     }
-    return runApply?.format?.strikethrough || false;
+    return appliedFormat?.strikethrough === true;
 }
 
 async function runSheetScanner(startRowUI = 1) {
@@ -231,19 +237,11 @@ async function runSheetScanner(startRowUI = 1) {
     const rows = await getColumnHDataWithFormatting();
     let consecutiveBlanks = 0;
     
-    // Map the 1-based UI start row to 0-based array index
     const startIdx = Math.max(0, startRowUI - 1);
 
     for (let i = startIdx; i < rows.length; i++) {
         if (stopScannerSignal) {
-            console.log("🛑 Sheet Scanner: Stopped by user.");
             sendProgress("Scanner Stopped", "User interrupted the process.");
-            break;
-        }
-
-        if (consecutiveBlanks >= 3) {
-            console.log("🕵️ Sheet Scanner: Hit 3 blank cells. Stopping.");
-            sendProgress("Scanner Complete", "Hit 3 consecutive blank cells.");
             break;
         }
 
@@ -251,12 +249,17 @@ async function runSheetScanner(startRowUI = 1) {
         
         if (!cellData || !cellData.text) {
             consecutiveBlanks++;
+            if (consecutiveBlanks >= 3) {
+                sendProgress("Scanner Complete", "Hit 3 consecutive blank cells.");
+                break;
+            }
             continue;
         }
         
         consecutiveBlanks = 0; 
         const cellValue = cellData.text;
 
+        // Fix: Explicitly escaping forward slashes in regex to avoid SyntaxError in some environments
         const urlRegex = /https?:\/\/[^\s,]+/g;
         let match;
         const matches = [];
@@ -266,11 +269,10 @@ async function runSheetScanner(startRowUI = 1) {
         
         if (matches.length === 0) continue;
 
-        console.log(`Row ${i+1}: Checking ${matches.length} links...`);
-        sendProgress(`Scanning Row ${i+1}`, `Found ${matches.length} link(s)...`);
+        sendProgress(`Scanning Row ${i+1}`, `Checking ${matches.length} link(s)...`);
 
-        let activeCount = 0;
-        let deadCount = 0;
+        let newlyStruck = 0;
+        let totalActive = 0;
         let previouslyDeadCount = 0;
         
         const deadRanges = []; 
@@ -281,13 +283,11 @@ async function runSheetScanner(startRowUI = 1) {
 
             const { url, index, end } = matches[j];
 
-            // Smart Skip: Check if it's already struck through to save loading time
             const isCrossedOut = isUrlCrossedOut(index, end, cellData.formatRuns, cellData.cellStrikethrough);
 
             if (isCrossedOut) {
                 previouslyDeadCount++;
                 deadRanges.push({ start: index, end: end, url: url });
-                console.log(`  - SKIPPED (Already crossed out): ${url}`);
                 continue;
             }
 
@@ -305,17 +305,14 @@ async function runSheetScanner(startRowUI = 1) {
                 const isDown = await verifyTakedownViaTab(url, platform); 
                 
                 if (isDown) {
-                    deadCount++;
-                    console.log(`  - NEWLY DOWN: ${url}`);
+                    newlyStruck++;
                     deadRanges.push({ start: index, end: end, url: url });
                 } else {
-                    activeCount++;
-                    console.log(`  - ACTIVE: ${url}`);
+                    totalActive++;
                     activeRanges.push({ start: index, end: end, url: url });
                 }
             } catch (err) {
-                console.warn(`  - Error checking ${url}:`, err);
-                activeCount++; 
+                totalActive++; 
                 activeRanges.push({ start: index, end: end, url: url });
             }
             
@@ -327,15 +324,17 @@ async function runSheetScanner(startRowUI = 1) {
              break;
         }
 
-        // Apply updated formatting ONLY if we found NEW dead links
-        if (deadCount > 0) {
+        // --- APPLY RICH TEXT UPDATES IF NEW DEAD LINKS FOUND ---
+        if (newlyStruck > 0) {
             sendProgress(`Row ${i+1}`, `Updating formatting...`);
-            const defaultStyle = { link: null, strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false };
-            const deadStyle = { link: null, strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }, underline: false };
             
+            const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false };
+            const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }, underline: false };
+            const activeLinkStyle = { foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true, strikethrough: false };
+
             const allLinkRanges = [
                 ...deadRanges.map(r => ({ ...r, style: deadStyle })),
-                ...activeRanges.map(r => ({ ...r, style: { link: { uri: r.url }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true, strikethrough: false } }))
+                ...activeRanges.map(r => ({ ...r, style: { ...activeLinkStyle, link: { uri: r.url } } }))
             ].sort((a, b) => a.start - b.start);
 
             const newRuns = [];
@@ -360,26 +359,18 @@ async function runSheetScanner(startRowUI = 1) {
             await updateCellWithRichText(i, cellValue, newRuns);
         }
 
-        const totalDead = deadCount + previouslyDeadCount;
-        if (totalDead > 0 && activeCount === 0) {
-            console.log(`Row ${i+1}: Resolved (All ${totalDead} links down).`);
-            sendProgress(`Row ${i+1}: Resolved`, "Updating Sheet...");
+        const totalDead = newlyStruck + previouslyDeadCount;
+        if (totalDead > 0 && totalActive === 0) {
             await updateRowStatus(i, "Resolved");
-            
-            // --- THE CLOSER: ACCURACY BONUS (CLEAN SWEEP) ---
-            if (deadCount > 0) {
-                // Grants +15 bonus enforcer points per newly confirmed dead link
-                await addEnforcerBonusPoints(i, deadCount * 15);
+            if (newlyStruck > 0) {
+                await addEnforcerBonusPoints(i, newlyStruck * 15);
             }
-        } else if (activeCount > 0 && totalDead > 0) {
-             console.log(`Row ${i+1}: Investigating (${activeCount} active, ${totalDead} down).`);
-             sendProgress(`Row ${i+1}: Investigating`, `${totalDead} dead links struck.`);
+        } else if (totalActive > 0 && totalDead > 0) {
              await updateRowStatus(i, "Investigating");
         }
     }
     
     if (!stopScannerSignal) {
-        console.log("🕵️ Sheet Scanner: Complete.");
         sendProgress("Scanner Complete", "Finished processing rows.");
     }
 
@@ -388,7 +379,6 @@ async function runSheetScanner(startRowUI = 1) {
     sendProgress("Scanner Failed", e.message);
   }
 }
-
 // Uses Tab Loading to check if video exists
 async function verifyTakedownViaTab(url, platform) {
     let tabId = null;
