@@ -220,7 +220,6 @@ function sendProgress(status, details) {
 // --- UPDATED UTILITY: Improved Strikethrough Detection ---
 function isUrlCrossedOut(startIndex, endIndex, formatRuns, cellStrikethrough) {
     // RULE 1: If the entire cell has strikethrough applied at the base level, all content is "dead"
-    if (cellStrikethrough === true) return true; 
     
     if (!formatRuns || formatRuns.length === 0) return false;
 
@@ -843,13 +842,18 @@ async function handleProcessNewItem(tab, data) {
     // 2. VERIFY SECOND (Check whitelist while image is safely in memory)
     try {
         const isAuthorized = await checkIfAuthorized(data.platform, data.handle);
-        if (isAuthorized) {
-            const userEmail = await getUserEmail() || "Unknown";
-            await appendToSheet(await getAuthToken(), { values: [new Date().toLocaleDateString("en-US"), data.vertical || "Unknown", "Penalty", data.platform, "N/A", "0", userEmail, data.url, "Whitelist Penalty", "Failed", "", userEmail, userEmail, -15, 0, "", "", "", "", "PENALTY"] });
-            // If whitelisted, discard the screenshot in memory and stop
-            return { success: false, status: 'whitelisted' };
-        }
-    } catch (err) {
+         if (isAuthorized) {
+                const userEmail = await getUserEmail() || "Unknown";
+                await appendToSheet(await getAuthToken(), { values: [new Date().toLocaleDateString("en-US"), data.vertical || "Unknown", "Penalty", data.platform, "N/A", "0", userEmail, data.url, "Whitelist Penalty", "Failed", "", userEmail, userEmail, -15, 0, "", "", "", "", "PENALTY"] });
+                // If whitelisted, discard the screenshot in memory and stop
+                return { 
+                    success: false, 
+                    status: 'whitelisted',
+                    milestoneHit: true,
+                    milestoneMessage: `⚠️ BLOCKED: @${data.handle} is whitelisted! Penalty: -15 Points.`
+                };
+            }
+        } catch (err) {
         console.warn("Whitelist check failed, proceeding to save anyway:", err);
     }
 
@@ -888,6 +892,7 @@ async function handleBatchReport(formData) {
 
     // --- PHASE 1: FRESH SCRAPE (LAZY LOADING) ---
     const updatedCart = [];
+    let failedScrapeCount = 0; // Track consecutive N/A returns
     chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'Verifying view counts...', percent: 5 });
 
     for (let i = 0; i < cart.length; i++) {
@@ -904,6 +909,10 @@ async function handleBatchReport(formData) {
              try {
                  const freshData = await getFreshTikTokViews(item.url);
                  if (freshData.views) item.views = freshData.views;
+
+                 // Count invalid view returns to detect broken universal data keys
+                 if (item.views === 'N/A') failedScrapeCount++;
+
                  if (freshData.status === 'DELETED') {
                      item.views = 'DELETED';
                      console.log(`Video ${item.url} is DELETED.`);
@@ -912,12 +921,19 @@ async function handleBatchReport(formData) {
                  }
              } catch(e) {
                  console.error(`Failed fresh scrape for ${item.url}`, e);
+                 failedScrapeCount++;
              }
              
              // Rate limit delay to avoid TikTok flagging
              await new Promise(r => setTimeout(r, 2000));
         }
         updatedCart.push(item);
+    }
+    
+    // Trigger Selector Repair Alert if threshold is exceeded
+    if (failedScrapeCount > 5) {
+        chrome.runtime.sendMessage({ action: 'progressError', error: "Selector Repair Needed: TikTok/YouTube data structure changed. Please use 'Record Selectors' tool." });
+        return { success: false, error: "Selector Repair Needed - View count mapping broken." };
     }
     
     // Update local cart with verified numbers just in case

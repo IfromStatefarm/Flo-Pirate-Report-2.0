@@ -377,6 +377,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           if (!tab) throw new Error("No active tab");
 
+          // Verify domain to prevent accidental self-nuking
+          const isSafeDomain = tab.url.match(/(flosports\.tv|varsity\.com|milesplit\.com)/i);
+          if (isSafeDomain && !confirm(`⚠️ WARNING: You are on an official domain.\n\nAre you sure you want to NUKE ${new URL(tab.url).hostname}?`)) {
+              btn.innerText = originalText;
+              btn.disabled = false;
+              if (nukeStatus) nukeStatus.innerText = "";
+              return;
+          }
+          
           // Inject a targeted scraper directly into the current page
           const results = await chrome.scripting.executeScript({
               target: { tabId: tab.id },

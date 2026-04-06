@@ -196,16 +196,21 @@
 
       const viewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_std); 
       const shortViewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_shorts); 
+      const shortDescButton = document.querySelector('button[aria-label*="views"]');
       
-      if (viewSelector) {
+      if (viewSelector && viewSelector.innerText) {
           views = viewSelector.innerText.replace(' views', '');
-      } else if (shortViewSelector) {
+      } else if (shortViewSelector && shortViewSelector.innerText) {
           views = shortViewSelector.innerText;
+      } else if (shortDescButton) {
+          const match = (shortDescButton.getAttribute('aria-label') || '').match(/([0-9.,KMBkmb]+)\s*views/i);
+          if (match) views = match[1];
       }
 
       let targetId = videoId;
       if (!targetId && url.includes('/shorts/')) targetId = url.split('/shorts/')[1];
       if (!targetId && url.includes('/live/')) targetId = url.split('/live/')[1];
+
       
       const cleanId = targetId ? targetId.split('?')[0] : null;
       const screenshot = cleanId ? `https://img.youtube.com/vi/${cleanId}/maxresdefault.jpg` : null;
@@ -689,7 +694,15 @@
               }
               // --- HANDLE BACKGROUND RESPONSE ---
               if (res && res.status === 'whitelisted') {
-                  alert(`⚠️ BLOCKED: @${data.handle} is on the whitelist.\n\nYou cannot report this account.`);
+                  // Render penalty toast directly in the DOM instead of blocking alert()
+                  if (res.milestoneHit) {
+                      const toast = document.createElement('div');
+                      toast.style.cssText = `position:fixed; bottom:30px; right:30px; background:#ce0e2d; color:#fff; padding:15px 20px; border-radius:8px; font-weight:bold; box-shadow:0 6px 20px rgba(0,0,0,0.4); z-index:2147483647; font-family:sans-serif; pointer-events:none; transition: all 0.3s ease-in-out;`;
+                      toast.innerHTML = `🚨 Penalty Applied!<br><span style="font-size:12px; font-weight:normal;">${res.milestoneMessage}</span>`;
+                      document.body.appendChild(toast);
+                      setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 4000);
+                  }
+                  
                   btnAdd.innerText = "Whitelisted";
                   btnAdd.style.backgroundColor = "#666"; 
                   
