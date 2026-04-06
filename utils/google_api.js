@@ -105,20 +105,33 @@ export async function logRogueToSheet(token, data, userNotes) {
   // 1. Fetch Row 1 to find if Domain Column already exists
   const headerData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!1:1`, { headers: { Authorization: `Bearer ${token}` } });
   const headers = headerData.values ? headerData.values[0] : [];
-  let targetColIdx = headers.indexOf(domain);
   
-  // 2. Create new Column-Pair if Domain is new (ensuring it starts on an even index like 0, 2, 4...)
+  // Case-insensitive search to ensure we match correctly (e.g., "Timstreams.net" === "timstreams.net")
+  let targetColIdx = headers.findIndex(h => h && h.trim().toLowerCase() === domain);
+  
+  // 2. Create new Column-Pair if Domain is new (ensuring it starts on an odd index like B(1), D(3), F(5)...)
   if (targetColIdx === -1) {
-    targetColIdx = headers.length % 2 === 0 ? headers.length : headers.length + 1;
-    await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!${getColLetter(targetColIdx)}1:${getColLetter(targetColIdx + 1)}1?valueInputOption=USER_ENTERED`, {
+    targetColIdx = headers.length % 2 !== 0 ? headers.length : headers.length + 1;
+    
+    // Write Row 1 (Domain) and Row 2 (Sub-headers) for the brand new site
+    await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!${getColLetter(targetColIdx)}1:${getColLetter(targetColIdx + 1)}2?valueInputOption=USER_ENTERED`, {
       method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [[domain, "Notes"]] })
+      body: JSON.stringify({ 
+          values: [
+              [domain, ""],
+              ["Video links", "Notes"]
+          ] 
+      })
     });
   }
 
   // 3. Find the first empty row strictly within this column pair
   const colData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!${getColLetter(targetColIdx)}:${getColLetter(targetColIdx + 1)}`, { headers: { Authorization: `Bearer ${token}` } });
-  const nextRow = (colData.values ? colData.values.length : 1) + 1;
+  
+  // Calculate the next row, ensuring it always starts at Row 3 (below the sub-headers)
+  let nextRow = (colData.values ? colData.values.length : 0) + 1;
+  if (nextRow < 3) nextRow = 3;
+
   const scrapedInfo = `URL: ${data.url}\nIframes:\n${data.iframes?.join('\n') || 'None'}\nVideos:\n${data.videos?.join('\n') || 'None'}`;
   
   // 4. Append scraped details (Odd Col) and user notes (Even Col)
@@ -271,7 +284,7 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
 export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
   const token = await getAuthToken();
   const { eventSheetId } = await getOptions();
-  const range = `'${vertical}'!A:I`; 
+  const range = `'${vertical}'!A:A`; // Forces the append API to find the next empty row based strictly on Column A where event names are, ensuring no gaps if URLs are missing in other columns. The API will append to the first empty row in Column A, which is where we put event names.
   
   const row = new Array(9).fill(""); 
   row[0] = eventName;

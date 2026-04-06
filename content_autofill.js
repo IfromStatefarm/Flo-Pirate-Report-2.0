@@ -1101,13 +1101,15 @@
         // 4. REMOVAL OPTIONS & AGREEMENTS
         console.log("Checking agreements...");
         const preventCopies = document.querySelector(conf.checkboxes?.prevent_copies || 'ytcp-checkbox-lit[aria-label*="Prevent future copies"]');
-        if (preventCopies && preventCopies.getAttribute('aria-checked') !== 'true') preventCopies.click();
+        if (preventCopies && preventCopies.getAttribute('aria-checked') === 'false') {
+            preventCopies.click();
+        }
 
         const agreements = conf.checkboxes?.agreements || ["good faith", "accurate", "abuse"];
         for (const text of agreements) {
             const xpath = `//ytcp-checkbox-lit[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
             const checkbox = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-            if (checkbox && checkbox.getAttribute('aria-checked') !== 'true') {
+            if (checkbox && checkbox.getAttribute('aria-checked') === 'false') {
                 checkbox.click();
             }
         }
@@ -1229,7 +1231,7 @@
         let preventCopies = document.querySelector(conf.checkboxes?.prevent_copies || '[aria-label*="Prevent future copies"]');
         if (!preventCopies) preventCopies = document.querySelector('[aria-label*="Prevent future copies"]');
 
-        if (preventCopies && preventCopies.getAttribute('aria-checked') !== 'true') {
+        if (preventCopies && preventCopies.getAttribute('aria-checked') === 'false') {
             preventCopies.click();
             await sleep(800); // Wait for the "Worldwide exclusive rights" popup to render
         }
