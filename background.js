@@ -1006,15 +1006,12 @@ async function handleBatchReport(formData) {
           channelUrl = `https://www.twitch.tv/${handle}`;
       }
       
-      // 2. UPLOAD SCREENSHOTS
-      const evidenceLinks = []; 
-      
-      for (const item of items) {
+      // 2. UPLOAD SCREENSHOTS (Parallelized)
+      const shouldUploadScreenshots = formData.uploadScreenshots !== false;
+      // Map each item to an upload promise, then await them all together
+      const evidenceLinks = await Promise.all(items.map(async (item, index) => {
           let imgLink = "No Screenshot Available";
-          
-          // FIX: Default to true if undefined (handles requests from the in-page wizard)
-          const shouldUploadScreenshots = formData.uploadScreenshots !== false;
-          
+          //   Only attempt upload if user opted in and screenshot exists for the item
           if (shouldUploadScreenshots && item.screenshotId) {
               try {
                   const imgDataUrl = await getImage(item.screenshotId);
@@ -1024,7 +1021,7 @@ async function handleBatchReport(formData) {
                       const upload = await uploadToDrive(
                           token, 
                           screenshotsFolderId, 
-                          `${reportId}_Evidence_@${handle}.jpg`, 
+                          `${reportId}_Evidence_${index + 1}_@${handle}.jpg`, 
                           imageBlob, 
                           'image/jpeg'
                       );
@@ -1034,12 +1031,13 @@ async function handleBatchReport(formData) {
                   console.error(`Failed to upload screenshot for ${item.url}:`, imgUploadErr);
               }
           }
-          evidenceLinks.push({ 
+          
+          return { 
               url: item.url, 
               screenshotLink: imgLink, 
               views: item.views 
-          });
-      }
+          };
+      }));
       // 3. GENERATE PDF
       const pdfData = { 
           eventName: formData.eventConfig?.eventName || formData.eventName || "Unknown Event", 
