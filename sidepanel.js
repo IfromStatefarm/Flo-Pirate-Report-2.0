@@ -74,8 +74,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
   });
   // --- Message Listener for Crawler & Closer ---
+  // Accept heartbeat connections to prevent Service Worker zombification
+  chrome.runtime.onConnect.addListener((port) => {
+      if (port.name === 'sw-heartbeat') {
+          port.onMessage.addListener(() => { /* Heartbeat acknowledged */ });
+      }
+  });
+
   chrome.runtime.onMessage.addListener((msg) => {
-    // New listener for Double Tap progress
+    // New listener for Double Tap progress and Closer Scanner updates
     if (msg.action === 'scanProgress' && crawlStatusEl) {
         crawlStatusEl.innerText = msg.message;
         return;

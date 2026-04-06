@@ -199,8 +199,17 @@ async function getFreshTikTokViews(url) {
 // 2. THE SHEET SCANNER (The Closer 2.0)
 // ==========================================
 
+let heartbeatPort = null;
+
 // Helper to send progress to sidepanel
 function sendProgress(status, details) {
+    // Keep SW alive by resetting the 30s idle timer via an active port
+    if (!heartbeatPort) {
+        heartbeatPort = chrome.runtime.connect({ name: 'sw-heartbeat' });
+        heartbeatPort.onDisconnect.addListener(() => { heartbeatPort = null; });
+    }
+    try { heartbeatPort.postMessage({ ping: true }); } catch (e) { heartbeatPort = null; }
+
     chrome.runtime.sendMessage({ 
         action: 'closerProgress', 
         status: status,
@@ -238,6 +247,12 @@ async function runSheetScanner(startRowUI = 1) {
     let consecutiveBlanks = 0;
     
     const startIdx = Math.max(0, startRowUI - 1);
+
+    // Prevent out-of-bounds errors before the loop starts
+    if (startIdx >= rows.length) {
+        sendProgress("Scanner Stopped", `Row ${startRowUI} is out of bounds. The sheet only has ${rows.length} rows.`);
+        return;
+    }
 
     for (let i = startIdx; i < rows.length; i++) {
         if (stopScannerSignal) {
@@ -1093,11 +1108,14 @@ async function handleScanSheetForActiveLinks(platform, vertical, startRowUI = 1)
     try {
         const scannerEmail = await getUserEmail() || "Unknown";
         const rows = await getColumnHDataWithFormatting();
-        if (!rows || rows.length === 0) return { success: false, error: "Failed to fetch sheet data" };
+         if (!rows || rows.length === 0) return { success: false, error: "Failed to fetch sheet data" };
        
         let activeLinks = [];
         const startIdx = Math.max(0, startRowUI - 1);
         
+        const activeWorkers = [];
+        const MAX_CONCURRENT_TABS = 3;
+
         for (let i = startIdx; i < rows.length; i++) {
             if (stopScannerSignal) break;
             if (activeLinks.length >= 100) break; // Limit batch size to 100 to prevent browser crashes
@@ -1138,11 +1156,12 @@ async function handleScanSheetForActiveLinks(platform, vertical, startRowUI = 1)
                 if (stopScannerSignal) break;
 
                 chrome.runtime.sendMessage({ 
-                    action: 'scanProgress', 
-                    message: `Scanning Row ${i+1} | Link ${j+1} of ${matches.length}`
+                action: 'scanProgress', 
+                message: `Scanning Row ${i+1} | Link ${j+1} of ${matches.length}`
 
-                }).catch(() => {});
+            }).catch(() => {});
 
+            const checkTask = (async () => {
                 // Verify if active (Headless Tab check)
                 const isDown = await verifyTakedownViaTab(url, platform);
                 if (!isDown) {
@@ -1162,13 +1181,24 @@ async function handleScanSheetForActiveLinks(platform, vertical, startRowUI = 1)
                         scoutedBy: `Auto-Scanner (${scannerEmail})`
                     });
                 }
-                await new Promise(r => setTimeout(r, 1000)); // Rate limit tab creation 
+            })().catch(err => console.error("Worker Error:", err));
+
+            activeWorkers.push(checkTask);
+            checkTask.finally(() => activeWorkers.splice(activeWorkers.indexOf(checkTask), 1));
+            
+            if (activeWorkers.length >= MAX_CONCURRENT_TABS) {
+                await Promise.race(activeWorkers);
             }
+            
+            await new Promise(r => setTimeout(r, 500)); // Stagger tab creation slightly
         }
-        
-        if (activeLinks.length > 0) {
-            const storage = await chrome.storage.local.get('piracy_cart');
-            let cart = storage.piracy_cart || [];
+    }
+    
+    await Promise.all(activeWorkers); // Wait for any remaining background tabs to finish
+
+    if (activeLinks.length > 0) {
+        const storage = await chrome.storage.local.get('piracy_cart');
+        let cart = storage.piracy_cart || [];
             cart = [...cart, ...activeLinks];
             
             // Deduplicate by URL

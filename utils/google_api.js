@@ -6,9 +6,15 @@ const TARGET_TAB_NAME = 'Report Submissions and status'; // Explicitly target yo
 // --- HELPER: SAFE FETCH ---
 // This catches HTML 400/404/500 pages from Google and throws a readable error
 // instead of letting `.json()` crash with "Unexpected token '<'".
-async function safeFetchJson(url, options) {
-    await new Promise(resolve => setTimeout(resolve, 1100)); // Small delay to prevent rapid-fire issues
+async function safeFetchJson(url, options, retries = 5, delay = 1000) {
     const res = await fetch(url, options);
+
+    // Exponential backoff for 429 Too Many Requests
+    if (res.status === 429 && retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return safeFetchJson(url, options, retries - 1, delay * 2);
+    }
+
     const text = await res.text();
     
     if (!res.ok) {
