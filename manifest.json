@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "FloSports Pirate Reporter",
   "version": "3.3.1",
+"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtuMTdazGr4A9mHo0+CXa4Q0vrTuaL37WaiCD/NYt0suVd8JmoTyRu8mP57wW/OKQFcdPnzT2TcFn1Gz/h9MXuM68+1wQDTk1+4UYNx/C+CxS3G29lNfy6uuxAvRhBVbXLCKmqw0S2Z2sxnzhN2VkTF5Ykn3ke39XLxOSLifjcuyvPoC+MuyDDRrFFADERFMldlQlvdpKISl0orD9eU4mkpn5iO/6mj+C7aGffgv3Twc/QeEGmGZX+1nJCKoXs0eMR2+NO/PPmIaCaDx7J9wxqVlKJ5pX9xh9mkmGZ5vRa1mPzt+M2Wlp8dm0uSbOL5qRXKrcd9Yrg/1giRXRDEtlqwIDAQAB",
   "description": "Automated copyright reporting tool with screenshot capabilities.",
   "permissions": [
     "scripting",
