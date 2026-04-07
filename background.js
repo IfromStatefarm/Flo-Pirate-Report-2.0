@@ -43,7 +43,7 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
 
 // AUTO-OPEN SIDE PANEL ON LEGAL PAGES
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+/*chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
     if (tab.url.includes('tiktok.com/legal/report') || tab.url.includes('youtube.com/copyright_complaint_form')) {
       console.log("🛠️ Legal page detected. Opening Side Panel Wizard...");
@@ -54,7 +54,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     }
   }
 });
+*/
 
+// ==========================================
 // --- ALARMS ---
 const ALARM_NAME = "theCloser";
 chrome.runtime.onInstalled.addListener(() => {
@@ -594,11 +596,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       getUserEmail().then(email => {
           if (!email) return sendResponse(null);
           fetchLeaderboardData(email).then(sendResponse).catch(e => {
-              console.error("Leaderboard fetch error:", e);
-              sendResponse(null);
+          console.error("Leaderboard fetch error:", e);
+          // FIX: Return a safe fallback state instead of `null` so the UI 
+          // gracefully shows an offline message instead of hanging indefinitely.
+          sendResponse({
+              error: true,
+              scoutPoints: "-",
+              enforcerPoints: "-",
+              scoutRank: "Offline",
+              enforcerRank: "Offline",
+              teamTotal: "-",
+              topScouts: [{ name: "Network Disconnected", points: 0 }],
+              topEnforcers: [{ name: "Retrying...", points: 0 }]
           });
       });
-      return true;
+  }).catch(e => {
+      // Catch potential network drops during the Auth Token fetch as well
+      sendResponse(null);
+  });
+  return true;
+
   }
   // --- PATCH SELECTOR LISTENER ---
   if (request.action === 'patchSelectorConfig') {

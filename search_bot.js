@@ -91,6 +91,11 @@
           background-color: #b00c26;
         }
       </style>
+      <div id="dragBox" class="box">
+        <div class="header">Search Bot</div>
+        <input id="urlInput" type="text" />
+        <button id="confirmBtn">Confirm</button>
+      </div>
     `;
 
     shadow.appendChild(wrapper);

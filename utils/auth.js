@@ -14,18 +14,17 @@ export function getAuthToken() {
   });
 }
 
-// NEW: Fetches the user's profile info to verify email
+// Fetches the user's profile info to verify email
 export async function getUserEmail() {
-  try {
-    const token = await getAuthToken();
-    const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${token}` }
+  return new Promise((resolve) => {
+    chrome.identity.getProfileUserInfo({ accountStatus: "ANY" }, (userInfo) => {
+      if (chrome.runtime.lastError) {
+        console.error("Failed to fetch user email:", chrome.runtime.lastError);
+        resolve(null);
+      } else {
+        // Normalize: ensure lowercase and trimmed for safe comparison
+        resolve(userInfo.email ? userInfo.email.toLowerCase().trim() : null);
+      }
     });
-    const data = await response.json();
-    // Normalize: ensure lowercase and trimmed for safe comparison
-    return data.email ? data.email.toLowerCase().trim() : null;
-  } catch (error) {
-    console.error("Failed to fetch user email:", error);
-    return null;
-  }
+  });
 }
