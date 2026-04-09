@@ -35,12 +35,13 @@
         padding: 15px; 
         box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
         border: 1px solid #e5e7eb; 
+        position: relative;
     }
     .auto-card { background: #f8fafc; border-color: #bfdbfe; }
     .auto-card .section-title { color: #1e3a8a; }
 
     /* Form Elements */
-    label { font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #4b5563; display: block; }
+    label { font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #4b5563; display: flex; align-items: center; gap: 4px; }
     input, select { 
         width: 100%; padding: 9px 10px; margin-bottom: 12px; 
         border: 1px solid #d1d5db; border-radius: 6px; 
@@ -53,9 +54,40 @@
     }
     #sourceUrlDisplay { border-color: #93c5fd; background-color: #eff6ff; }
     
-    /* Text Hints */
-    .hint { font-size: 11px; color: #6b7280; margin-top: -8px; margin-bottom: 12px; line-height: 1.4; }
-    .hint strong { color: #0288d1; }
+    /* Tooltip Styles */
+    .tooltip-container {
+        position: relative;
+        display: inline-block;
+        cursor: help;
+        color: #ce0e2d;
+        line-height: 0;
+    }
+    .tooltip-text {
+        visibility: hidden;
+        width: 180px;
+        background-color: #ffffff;
+        color: #333;
+        text-align: left;
+        border: 2px solid #ce0e2d;
+        border-radius: 8px;
+        padding: 8px;
+        position: absolute;
+        z-index: 100;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -90px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        font-size: 11px;
+        font-weight: normal;
+        line-height: 1.4;
+        pointer-events: none;
+    }
+    .tooltip-container:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+    }
 
     /* Buttons */
     .btn { 
@@ -170,6 +202,7 @@
 <body>
 
   <h2>🛡️ FloSports Reporter</h2>
+  
   <!-- Interactive Feedback Placeholder -->
   <div id="clippy-process-bubble" class="clippy-bubble">
       <img id="clippy-state-icon" src="images/clippy starting postion.png" alt="Clippy" style="width: 45px; height: auto;">
@@ -177,7 +210,7 @@
           <strong>Clippy Says:</strong> <span id="clippy-feedback-text">Ready to hunt some pirates?</span>
       </div>
   </div>
-  <!-- Loading & Status Messages -->
+
   <div id="loading">Connecting to Secure Services...</div>
 
   <div id="gamification-header" style="background:#fff; border:1px solid #ce0e2d; border-radius:6px; padding:10px; margin-bottom:12px; display:none;">
@@ -211,11 +244,13 @@
       </div>
       
       <label>Reporter Name</label>
+      <input type="text" id="reporterName" placeholder="e.g. John Doe">
+      
       <label>
         Vertical
         <div class="tooltip-container">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span class="tooltip-text">Select the sport category (e.g., FloRacing or FloTrack). This tells the system which Rights PDF to use!</span>
+            <span class="tooltip-text">Select the sport category (e.g., FloRacing). This identifies which Rights PDF to use for the legal claim.</span>
         </div>
       </label>
       <select id="verticalSelect"><option value="">Loading...</option></select>
@@ -224,7 +259,7 @@
         FloSports Event Name
         <div class="tooltip-container">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span class="tooltip-text">Start typing the official event name. If it's new, the "Search" button will help you find the correct Flo URL.</span>
+            <span class="tooltip-text">Start typing the event name. If it's a new event, use the "Search" button to find and save the correct URL to the sheet.</span>
         </div>
       </label>
       <input type="text" id="eventInput" list="eventList" placeholder="202X Name of Event">
@@ -234,23 +269,20 @@
         Flo's Source URL
         <div class="tooltip-container">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span class="tooltip-text">This is the official FloSports broadcast link. We need this as evidence of where the pirate "stole" the content from.</span>
+            <span class="tooltip-text">This is the official FloSports link. If empty, push Search. Grabbing this link is required for evidence!</span>
         </div>
       </label>
-      <div class="hint">
-        Saves the FloSports URL being pirated. <strong>If empty after selecting an event, push Search.</strong>
-      </div>
-      
+
       <div class="flex-row">
         <input type="text" id="sourceUrlDisplay" placeholder="Paste URL here..." style="flex: 1;">
-        <button id="searchEventBtn" class="btn btn-info clippy-focus" style="width: auto; padding: 9px 15px;" title="Search Event">Search</button>
+        <button id="searchEventBtn" class="btn btn-info" style="width: auto; padding: 9px 15px;" title="Search Event">Search</button>
       </div>
 
       <button id="btn-grab-flo" class="btn btn-success" style="margin-bottom: 8px;">Copy Current Tab's URL</button>
       
       <div class="flex-between">
           <button id="copyEventNameBtn" class="link-btn">Copy Event Name</button>
-          <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" URL</button>
+          <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" Text</button>
       </div>
 
       <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 15px 0;">
@@ -266,21 +298,17 @@
         </ol>
       </div>
       
-      <!-- ... nuke button ... -->
       <button id="startBtn" class="btn" disabled>Start Report</button>
-  <button id="nukeStreamBtn" class="btn" style="background-color: #1a1a1a; margin-top: 10px;">Nuke Stream (Rogue Site)</button>
+      <button id="nukeStreamBtn" class="btn" style="background-color: #1a1a1a; margin-top: 10px;">Nuke Stream (Rogue Site)</button>
 
-  <!--  TOGGLE FOR PAGE OVERLAY -->
-  <div class="flex-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
-      <label for="rogueToggle" style="margin:0; font-size: 11px; flex: 1;">Show 'Nuke' Button on Video Page</label>
-      <label class="switch">
-        <input type="checkbox" id="rogueToggle">
-        <span class="slider"></span>
-      </label>
-  </div>
-
-  <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; background-color: #f9f9f9; padding: 10px; border-radius: 4px;">
-    <label style="color: #333; margin-top:0;">Automation Tools</label>
+      <!--  TOGGLE FOR PAGE OVERLAY -->
+      <div class="flex-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
+          <label for="rogueToggle" style="margin:0; font-size: 11px; flex: 1;">Show 'Nuke' Button on Video Page</label>
+          <label class="switch">
+            <input type="checkbox" id="rogueToggle">
+            <span class="slider"></span>
+          </label>
+      </div>
     </div>
 
     <!-- AUTOMATION TOOLS CARD -->
@@ -333,41 +361,43 @@
           <button id="stopScanBtn" class="btn btn-danger" style="display: none; flex: 1;">Stop Scan</button>
       </div>
       
-      <div id="crawlStatus" style="font-size: 11px; color: #666; margin-top: 5px; font-weight: bold;"></div>
+      <div id="crawlStatus" style="font-size: 11px; color: #4b5563; margin-top: 8px; font-weight: bold; text-align: center;"></div>
+    </div>
+
+    <!-- LEADERBOARD CARD -->
+    <div class="card auto-card" style="margin-top: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 class="section-title" style="margin:0;">🏆 Top 5 Scouts</h3>
+        <button id="bountyBtn" class="link-btn" style="color:#f59e0b; font-weight:bold;">⭐ Active Bounties</button>
+      </div>
+      <ul id="scout-leaderboard" style="margin:0 0 10px 0; padding-left:20px; font-size:12px; color:#333; line-height: 1.6;">
+          <li>Loading Scouts...</li>
+      </ul>
+      <h3 class="section-title">👮 Top 5 Enforcers</h3>
+      <ul id="enforcer-leaderboard" style="margin:0; padding-left:20px; font-size:12px; color:#333; line-height: 1.6;">
+          <li>Loading Enforcers...</li>
+      </ul>
+      <div id="bounty-list-container" style="display:none; margin-top:10px; padding:10px; background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; font-size:11px;">
+          <strong>🔥 Double XP Events:</strong>
+          <ul id="bounty-list" style="margin:5px 0 0 0; padding-left:15px; color:#92400e;"></ul>
+      </div>
+    </div>
+
+    <!-- DEV TOOLS CARD -->
+    <div class="card auto-card" style="margin-top: 12px; border-color: #fca5a5;">
+      <h3 class="section-title" style="color: #b91c1c;">🔧 Platform Repair</h3>
+      <div class="hint">Click to train new selectors on the active page.</div>
+      <div class="flex-row">
+          <select id="repairPlatformSelect" style="flex: 1;">
+            <option value="tiktok">TikTok</option>
+            <option value="youtube">YouTube</option>
+          </select>
+          <button id="startTrainingBtn" class="btn btn-danger" style="width: auto; padding: 9px 12px;">Record Selectors</button>
+          <button id="startMacroBtn" class="btn btn-warning" style="width: auto; padding: 9px 12px; margin-left: 5px;">Record Macro</button>
+      </div>
+    </div>
   </div>
 
-  <div class="card auto-card" style="margin-top: 12px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-      <h3 class="section-title" style="margin:0;">🏆 Top 5 Scouts</h3>
-      <button id="bountyBtn" class="link-btn" style="color:#f59e0b; font-weight:bold;">⭐ Active Bounties</button>
-    </div>
-    <ul id="scout-leaderboard" style="margin:0 0 10px 0; padding-left:20px; font-size:12px; color:#333; line-height: 1.6;">
-        <li>Loading Scouts...</li>
-    </ul>
-    <h3 class="section-title">👮 Top 5 Enforcers</h3>
-    <ul id="enforcer-leaderboard" style="margin:0; padding-left:20px; font-size:12px; color:#333; line-height: 1.6;">
-        <li>Loading Enforcers...</li>
-    </ul>
-    <div id="bounty-list-container" style="display:none; margin-top:10px; padding:10px; background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; font-size:11px;">
-        <strong>🔥 Double XP Events:</strong>
-        <ul id="bounty-list" style="margin:5px 0 0 0; padding-left:15px; color:#92400e;"></ul>
-    </div>
-  </div>
-
-   <!-- DEV TOOLS CARD -->
-  <div class="card auto-card" style="margin-top: 12px; border-color: #fca5a5;">
-    <h3 class="section-title" style="color: #b91c1c;">🔧 Platform Repair</h3>
-    <div class="hint">Click to train new selectors on the active page.</div>
-    <div class="flex-row">
-        <select id="repairPlatformSelect" style="flex: 1;">
-          <option value="tiktok">TikTok</option>
-          <option value="youtube">YouTube</option>
-        </select>
-        <button id="startTrainingBtn" class="btn btn-danger" style="width: auto; padding: 9px 12px;">Record Selectors</button>
-        <button id="startMacroBtn" class="btn btn-warning" style="width: auto; padding: 9px 12px; margin-left: 5px;">Record Macro</button>
-    </div>
-  </div>
-</div>
   <!-- ROGUE WALKTHROUGH CONTAINER -->
   <div id="rogue-walkthrough" style="display: none; padding-top: 10px;">
     <h3 style="color: #1a1a1a; margin-top: 0;">Rogue Site Takedown</h3>
@@ -382,8 +412,6 @@
     <button id="saveRogueToSheetBtn" class="btn" style="background: #ce0e2d; color: white; padding: 8px; margin-bottom: 10px; width: 100%;">Save to Pirate Websites Sheet</button>
     <button id="closeRogueBtn" class="btn" style="background: #ccc; color: #333; padding: 8px; width: 100%;">Cancel / Close</button>
   </div>
-
-  
 
   <script src="sidepanel.js" type="module"></script>
 </body>
