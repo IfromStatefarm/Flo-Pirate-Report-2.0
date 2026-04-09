@@ -61,12 +61,31 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
 const ALARM_NAME = "theCloser";
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: 60 });
+  chrome.storage.local.set({ onboarding_step: 'NEEDS_CONFIG' });
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === ALARM_NAME) {
     const { closer_enabled } = await chrome.storage.local.get('closer_enabled');
     if (closer_enabled) runSheetScanner(1); // Default to row 1 on auto-run
+  }
+});
+// --- Onboarding State Monitor & Messenger ---
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'sync' && (changes.piracy_folder_id || changes.piracy_sheet_id || changes.event_sheet_id)) {
+    chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'], (items) => {
+      if (items.piracy_folder_id && items.piracy_sheet_id && items.event_sheet_id) {
+        chrome.storage.local.get(['onboarding_step'], (res) => {
+          if (res.onboarding_step === 'NEEDS_CONFIG') {
+            chrome.storage.local.set({ onboarding_step: 'READY_FOR_FIRST_REPORT' }, () => {
+              chrome.tabs.query({}, (tabs) => {
+                tabs.forEach(tab => chrome.tabs.sendMessage(tab.id, { action: 'clippyStateChange', state: 'READY_FOR_FIRST_REPORT' }).catch(() => {}));
+              });
+            });
+          }
+        });
+      }
+    });
   }
 });
 

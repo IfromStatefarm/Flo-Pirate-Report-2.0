@@ -69,7 +69,7 @@
         "*://discord.com/*",
         "*://timstreams.net/*"
       ],
-      "js": ["content_scraper.js"],
+      "js": ["content_scraper.js", "clippy.js"],
       "run_at": "document_idle",
       "all_frames": true
     },
@@ -90,7 +90,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["lib/jspdf.umd.min.js", "style.css", "jingle.mp3", "search_bot.js"],
+      "resources": ["lib/jspdf.umd.min.js", "style.css", "jingle.mp3", "search_bot.js", "images/clippy.png"],
       "matches": [
         "*://*.tiktok.com/*", 
         "*://*.youtube.com/*", 
