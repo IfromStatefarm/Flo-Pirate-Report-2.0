@@ -45,7 +45,12 @@
     "default_path": "sidepanel.html"
   },
   "action": {
-    "default_title": "Open Reporter"
+    "default_title": "Open Reporter",
+    "default_icon": {
+      "16": "FloReporter Logo.png",
+      "48": "FloReporter Logo.png",
+      "128": "FloReporter Logo.png"
+    }
   },
   "options_ui": {
     "page": "options.html",
