@@ -47,9 +47,9 @@
   "action": {
     "default_title": "Open Reporter",
     "default_icon": {
-      "16": "FloReporter Logo.png",
-      "48": "FloReporter Logo.png",
-      "128": "FloReporter Logo.png"
+      "16": "FloReporter_logo.png",
+      "48": "FloReporter_logo.png",
+      "128": "FloReporter_logo.png"
     }
   },
   "options_ui": {
