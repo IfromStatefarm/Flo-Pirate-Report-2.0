@@ -129,9 +129,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Helper to show error
   const showInitError = (msg) => {
       if (loadingEl) {
-          loadingEl.innerHTML = `⚠️ <strong>Connection Failed</strong><br>${msg}<br><button id="retryInitBtn" style="margin-top:5px;cursor:pointer;">Retry</button>`;
+          loadingEl.innerHTML = `⚠️ <strong>Connection Failed</strong><br>${msg}<br>
+          <div class="flex-row" style="justify-content:center; margin-top:10px;">
+            <button id="retryInitBtn" class="btn btn-info" style="width:auto; padding:5px 15px;">Retry</button>
+            <button id="openOptionsBtn" class="btn btn-warning" style="width:auto; padding:5px 15px;">Settings</button>
+          </div>`;
           loadingEl.style.color = "red";
           document.getElementById('retryInitBtn')?.addEventListener('click', () => window.location.reload());
+          document.getElementById('openOptionsBtn')?.addEventListener('click', () => chrome.runtime.openOptionsPage());
       }
   };
 
