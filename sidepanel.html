@@ -93,6 +93,60 @@
     .flex-row input, .flex-row select, .flex-row button { margin-bottom: 0; }
     .flex-between { display: flex; justify-content: space-between; align-items: center; margin-top: 6px;}
 
+    /* Milestone Indicators */
+    .milestone-container {
+        display: flex;
+        justify-content: space-between;
+        background: #f8fafc;
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-bottom: 15px;
+        border: 1px solid #e2e8f0;
+    }
+    .milestone-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        opacity: 0.3;
+        transition: all 0.3s;
+        font-size: 10px;
+        font-weight: 600;
+        color: #64748b;
+    }
+    .milestone-step.active {
+        opacity: 1;
+        color: #ce0e2d;
+    }
+
+    /* Clippy Interactive Bubble */
+    .clippy-bubble {
+        background: #fff;
+        border: 2px solid #ce0e2d;
+        border-radius: 12px 12px 12px 0;
+        padding: 10px;
+        font-size: 12px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .clippy-bubble:after {
+        content: '';
+        position: absolute;
+        bottom: -10px;
+        left: 0;
+        border-width: 10px 10px 0 0;
+        border-style: solid;
+        border-color: #ce0e2d transparent transparent transparent;
+    }
+
+    /* Text Hints */
+    .hint { font-size: 11px; color: #6b7280; margin-top: -8px; margin-bottom: 12px; line-height: 1.4; }
+    .hint strong { color: #0288d1; }
+
     /* Instructions Box */
     .instructions { background: #f0fdf4; padding: 12px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 15px; }
     .instructions strong { color: #166534; font-size: 12px; display: block; margin-bottom: 6px; }
@@ -116,6 +170,14 @@
 <body>
 
   <h2>🛡️ FloSports Reporter</h2>
+  <!-- Interactive Feedback Placeholder -->
+  <div id="clippy-process-bubble" class="clippy-bubble">
+      <img id="clippy-state-icon" src="images/clippy starting postion.png" alt="Clippy" style="width: 45px; height: auto;">
+      <div>
+          <strong>Clippy Says:</strong> <span id="clippy-feedback-text">Ready to hunt some pirates?</span>
+      </div>
+  </div>
+  <!-- Loading & Status Messages -->
   <div id="loading">Connecting to Secure Services...</div>
 
   <div id="gamification-header" style="background:#fff; border:1px solid #ce0e2d; border-radius:6px; padding:10px; margin-bottom:12px; display:none;">
@@ -131,32 +193,64 @@
     <!-- MANUAL REPORTING CARD -->
     <div class="card">
       <h3 class="section-title">Manual Reporting</h3>
+
+      <!-- Visual Milestones Bar -->
+      <div class="milestone-container">
+          <div id="ms-search" class="milestone-step">
+              <img src="images/clippy looking.gif" width="24" height="24">
+              <span>Searching</span>
+          </div>
+          <div id="ms-capture" class="milestone-step">
+              <img src="images/clippy smrik.gif" width="24" height="24">
+              <span>Capture</span>
+          </div>
+          <div id="ms-report" class="milestone-step">
+              <img src="images/clippy talking.gif" width="24" height="24">
+              <span>Report</span>
+          </div>
+      </div>
       
       <label>Reporter Name</label>
-      <input type="text" id="reporterName" placeholder="e.g. John Doe">
-      
-      <label>Vertical</label>
+      <label>
+        Vertical
+        <div class="tooltip-container">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span class="tooltip-text">Select the sport category (e.g., FloRacing or FloTrack). This tells the system which Rights PDF to use!</span>
+        </div>
+      </label>
       <select id="verticalSelect"><option value="">Loading...</option></select>
       
-      <label>FloSports Event Name (Type to Search)</label>
+      <label>
+        FloSports Event Name
+        <div class="tooltip-container">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span class="tooltip-text">Start typing the official event name. If it's new, the "Search" button will help you find the correct Flo URL.</span>
+        </div>
+      </label>
       <input type="text" id="eventInput" list="eventList" placeholder="202X Name of Event">
       <datalist id="eventList"></datalist>
 
-      <label>Flo's Source URL</label>
+      <label>
+        Flo's Source URL
+        <div class="tooltip-container">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span class="tooltip-text">This is the official FloSports broadcast link. We need this as evidence of where the pirate "stole" the content from.</span>
+        </div>
+      </label>
       <div class="hint">
         Saves the FloSports URL being pirated. <strong>If empty after selecting an event, push Search.</strong>
       </div>
       
       <div class="flex-row">
         <input type="text" id="sourceUrlDisplay" placeholder="Paste URL here..." style="flex: 1;">
-        <button id="searchEventBtn" class="btn btn-info" style="width: auto; padding: 9px 15px;" title="Search Event">Search</button>
+        <button id="searchEventBtn" class="btn btn-info clippy-focus" style="width: auto; padding: 9px 15px;" title="Search Event">Search</button>
       </div>
 
       <button id="btn-grab-flo" class="btn btn-success" style="margin-bottom: 8px;">Copy Current Tab's URL</button>
       
       <div class="flex-between">
           <button id="copyEventNameBtn" class="link-btn">Copy Event Name</button>
-          <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" Text</button>
+          <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" URL</button>
       </div>
 
       <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 15px 0;">
