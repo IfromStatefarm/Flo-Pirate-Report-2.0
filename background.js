@@ -487,7 +487,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (session.activeSearchTabId && tabId === session.activeSearchTabId) {
         chrome.scripting.executeScript({
           target: { tabId: tabId },
-          files: ['search_bot.js']
+          //files: ['search_bot.js'] // We will inject the bot code directly here to ensure it runs before any potential blockers on the page
         }).catch(err => console.error("Failed to inject bot:", err));
     }
   }
