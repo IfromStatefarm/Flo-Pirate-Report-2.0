@@ -79,25 +79,25 @@
         if (isAutofilling || !data) return;
         isAutofilling = true;
 
-        try {
-            const host = window.location.hostname;
-            if (host.includes('tiktok')) {
-                createTikTokOverlay(data);
-            } else if (host.includes('youtube')) {
-                createYouTubeOverlay(data);
-            } else {
-                if (!hasRunAutomatedFill) {
-                    hasRunAutomatedFill = true;
-                    if (host.includes('youtube')) await fillYouTube(data);
-                    else if (host.includes('instagram')) await fillInstagram(data);
-                    else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
-                }
-                
-                if (data.eventName) createStandardOverlay(data);
+    try {
+        const host = window.location.hostname;
+        if (host.includes('tiktok')) {
+            createTikTokOverlay(data);
+        } else if (host.includes('youtube')) {
+            createYouTubeOverlay(data);
+        } else {
+            if (!hasRunAutomatedFill) {
+                hasRunAutomatedFill = true;
+                if (host.includes('youtube')) await fillYouTube(data);
+                else if (host.includes('instagram')) await fillInstagram(data);
+                else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
             }
-        } finally {
-            isAutofilling = false;
+            
+            if (data.eventName) createStandardOverlay(data);
         }
+    } finally {
+        isAutofilling = false;
+    }
     }
     
     // ==========================================

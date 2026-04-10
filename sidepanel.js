@@ -468,10 +468,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           if (firstUrl.includes("youtube") || firstUrl.includes("youtu.be")) {
               platform = "YouTube";
-              reportUrl = "https://www.youtube.com/copyright_complaint_form";
+              reportUrl = "[https://www.youtube.com/copyright_complaint_form](https://www.youtube.com/copyright_complaint_form)";
           } else if (firstUrl.includes("tiktok")) {
               platform = "TikTok";
-              reportUrl = "https://www.tiktok.com/legal/report/Copyright";
+              reportUrl = "[https://www.tiktok.com/legal/report/Copyright](https://www.tiktok.com/legal/report/Copyright)";
           } else {
               // Fallback or handle other platforms
               platform = "Other";

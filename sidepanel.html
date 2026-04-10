@@ -171,13 +171,27 @@
         bottom: -10px;
         left: 0;
         border-width: 10px 10px 0 0;
-        border-style: solid;
-        border-color: #ce0e2d transparent transparent transparent;
-    }
+            border-style: solid;
+            border-color: #ce0e2d transparent transparent transparent;
+        }
 
-    /* Text Hints */
-    .hint { font-size: 11px; color: #6b7280; margin-top: -8px; margin-bottom: 12px; line-height: 1.4; }
-    .hint strong { color: #0288d1; }
+        /* Interactive Spotlighting Cutout */
+        .clippy-focus {
+            position: relative;
+            z-index: 99999;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.7), 0 0 15px 2px rgba(206,14,45,0.8);
+            pointer-events: auto;
+            animation: spotlight-pulse 1.5s infinite;
+        }
+        @keyframes spotlight-pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* Text Hints */
+        .hint { font-size: 11px; color: #6b7280; margin-top: -8px; margin-bottom: 12px; line-height: 1.4; }
+        .hint strong { color: #0288d1; }
 
     /* Instructions Box */
     .instructions { background: #f0fdf4; padding: 12px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 15px; }
@@ -282,7 +296,7 @@
       
       <div class="flex-between">
           <button id="copyEventNameBtn" class="link-btn">Copy Event Name</button>
-          <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" Text</button>
+          <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" URL</button>
       </div>
 
       <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 15px 0;">

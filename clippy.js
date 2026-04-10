@@ -5,13 +5,18 @@
     if (window.hasClippyRun) return;
     window.hasClippyRun = true;
 
-    let clippyContainer;
+    let clippyHost;
+    let clippyShadow;
 
     // 1. Inject the Modular UI
     function injectClippy() {
-        if (document.getElementById('flo-clippy-container')) return;
+        if (document.getElementById('flo-clippy-host')) return;
 
-        clippyContainer = document.createElement('div');
+        clippyHost = document.createElement('div');
+        clippyHost.id = 'flo-clippy-host';
+        clippyShadow = clippyHost.attachShadow({ mode: 'open' });
+        
+        const clippyContainer = document.createElement('div');
         clippyContainer.id = 'flo-clippy-container';
         
         // Use fixed positioning to float in the bottom right corner
@@ -67,34 +72,36 @@
             ">
         `;
 
-        document.body.appendChild(clippyContainer);
+        clippyShadow.appendChild(clippyContainer);
+        document.body.appendChild(clippyHost);
 
         // Allow user to dismiss Clippy
-        document.getElementById('flo-clippy-close').addEventListener('click', () => {
-            clippyContainer.style.display = 'none';
+        clippyShadow.getElementById('flo-clippy-close').addEventListener('click', () => {
+            clippyHost.style.display = 'none';
         });
         
         // Clicking clippy toggles the bubble
-        document.getElementById('flo-clippy-img').addEventListener('click', () => {
-            const bubble = document.getElementById('flo-clippy-bubble');
+        clippyShadow.getElementById('flo-clippy-img').addEventListener('click', () => {
+            const bubble = clippyShadow.getElementById('flo-clippy-bubble');
             bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none';
         });
     }
 
     function showMessage(text) {
-        if (!clippyContainer) injectClippy();
-        const bubble = document.getElementById('flo-clippy-bubble');
-        const textDiv = document.getElementById('flo-clippy-text');
-        const img = document.getElementById('flo-clippy-img');
+        if (!clippyHost) injectClippy();
+        const bubble = clippyShadow.getElementById('flo-clippy-bubble');
+        const textDiv = clippyShadow.getElementById('flo-clippy-text');
+        const img = clippyShadow.getElementById('flo-clippy-img');
         
         textDiv.innerHTML = text;
         bubble.style.display = 'block';
         img.style.display = 'block';
-        clippyContainer.style.display = 'flex';
+        clippyHost.style.display = 'block';
+        clippyShadow.getElementById('flo-clippy-container').style.display = 'flex';
     }
 
     function hideClippy() {
-        if (clippyContainer) clippyContainer.style.display = 'none';
+        if (clippyHost) clippyHost.style.display = 'none';
     }
 
     // 2. Evaluate State and Determine Dialogue
@@ -116,6 +123,19 @@
                 else if (url.includes('tiktok.com') || url.includes('youtube.com')) {
                     showMessage("You made it! 🎯<br><br>When you find pirated content, just click the <b>+ Add</b> button on my Pirate AI overlay (top right) to capture the evidence.");
                     
+                    const spotlightInterval = setInterval(() => {
+                        const addBtn = document.getElementById('flo-add');
+                        if (addBtn) {
+                            clearInterval(spotlightInterval);
+                            addBtn.style.position = 'relative';
+                            addBtn.style.zIndex = '2147483647'; // Ensures it sits above the new shadow
+                            addBtn.style.boxShadow = '0 0 0 9999px rgba(0,0,0,0.7), 0 0 15px 2px rgba(206,14,45,0.8)';
+                            
+                            // Dismiss spotlight when the user clicks the button
+                            addBtn.addEventListener('click', () => addBtn.style.boxShadow = 'none', { once: true });
+                        }
+                    }, 500);
+
                     // Mark onboarding complete so he doesn't show up on every video permanently
                     chrome.storage.local.set({ onboarding_step: 'COMPLETE' });
                 }
@@ -135,6 +155,18 @@
         }
     });
 
-    // Run automatically on page load
-    setTimeout(evaluateState, 1000); // Slight delay ensures DOM is fully ready
+    // Deterministic Loading: Wait for the + Add button overlay or Options page
+    const domObserver = new MutationObserver((mutations, obs) => {
+        if (document.getElementById('flo-add') || window.location.href.includes('options.html')) {
+            evaluateState();
+            obs.disconnect(); // Stop observing once target is found
+        }
+    });
+    
+    domObserver.observe(document.documentElement, { childList: true, subtree: true });
+    
+    // Fallback: If it injected before the observer attached
+    if (document.getElementById('flo-add') || window.location.href.includes('options.html')) {
+        evaluateState();
+    }
 })();
