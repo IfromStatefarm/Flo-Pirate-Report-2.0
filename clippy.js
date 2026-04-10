@@ -13,7 +13,7 @@
         if (document.getElementById('flo-clippy-host')) return;
 
         clippyHost = document.createElement('div');
-        clippyHost.id = 'flo-clippy-host';
+        clippyHofst.id = 'flo-clippy-host';
         clippyShadow = clippyHost.attachShadow({ mode: 'open' });
         
         const clippyContainer = document.createElement('div');
@@ -75,9 +75,15 @@
         clippyShadow.appendChild(clippyContainer);
         document.body.appendChild(clippyHost);
 
-        // Allow user to dismiss Clippy
+        // Allow user to permanently dismiss Clippy (Skip Tutorial)
         clippyShadow.getElementById('flo-clippy-close').addEventListener('click', () => {
+            // 1. Hide immediately for snappy UI response
             clippyHost.style.display = 'none';
+            
+            // 2. Write permanent bypass flag to Chrome storage
+            chrome.storage.local.set({ onboarding_step: 'COMPLETE' }, () => {
+                console.log("PIRATE AI: Tutorial permanently dismissed by user.");
+            });
         });
         
         // Clicking clippy toggles the bubble
@@ -86,7 +92,7 @@
             bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none';
         });
     }
-
+    // Helper to show messages in the bubble with optional targeting
     function showMessage(text) {
         if (!clippyHost) injectClippy();
         const bubble = clippyShadow.getElementById('flo-clippy-bubble');
@@ -96,8 +102,22 @@
         textDiv.innerHTML = text;
         bubble.style.display = 'block';
         img.style.display = 'block';
-        clippyHost.style.display = 'block';
-        clippyShadow.getElementById('flo-clippy-container').style.display = 'flex';
+        clippyContainer.style.display = 'flex';
+
+        if (targetSelector && document.querySelector(targetSelector)) {
+            const rect = document.querySelector(targetSelector).getBoundingClientRect();
+            const spaceAbove = rect.top;
+            
+            clippyContainer.style.bottom = spaceAbove > 250 ? `${window.innerHeight - rect.top + 20}px` : 'auto';
+            clippyContainer.style.top = spaceAbove <= 250 ? `${rect.bottom + 20}px` : 'auto';
+            clippyContainer.style.right = 'auto';
+            clippyContainer.style.left = `${Math.min(Math.max(20, rect.left), window.innerWidth - 320)}px`;
+        } else {
+            clippyContainer.style.top = 'auto';
+            clippyContainer.style.left = 'auto';
+            clippyContainer.style.bottom = '30px';
+            clippyContainer.style.right = '30px';
+        }
     }
 
     function hideClippy() {
