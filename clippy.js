@@ -133,9 +133,9 @@
 
             if (state === 'NEEDS_CONFIG') {
                 if (url.includes('options.html')) {
-                    showMessage("Hi! I'm your FloSports Piracy Assistant. 🏴‍☠️<br><br>Please paste your <b>Folder ID</b>, <b>Foundation Sheet ID</b>, and <b>Config Sheet ID</b> into the boxes above, then click <b>Save All Settings</b>.");
+                    showMessage("Hi! I'm your FloSports Piracy Assistant. 🏴<br><br>Please paste your <b>Folder ID</b>, <b>Foundation Sheet ID</b>, and <b>Config Sheet ID</b> into the boxes above.<br><br>Need help finding your IDs? <a href='https://flocasts.atlassian.net/wiki/x/CIDZTwE' target='_blank' style='color: #ce0e2d; font-weight: bold; text-decoration: underline;'>Check out the setup guide here</a>.<br><br>When you're done, click <b>Save All Settings</b>.");
                 }
-            } 
+            }
             else if (state === 'READY_FOR_FIRST_REPORT') {
                 if (url.includes('options.html')) {
                     showMessage("Great job! 🎉 Your IDs are locked in.<br><br>Let's head over to a <b>TikTok</b> or <b>YouTube</b> video for your first hunt!");
