@@ -13,7 +13,7 @@
         if (document.getElementById('flo-clippy-host')) return;
 
         clippyHost = document.createElement('div');
-        clippyHofst.id = 'flo-clippy-host';
+        clippyHost.id = 'flo-clippy-host';
         clippyShadow = clippyHost.attachShadow({ mode: 'open' });
         
         const clippyContainer = document.createElement('div');
