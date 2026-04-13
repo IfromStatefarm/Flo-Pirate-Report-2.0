@@ -133,7 +133,7 @@
 
             if (state === 'NEEDS_CONFIG') {
                 if (url.includes('options.html')) {
-                    showMessage("Hi! I'm your FloSports Piracy Assistant. <br><br>Please paste your <b>Folder ID</b>, <b>Foundation Sheet ID</b>, and <b>Config Sheet ID</b> into the boxes above.<br><br>Need help finding your IDs? <a href='https://flocasts.atlassian.net/wiki/spaces/FSM/pages/5634621448/FloSports+Pirate+Reporter+3.3.1+Pirate+AI#Id-for-3-boxes' target='_blank' style='color: #ce0e2d; font-weight: bold; text-decoration: underline;'>Check out the setup guide here</a>.<br><br>When you're done, click <b>Save All Settings</b>.");
+                    showMessage("Hi! I'm your FloSports Piracy Assistant. <br><br>Please paste your <b>Folder ID</b>, <b>Foundation Sheet ID</b>, and <b>Config Sheet ID</b> into the boxes above.<br><br>Need help finding your IDs? <a href='https://flocasts.atlassian.net/wiki/spaces/FSM/pages/5634621448/FloSports+Pirate+Reporter+3.3.1+Pirate+AI#Options-Set-Up' target='_blank' style='color: #ce0e2d; font-weight: bold; text-decoration: underline;'>Check out the setup guide here</a>.<br><br>When you're done, click <b>Save All Settings</b>.");
                 }
             }
             else if (state === 'READY_FOR_FIRST_REPORT') {
