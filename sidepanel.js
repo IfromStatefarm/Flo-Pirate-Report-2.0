@@ -261,7 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           chrome.storage.local.set({ last_vertical: vertical });
           
           if (vertical) {
-              setClippyStage('search', "Great! Now, what event is this?", 'images/clippy looking.gif');
+                if (crawlStatusEl) crawlStatusEl.innerText = "Loading events...";
               document.getElementById('eventInput')?.classList.add('clippy-focus');
               
               if (eventInput) eventInput.placeholder = "Loading events...";
@@ -335,10 +335,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sourceDisplay.value = Object.values(ev.urls).find(u => u) || "";
                 
                 if (!sourceDisplay.value.trim()) {
-                    setClippyStage('search', "We're missing the link! Push Search to find it.", 'images/clippy looking.gif');
+                    sourceDisplay.placeholder = "No URL found for this event.";
                     document.getElementById('searchEventBtn')?.classList.add('clippy-focus');
                 } else {
-                    setClippyStage('capture', "Link found! Now find the pirate and click +Add.", 'images/clippy smrik.gif');
                     document.getElementById('startBtn')?.classList.add('clippy-focus');
                 }
             }
@@ -816,7 +815,6 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
       if (namespace === 'local' && changes.piracy_cart) {
           const cartSize = changes.piracy_cart.newValue?.length || 0;
           if (cartSize > 0) {
-              setClippyStage('report', `Nice! ${cartSize} items ready. Let's finish this!`, 'images/clippy talking.gif');
               document.getElementById('startBtn')?.classList.add('clippy-focus');
           }
       }
@@ -983,39 +981,4 @@ function levenshtein(a, b) {
         }
     }
     return matrix[b.length][a.length];
-}
-// --- Helper to show a temporary feedback toast in the Clippy bubble ---
-function showClippyToast(message, iconSrc, duration = 3000) {
-    const textEl = document.getElementById('clippy-feedback-text');
-    const iconEl = document.getElementById('clippy-state-icon');
-    const oldText = textEl ? textEl.innerText : "";
-    const oldIcon = iconEl ? iconEl.src : "";
-
-    if (textEl) textEl.innerText = message;
-    if (iconEl && iconSrc) iconEl.src = iconSrc;
-
-    setTimeout(() => {
-        if (textEl) textEl.innerText = oldText;
-        if (iconEl) iconEl.src = oldIcon;
-    }, duration);
-}
-// --- Helper to update Clippy's current focus and milestone ---
-function setClippyStage(stageId, feedbackText, iconSrc = 'images/clippy starting postion.png') {
-    // 1. Reset all milestones
-    document.querySelectorAll('.milestone-step').forEach(el => el.classList.remove('active'));
-    // 2. Clear all glows
-    document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
-    
-    // 3. Set new active milestone
-    const ms = document.getElementById(`ms-${stageId}`);
-    if (ms) ms.classList.add('active');
-
-    // 4. Update Clippy Bubble
-    const bubble = document.getElementById('clippy-process-bubble');
-    const textEl = document.getElementById('clippy-feedback-text');
-    const iconEl = document.getElementById('clippy-state-icon');
-    
-    if (bubble) bubble.style.display = 'flex';
-    if (textEl) textEl.innerText = feedbackText;
-    if (iconEl) iconEl.src = iconSrc;
 }
