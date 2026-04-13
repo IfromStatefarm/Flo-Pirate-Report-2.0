@@ -204,6 +204,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   } catch (e) {
     console.error("Init error:", e);
+    showClippyToast(e.message || "Unknown Error", 'images/clippy smrik.gif', 6000);
     showInitError(e.message || "Unknown Error");
   }
 
@@ -320,15 +321,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           }, (res) => {
               if (loadingEl) loadingEl.style.display = "none";
               if (!res.success) {
-                  alert("Error opening search: " + res.error);
+                  showClippyToast("Error opening search: " + res.error, 'images/clippy smrik.gif');
               }
           });
       } else {
-          alert("Please select a Vertical and enter an Event Name.");
-        }
-    };
+          showClippyToast("Please select a Vertical and enter an Event Name.", 'images/clippy smrik.gif');
+      }
+  };
 
-    if (eventInput) {
+  if (eventInput) {
         eventInput.addEventListener('change', () => {
             const ev = window.currentEventMap && window.currentEventMap[eventInput.value.toLowerCase().trim()];
             if (ev && sourceDisplay) {

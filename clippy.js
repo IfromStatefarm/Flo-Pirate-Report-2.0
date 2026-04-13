@@ -64,7 +64,7 @@
                 <div id="flo-clippy-text"></div>
             </div>
             <img id="flo-clippy-img" src="${clippyImgUrl}" alt="Helper" style="
-                width: 90px; 
+                width: 270px; /* Changed from 90px to 270px */
                 height: auto; 
                 cursor: pointer;
                 filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.3));
@@ -87,15 +87,20 @@
             });
         });
         
-        // Clicking clippy toggles the bubble
+       // Clicking clippy toggles the bubble
         clippyShadow.getElementById('flo-clippy-img').addEventListener('click', () => {
             const bubble = clippyShadow.getElementById('flo-clippy-bubble');
             bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none';
         });
     }
 
+    // Expose to window for the Error Concierge
+    window.showClippyMessage = function(text) {
+        showMessage("⚠️ " + text);
+    };
+
     // Helper to show messages in the bubble with optional targeting
-    function showMessage(text, targetSelector = null) {
+    function showMessage(text) {
         if (!clippyHost) injectClippy();
         const bubble = clippyShadow.getElementById('flo-clippy-bubble');
         const textDiv = clippyShadow.getElementById('flo-clippy-text');

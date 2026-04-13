@@ -18,6 +18,9 @@ async function safeFetchJson(url, options, retries = 5, delay = 1000) {
     const text = await res.text();
     
     if (!res.ok) {
+        if (res.status === 401) {
+            throw new Error("Your session expired! Click my 'Check Account' button to get back in the hunt.");
+        }
         let parsedMsg = text;
         try {
             const jsonObj = JSON.parse(text);

@@ -623,12 +623,12 @@
           data = scrapePageStrategy();
       } catch(err) {
           console.error("Scraping error:", err);
-          alert("❌ Error scraping page data. See console for details.");
+          if (window.showClippyMessage) window.showClippyMessage("Error scraping page data. Check the console.");
           return;
       }
       
       if (!data) { 
-          alert("❌ No valid video detected on this page. Check Console (F12) for 'PIRATE AI' logs."); 
+          if (window.showClippyMessage) window.showClippyMessage("No valid video detected on this page. Check logs.");
           return; 
       }
       
