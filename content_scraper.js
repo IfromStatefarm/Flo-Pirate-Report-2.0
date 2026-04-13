@@ -715,16 +715,12 @@
                   // --- MILESTONE TOAST ---
                   if (res.milestoneHit) {
                       const isLevelUp = res.milestoneMessage?.toLowerCase().includes("level");
-                      const bgColor = isLevelUp ? "linear-gradient(135deg, #fbbf24, #f59e0b)" : "#ce0e2d";
-                      const toast = document.createElement('div');
-                      toast.style.cssText = `position:fixed; bottom:30px; right:30px; background:${bgColor}; color:#fff; padding:15px 20px; border-radius:8px; font-weight:bold; box-shadow:0 6px 20px rgba(0,0,0,0.4); z-index:2147483647; font-family:sans-serif; pointer-events:none; transform: scale(${isLevelUp ? '1.1' : '1'}); transition: all 0.3s ease-in-out;`;
-                      toast.innerHTML = `🎉 ${isLevelUp ? 'LEVEL UP!' : 'Milestone Unlocked!'}<br><span style="font-size:12px; font-weight:normal;">${res.milestoneMessage || "Pirate Spotted! Bonus Points Added."}</span>`;
-                      document.body.appendChild(toast);
-                      if (isLevelUp) setTimeout(() => toast.style.transform = 'scale(1)', 300);
-                      setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(() => toast.remove(), 500); }, 4000);
+                      
+                      // Notify Clippy to act as the Hype Man
+                      window.dispatchEvent(new CustomEvent('triggerClippyHype', { 
+                          detail: { message: res.milestoneMessage, isLevelUp } 
+                      }));
                   }
-                  
-                  btnAdd.innerText = "Saved!";
                   
                   btnAdd.innerText = "Saved!"; 
                   btnAdd.style.backgroundColor = "#4CAF50";

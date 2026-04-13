@@ -7,6 +7,7 @@
 
     let clippyHost;
     let clippyShadow;
+    let clippyContainer; // Hoisted to prevent reference errors
 
     // 1. Inject the Modular UI
     function injectClippy() {
@@ -16,7 +17,7 @@
         clippyHost.id = 'flo-clippy-host';
         clippyShadow = clippyHost.attachShadow({ mode: 'open' });
         
-        const clippyContainer = document.createElement('div');
+        clippyContainer = document.createElement('div');
         clippyContainer.id = 'flo-clippy-container';
         
         // Use fixed positioning to float in the bottom right corner
@@ -92,8 +93,9 @@
             bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none';
         });
     }
+
     // Helper to show messages in the bubble with optional targeting
-    function showMessage(text) {
+    function showMessage(text, targetSelector = null) {
         if (!clippyHost) injectClippy();
         const bubble = clippyShadow.getElementById('flo-clippy-bubble');
         const textDiv = clippyShadow.getElementById('flo-clippy-text');
@@ -102,21 +104,25 @@
         textDiv.innerHTML = text;
         bubble.style.display = 'block';
         img.style.display = 'block';
-        clippyContainer.style.display = 'flex';
+        if (clippyContainer) clippyContainer.style.display = 'flex';
 
         if (targetSelector && document.querySelector(targetSelector)) {
             const rect = document.querySelector(targetSelector).getBoundingClientRect();
             const spaceAbove = rect.top;
             
-            clippyContainer.style.bottom = spaceAbove > 250 ? `${window.innerHeight - rect.top + 20}px` : 'auto';
-            clippyContainer.style.top = spaceAbove <= 250 ? `${rect.bottom + 20}px` : 'auto';
-            clippyContainer.style.right = 'auto';
-            clippyContainer.style.left = `${Math.min(Math.max(20, rect.left), window.innerWidth - 320)}px`;
+            if (clippyContainer) {
+                clippyContainer.style.bottom = spaceAbove > 250 ? `${window.innerHeight - rect.top + 20}px` : 'auto';
+                clippyContainer.style.top = spaceAbove <= 250 ? `${rect.bottom + 20}px` : 'auto';
+                clippyContainer.style.right = 'auto';
+                clippyContainer.style.left = `${Math.min(Math.max(20, rect.left), window.innerWidth - 320)}px`;
+            }
         } else {
-            clippyContainer.style.top = 'auto';
-            clippyContainer.style.left = 'auto';
-            clippyContainer.style.bottom = '30px';
-            clippyContainer.style.right = '30px';
+            if (clippyContainer) {
+                clippyContainer.style.top = 'auto';
+                clippyContainer.style.left = 'auto';
+                clippyContainer.style.bottom = '30px';
+                clippyContainer.style.right = '30px';
+            }
         }
     }
 
@@ -135,7 +141,7 @@
                 if (url.includes('options.html')) {
                     showMessage("Hi! I'm your FloSports Piracy Assistant. <br><br>Please paste your <b>Folder ID</b>, <b>Foundation Sheet ID</b>, and <b>Config Sheet ID</b> into the boxes above.<br><br>Need help finding your IDs? <a href='https://flocasts.atlassian.net/wiki/spaces/FSM/pages/5634621448/FloSports+Pirate+Reporter+3.3.1+Pirate+AI#Options-Set-Up' target='_blank' style='color: #ce0e2d; font-weight: bold; text-decoration: underline;'>Check out the setup guide here</a>.<br><br>When you're done, click <b>Save All Settings</b>.");
                 }
-            }
+            } 
             else if (state === 'READY_FOR_FIRST_REPORT') {
                 if (url.includes('options.html')) {
                     showMessage("Great job! 🎉 Your IDs are locked in.<br><br>Let's head over to a <b>TikTok</b> or <b>YouTube</b> video for your first hunt!");
@@ -173,6 +179,18 @@
         if (request.action === 'clippyStateChange') {
             evaluateState();
         }
+    });
+
+    // 4. Listen for Gamification Milestones from Scraper
+    window.addEventListener('triggerClippyHype', (e) => {
+        const { message, isLevelUp } = e.detail;
+        const img = clippyShadow.getElementById('flo-clippy-img');
+        
+        if (img) img.src = chrome.runtime.getURL('images/clippy smrik.gif');
+        showMessage(`🎉 <b>${isLevelUp ? "LEVEL UP!" : "Rank Up! You're now a Pathfinder!"}</b><br><br>${message || ""}`);
+        
+        // Reset back to standard state after 5 seconds
+        setTimeout(() => { if (img) img.src = chrome.runtime.getURL('images/clippy.gif'); }, 5000);
     });
 
     // Deterministic Loading: Wait for the + Add button overlay or Options page
