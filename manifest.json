@@ -90,7 +90,24 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["lib/jspdf.umd.min.js", "style.css", "jingle.mp3", "search_bot.js", "images/clippy.png"],
+      "resources": ["lib/jspdf.umd.min.js", 
+      "style.css", 
+      "images/foundationsheet.jpg", 
+      "images/captainslog.png", 
+      "images/compass.png",
+      "images/firefly.png",
+      "images/floorplanks.png",
+      "images/nauticalchart.png",
+      "images/rivet.png",
+      "images/RootIdchest.png",
+      "images/treasurechest.png",
+      "images/waxseal.png",
+      "images/eventconfig.jpg", 
+      "images/clippy.png",
+       "jingle.mp3", 
+       "search_bot.js",
+        "images/clippy.png"],
+
       "matches": [
         "*://*.tiktok.com/*", 
         "*://*.youtube.com/*", 

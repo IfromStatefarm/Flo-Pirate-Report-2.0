@@ -57,6 +57,7 @@ document.getElementById('send_suggestion').addEventListener('click', async () =>
     });
 });
 
+// options.js - Update to the existing save listener
 document.getElementById('save').addEventListener('click', () => {
   const folderId = document.getElementById('piracy_folder_id').value.trim();
   const sheetId = document.getElementById('piracy_sheet_id').value.trim();
@@ -71,9 +72,15 @@ document.getElementById('save').addEventListener('click', () => {
     beta_opt_in: betaOptIn,
     report_mode: reportMode
   }, () => {
-    const status = document.getElementById('status');
-    status.style.color = 'green';
-    status.innerText = 'Settings Saved! Pioneer Status: ' + (betaOptIn ? 'Active 🚀' : 'Disabled');
-    setTimeout(() => status.innerText = '', 3000);
+    // TRIGGER VISUAL STAMP
+    const stamp = document.getElementById('enforce-stamp');
+    stamp.classList.add('active');
+    
+    // Play a "stamp" sound if you have one, or just hide it after 1.5s
+    setTimeout(() => {
+        stamp.classList.remove('active');
+        const status = document.getElementById('status');
+        status.innerText = 'Log Updated Captain! ⚓';
+    }, 1500);
   });
 });

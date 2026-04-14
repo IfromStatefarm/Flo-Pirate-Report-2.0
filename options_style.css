@@ -1,0 +1,127 @@
+/* options_style.css */
+:root {
+    --flo-red: #ce0e2d;
+    --deep-sea: #0f172a;
+    --gold: #fcd34d;
+    --parchment: #fdf5e6;
+}
+
+body.command-deck {
+    background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+    color: #e2e8f0;
+    font-family: 'Segoe UI', serif;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.deck-wrapper {
+    width: 600px; /* Wider to accommodate the map assets */
+    z-index: 10;
+}
+
+/* 🖼️ Themed Card Styling */
+.themed-card {
+    margin-bottom: 20px;
+    filter: drop-shadow(0 10px 15px rgba(0,0,0,0.5));
+}
+
+.image-container {
+    position: relative;
+    width: 100%;
+}
+
+.image-container img {
+    width: 100%;
+    display: block;
+    border-radius: 8px;
+}
+
+/* ✍️ Absolute Positioning for Inputs */
+.overlay-input {
+    position: absolute;
+    background: transparent;
+    border: none;
+    font-family: 'Courier New', Courier, monospace; /* Makes it look typed */
+    font-weight: bold;
+    font-size: 14px;
+    color: #262626;
+    outline: none;
+}
+
+/* Precision Alignment for foundationsheet.jpg */
+.foundation-input {
+    top: 26%;
+    left: 36.5%;
+    width: 31%;
+    height: 10%;
+}
+
+/* Precision Alignment for eventconfig.jpg */
+.config-input {
+    top: 25.5%;
+    left: 41.5%;
+    width: 25%;
+    height: 10%;
+}
+
+/* ⚙️ General Cards */
+.basic-card {
+    background: rgba(30, 41, 59, 0.8);
+    border: 2px solid #334155;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+/* ⚓ Radar & Fog (Keep from previous) */
+.radar-container {
+    position: fixed; top: 20px; left: 20px; width: 100px; height: 100px;
+    border-radius: 50%; border: 1px solid var(--flo-red);
+    background: conic-gradient(from 0deg, transparent, rgba(206,14,45,0.3));
+    animation: rotate 4s linear infinite;
+}
+
+@keyframes rotate { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+.sea-fog {
+    position: fixed; bottom: 0; left: 0; width: 200%; height: 100px;
+    background: linear-gradient(transparent, rgba(255,255,255,0.05));
+    animation: drift 30s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* 📜 Enforcement Button */
+.btn-enforce {
+    background: var(--flo-red);
+    color: white;
+    font-weight: 900;
+    padding: 15px;
+    border: 4px double #000;
+    width: 100%;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: 0.2s;
+}
+
+.btn-enforce:hover {
+    background: #900;
+    transform: scale(1.02);
+}
+
+/* 🔴 Save Stamp Animation */
+.stamp {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(5);
+    color: var(--flo-red); font-size: 60px; font-weight: 900;
+    border: 8px solid var(--flo-red); padding: 10px 30px;
+    opacity: 0; pointer-events: none; transition: 0.1s;
+    background: rgba(255,255,255,0.1);
+}
+
+.stamp.active {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1) rotate(-10deg);
+}
