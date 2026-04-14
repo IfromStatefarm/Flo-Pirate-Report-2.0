@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Platform Repair Elements
   const startTrainingBtn = document.getElementById('startTrainingBtn');
   const repairPlatformSelect = document.getElementById('repairPlatformSelect');
+  const recordingBadge = document.getElementById('recording-badge');
   const selectorPatchUI = document.getElementById('selectorPatchUI');
   const capturedSelectorRaw = document.getElementById('capturedSelectorRaw');
   const selectorFieldMap = document.getElementById('selectorFieldMap');
@@ -742,16 +743,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 if (selectorPatchUI) selectorPatchUI.style.display = 'block';
   const startMacroBtn = document.getElementById('startMacroBtn');
-  if (startMacroBtn) {
-      startMacroBtn.addEventListener('click', async () => {
-          const platform = repairPlatformSelect ? repairPlatformSelect.value : 'tiktok';
-          startMacroBtn.innerText = "Recording (10s)...";
-          startMacroBtn.disabled = true;
+const stopMacroBtn = document.getElementById('stopMacroBtn');
+
+if (startMacroBtn && stopMacroBtn) {
+    startMacroBtn.addEventListener('click', async () => {
+        const platform = repairPlatformSelect ? repairPlatformSelect.value : 'tiktok';
+        
+        // Enter UI Recording State
+          startMacroBtn.style.display = 'none';
+          stopMacroBtn.style.display = 'inline-block';
           
+          // ADD THE CLASS TO THE BODY FOR FLASHING BORDER
+          document.body.classList.add('recording-active');
+          if (recordingBadge) recordingBadge.style.display = 'inline-block';
+          
+          if (patchStatus) {
+              patchStatus.style.color = "#ce0e2d";
+              patchStatus.innerText = "🔴 RECORDING: Click elements on the video page.";
+          }
+
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          if (tab) chrome.tabs.sendMessage(tab.id, { action: 'startMacroTraining', platform });
+          if (tab) {
+              chrome.tabs.sendMessage(tab.id, { action: 'startMacroTraining', platform });
+          }
       });
-  }
+
+    stopMacroBtn.addEventListener('click', async () => {
+        // UI Flip back
+        startMacroBtn.style.display = 'inline-block';
+        stopMacroBtn.style.display = 'none';
+        
+        document.body.classList.remove('recording-active');
+          if (recordingBadge) recordingBadge.style.display = 'none';
+          
+          if (patchStatus) patchStatus.innerText = "Processing captured macro...";
+
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab) {
+              chrome.tabs.sendMessage(tab.id, { action: 'stopMacroTraining' });
+          }
+    });
+}
 
   // Listen for completed training from content script and show mapping UI with captured selector/macro data 
   chrome.runtime.onMessage.addListener((msg) => {

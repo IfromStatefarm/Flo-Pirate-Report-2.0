@@ -220,11 +220,41 @@
     .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
     input:checked + .slider { background-color: #10b981; }
     input:checked + .slider:before { transform: translateX(16px); }
+    
+ /* Recording Pulse Animation */
+    @keyframes recording-pulse {
+        0% { box-shadow: inset 0 0 0 0px rgba(206, 14, 45, 0); }
+        50% { box-shadow: inset 0 0 15px 3px rgba(206, 14, 45, 0.6); }
+        100% { box-shadow: inset 0 0 0 0px rgba(206, 14, 45, 0); }
+    }
+
+    .recording-active {
+        animation: recording-pulse 2s infinite;
+        border: 2px solid #ce0e2d !important;
+    }
+    
+    #recording-badge {
+        display: none; /* Logic in sidepanel.js toggles this */
+        background: #ce0e2d;
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        padding: 2px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        margin-left: 8px;
+        vertical-align: middle;
+        animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+        50% { opacity: 0; }
+    }
   </style>
 </head>
 <body>
 
-  <h2>🛡️ FloSports Reporter</h2>
+  <h2>🛡️ FloSports Reporter <span id="recording-badge">Recording...</span></h2>
   
   <!-- Interactive Feedback Placeholder -->
   <div id="clippy-process-bubble" class="clippy-bubble">
@@ -399,9 +429,10 @@
             <option value="tiktok">TikTok</option>
             <option value="youtube">YouTube</option>
           </select>
-          <button id="startTrainingBtn" class="btn btn-danger" style="width: auto; padding: 9px 12px;">Record Selectors</button>
-          <button id="startMacroBtn" class="btn btn-warning" style="width: auto; padding: 9px 12px; margin-left: 5px;">Record Macro</button>
-      </div>
+         <button id="startTrainingBtn" class="btn btn-danger" style="width: auto; padding: 9px 12px;">Record Selectors</button>
+         <button id="startMacroBtn" class="btn btn-warning" style="width: auto; padding: 9px 12px; margin-left: 5px;">Record Macro</button>
+         <button id="stopMacroBtn" class="btn btn-primary" style="width: auto; padding: 9px 12px; margin-left: 5px; display: none; background-color: #111827;">Stop</button>
+</div>
     </div>
   </div>
 

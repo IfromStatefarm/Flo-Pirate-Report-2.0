@@ -1,71 +1,244 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>Pirate Hunter Command Center</title>
-  <link rel="stylesheet" href="options_style.css">
-</head>
-<body class="command-deck">
-  <div class="radar-container">
-    <div class="radar-sweep"></div>
-  </div>
-  <div class="sea-fog"></div>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Piracy Report Options | FloSports</title>
+  <style>
+    :root {
+      --flo-red: #ce0e2d;
+      --flo-dark: #111827;
+      --flo-gray: #f9fafb;
+      --flo-border: #e5e7eb;
+      --pioneer-gold: #b45309;
+      --pioneer-bg: #fffbeb;
+    }
 
-  <div class="deck-wrapper">
+    body { 
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+      margin: 0;
+      padding: 0;
+      background-color: #f3f4f6;
+      color: var(--flo-dark);
+      display: flex;
+      justify-content: center;
+    }
+
+    .wrapper {
+      width: 100%;
+      max-width: 600px;
+      background: white;
+      min-height: 100vh;
+      box-shadow: 0 0 40px rgba(0,0,0,0.1);
+      padding: 40px;
+      box-sizing: border-box;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--flo-border);
+    }
+
+    header img {
+      width: 80px;
+      height: auto;
+      filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+    }
+
+    h1 { margin: 0; color: var(--flo-red); font-size: 24px; font-weight: 800; }
+    p.subtitle { margin: 4px 0 0 0; color: #6b7280; font-size: 14px; }
+
+    .section { margin-bottom: 32px; }
+    .section-title { 
+      font-size: 16px; 
+      font-weight: 700; 
+      margin-bottom: 16px; 
+      display: flex; 
+      align-items: center; 
+      gap: 8px;
+    }
+
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 13px; color: #374151; }
+    
+    .input-desc { font-size: 12px; color: #6b7280; margin-bottom: 8px; line-height: 1.4; }
+    
+    input[type="text"], select, textarea { 
+      width: 100%; 
+      padding: 12px; 
+      box-sizing: border-box;
+      border: 1.5px solid var(--flo-border); 
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    input:focus, select:focus, textarea:focus { 
+      outline: none; 
+      border-color: var(--flo-red); 
+      box-shadow: 0 0 0 4px rgba(206, 14, 45, 0.1);
+    }
+
+    .lab-card { 
+      background-color: var(--pioneer-bg); 
+      border: 1px solid #fcd34d; 
+      padding: 20px; 
+      border-radius: 12px;
+    }
+
+    .highlight-box {
+      background: white;
+      border: 1px solid #e5e7eb;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+
+    .save-bar {
+      position: sticky;
+      bottom: 0;
+      background: white;
+      padding: 20px 0;
+      border-top: 1px solid var(--flo-border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #save {
+      background-color: var(--flo-red);
+      color: white;
+      border: none;
+      padding: 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 700;
+      width: 100%;
+    }
+
+    #save:hover { background-color: #b00c26; transform: translateY(-1px); }
+    #status { text-align: center; font-weight: 700; font-size: 14px; min-height: 20px; }
+
+    .btn-secondary {
+      background-color: #f3f4f6;
+      color: #374151;
+      border: 1px solid var(--flo-border);
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .btn-secondary:hover { background-color: #e5e7eb; }
+
+    .easter-egg-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.9); z-index: 9999;
+      display: none; justify-content: center; align-items: center; flex-direction: column;
+    }
+    .easter-egg-overlay img { max-width: 90%; max-height: 80vh; border-radius: 12px; border: 4px solid var(--flo-red); }
+    .easter-egg-close { color: white; margin-top: 20px; font-family: monospace; cursor: pointer; }
+
+    .beta-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 0;
+    }
+
+    .beta-row input { margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+  <div class="wrapper">
     <header>
-      <img src="FloReporter_logo.png" class="logo-porthole" alt="Flo Logo">
-      <h1>Pirate Hunter Command</h1>
+      <img id="clippy-img" src="images/clippy starting postion.png" alt="Clippy">
+      <div>
+        <h1 style="cursor: pointer; user-select: none;" title="Enforcement Center">Enforcement Center</h1>
+        <p class="subtitle">Securely link your Google Workspace assets.</p>
+      </div>
     </header>
 
-    <div class="card basic-card">
-      <label for="piracy_folder_id">📦 Evidence Vault (Root Folder ID)</label>
-      <input type="text" id="piracy_folder_id" class="porthole-input" placeholder="Paste Folder ID here">
-    </div>
+    <div class="section">
+      <div class="section-title">📡 Core Connectivity</div>
+      
+      <div class="form-group">
+        <label for="piracy_folder_id">Google Drive Root Folder ID</label>
+        <div class="input-desc">Target folder for PDF reports and forensic screenshots.</div>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="piracy_folder_id" placeholder="e.g. 1AbC2DeF3GhI...">
+          <button id="open_evidence_locker" class="btn-secondary" title="Open Drive Folder">Open Locker</button>
+        </div>
+      </div>
 
-    <div class="themed-card log-card">
-      <div class="image-container">
-        <img src="foundationsheet.jpg" alt="Foundation Sheet">
-        <input type="text" id="piracy_sheet_id" class="overlay-input foundation-input" placeholder="Enter Spreadsheet ID">
+      <div class="form-group">
+        <label for="piracy_sheet_id">Foundation Log Sheet ID</label>
+        <div class="input-desc">The primary spreadsheet where all enforcement actions are logged.</div>
+        <input type="text" id="piracy_sheet_id" placeholder="Spreadsheet ID from URL">
+      </div>
+
+      <div class="form-group">
+        <label for="event_sheet_id">Event Config Sheet ID</label>
+        <div class="input-desc">Source for whitelists, event schedules, and XP multipliers.</div>
+        <input type="text" id="event_sheet_id" placeholder="Config Sheet ID">
+      </div>
+
+      <div class="form-group">
+        <label for="report_mode">Deployment Protocol</label>
+        <div class="input-desc">
+          <strong>Scout Mode:</strong> Safely logs intelligence to the sheet without opening reporting forms. Best for quick tactical sweeps.<br>
+          <strong>Full Enforcer:</strong> Automatically opens TikTok/YouTube DMCA forms and injects all evidence for immediate submission.
+        </div>
+        <select id="report_mode">
+          <option value="scout">Scout Mode (Intelligence Gathering Only)</option>
+          <option value="all">Full Enforcer (DMCA Workflow Active)</option>
+        </select>
       </div>
     </div>
 
-    <div class="themed-card config-card">
-        <div class="image-container">
-          <img src="eventconfig.jpg" alt="Event Config">
-          <input type="text" id="event_sheet_id" class="overlay-input config-input" placeholder="Enter Spreadsheet ID">
-        </div>
-    </div>
-
-    <div class="card basic-card">
-        <label for="report_mode">🧭 Navigation Mode</label>
-        <select id="report_mode" class="porthole-input">
-          <option value="scout">Scout Mode (Log Only)</option>
-          <option value="all">Full Takedown Mode</option>
-        </select>
-    </div>
-
-    <div class="bounty-board">
-        <div class="bounty-header">⚠️ WANTED: PIRATE STREAMS</div>
-        <div id="lab-instructions" class="bounty-desc">Loading community guidelines...</div>
+    <div class="section">
+      <div class="section-title" style="color: var(--pioneer-gold);">🚀 The Lab (Community)</div>
+      <div class="lab-card">
+        <div id="lab-instructions" class="input-desc" style="color: #92400e;">Join the experimental squad to test new scrapers and earn the Pioneer Badge.</div>
         
-        <label class="pioneer-toggle">
+        <div class="beta-row">
             <input type="checkbox" id="beta_opt_in">
-            <span class="wanted-poster">
-                <strong>Enable Experimental Scrapers</strong>
-                <small>Grants Pioneer Badge 🚀</small>
-            </span>
-        </label>
-
-        <div class="highlight-card" id="highlight-card">
-            <div class="highlight-user" id="highlight-user">Fetching MVP...</div>
-            <div class="highlight-desc" id="highlight-desc">...</div>
+            <label for="beta_opt_in" style="font-weight: normal;">
+                Enable Experimental Scrapers (Rumble, Discord, etc.)
+            </label>
         </div>
+
+        <div style="margin-top: 15px; font-weight: bold; font-size: 12px; color: var(--pioneer-gold);">🏆 Intelligence Highlight:</div>
+        <div class="highlight-box">
+            <div id="highlight-user" style="font-weight: bold; color: var(--flo-red); font-size: 13px;">Syncing...</div>
+            <div id="highlight-desc" style="font-size: 11px; color: #4b5563; margin-top: 4px;">Connect your IDs to see team achievements.</div>
+        </div>
+      </div>
     </div>
 
-    <button id="save" class="btn-enforce">COMMIT TO LOGS</button>
-    <div id="status"></div>
+    <div class="section">
+      <div class="section-title" style="color: #2563eb;">💬 Feedback Comms</div>
+      <textarea id="suggestion_text" maxlength="1000" rows="3" placeholder="Report a bug or suggest a feature..."></textarea>
+      <button id="send_suggestion" style="background-color: #2563eb; color: white; border: none; padding: 10px; border-radius: 8px; margin-top: 10px; width: 100%; font-weight: 600; cursor: pointer;">Send to Engineering</button>
+      <div id="suggestion_status" style="margin-top: 8px; text-align: center; font-size: 12px;"></div>
+    </div>
+
+    <div class="save-bar">
+      <div id="status"></div>
+      <button id="save">Save Intelligence Settings</button>
+    </div>
   </div>
 
-  <div id="enforce-stamp" class="stamp">ENFORCED</div>
+  <div id="easter-egg" class="easter-egg-overlay">
+    <img src="images/Flopirate hunter.gif" alt="Pirate Hunter Fleet">
+    <div class="easter-egg-close">Click anywhere to close</div>
+  </div>
 
   <script src="options.js" type="module"></script>
   <script src="clippy.js"></script>

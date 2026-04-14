@@ -671,26 +671,58 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   // ---  MACRO REAL-TIME STREAMING ---
   if (request.action === 'startMacroSession') {
-      chrome.storage.session.set({ activeMacroPlatform: request.platform, macroEvents: [] });
-      
-      // Service worker securely manages the compilation timeout
-      setTimeout(async () => {
-          const { macroEvents, activeMacroPlatform } = await chrome.storage.session.get(['macroEvents', 'activeMacroPlatform']);
-          if (!macroEvents || macroEvents.length === 0) return;
-          
-          const processedMacro = macroEvents.map((ev, i) => ({
-              action: ev.action, 
-              selector: ev.selector, 
-              value: ev.value, 
-              delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
-          }));
-          
-          // Broadcast completed macro to the Side Panel UI
-          chrome.runtime.sendMessage({ action: 'macroTrainingComplete', platform: activeMacroPlatform, macro: processedMacro }).catch(() => {});
-          chrome.storage.session.remove(['macroEvents', 'activeMacroPlatform']);
-      }, 5000);
-      return false;
-  }
+    // Just initialize the storage, don't set a timer here
+    chrome.storage.session.set({ activeMacroPlatform: request.platform, macroEvents: [] });
+    return false;
+}
+
+if (request.action === 'compileMacro') {
+    chrome.storage.session.get(['macroEvents', 'activeMacroPlatform']).then(async (data) => {
+        const { macroEvents, activeMacroPlatform } = data;
+        
+        // If nothing was recorded, notify the user via the side panel
+        if (!macroEvents || macroEvents.length === 0) {
+            chrome.runtime.sendMessage({ 
+                action: 'macroTrainingFailed', 
+                reason: 'No actions were recorded. Please click elements on the page while recording.' 
+            }).catch(() => {});
+            return;
+        }
+        
+        const processedMacro = macroEvents.map((ev, i) => ({
+            action: ev.action, 
+            selector: ev.selector, 
+            value: ev.value, 
+            delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
+        }));
+        
+        // 1. Notify the Side Panel that we are finished (Stops the flashing/badge)
+        chrome.runtime.sendMessage({ 
+            action: 'macroTrainingComplete', 
+            platform: activeMacroPlatform, 
+            macro: processedMacro 
+        }).catch(() => {});
+
+        // 2. Trigger the "Save Confirmation" Modal on the actual Video Page
+        // We use 'showMacroConfirmation' specifically to trigger the showPatchUI with the full macro string
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab) {
+            chrome.tabs.sendMessage(tab.id, {
+                action: 'showMacroConfirmation',
+                platform: activeMacroPlatform,
+                macro: processedMacro
+            }).catch(err => {
+                console.error("Failed to show confirmation UI on page:", err);
+                // Fallback: Notify sidepanel to show an error if the content script is unreachable
+                chrome.runtime.sendMessage({ action: 'macroTrainingFailed', reason: 'Could not reach the video page. Please refresh the video tab.' });
+            });
+        }
+        
+        // Clear session storage to prep for the next recording
+        chrome.storage.session.remove(['macroEvents', 'activeMacroPlatform']);
+    });
+    return false;
+}
 
   if (request.action === 'recordMacroStep') {
       // Append streaming step to session storage memory
