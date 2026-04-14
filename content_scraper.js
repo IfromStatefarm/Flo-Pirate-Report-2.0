@@ -393,14 +393,17 @@ function generateStableSelector(el) {
           value: e.type === 'input' ? target.value : undefined,
           timestamp: Date.now()
       };
-      chrome.runtime.sendMessage({ action: 'recordMacroStep', step: step }).catch(() => {});
+      
+      // Store locally instead of sending thousands of messages to background
+      macroEvents.push(step);
   }
 
   function startMacroTraining(platform) {
       if (isMacroMode) return;
       isMacroMode = true;
       trainingPlatform = platform;
-      chrome.runtime.sendMessage({ action: 'startMacroSession', platform: trainingPlatform }).catch(() => {});
+      macroEvents = []; // Reset local array on start
+      
       document.addEventListener('click', handleMacroEvent, true);
       document.addEventListener('input', handleMacroEvent, true);
       console.log("PIRATE AI: Macro Recording started...");
@@ -411,23 +414,49 @@ function generateStableSelector(el) {
       if (!isMacroMode) return;
       isMacroMode = false;
       clearTimeout(macroTimeout);
+      
       document.removeEventListener('click', handleMacroEvent, true);
       document.removeEventListener('input', handleMacroEvent, true);
-      chrome.runtime.sendMessage({ action: 'compileMacro' }).catch(() => {});
+      
       console.log("PIRATE AI: Macro Recording finished.");
+
+      if (macroEvents.length === 0) {
+          alert("No actions were recorded. Please interact with the page while recording.");
+          chrome.runtime.sendMessage({ action: 'macroTrainingComplete' }).catch(() => {});
+          return;
+      }
+
+      // Compile the macro locally
+      const processedMacro = macroEvents.map((ev, i) => ({
+          action: ev.action, 
+          selector: ev.selector, 
+          value: ev.value, 
+          delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
+      }));
+
+      // Trigger the UI on the page immediately!
+      showPatchUI(trainingPlatform, JSON.stringify(processedMacro, null, 2));
+
+      // Notify side panel to reset its UI (turn off flashing borders)
+      chrome.runtime.sendMessage({ 
+          action: 'macroTrainingComplete', 
+          platform: trainingPlatform, 
+          macro: processedMacro 
+      }).catch(() => {});
   }
-    // --- UI & MESSAGING ---
+    // Inject a native UI right on the page to avoid Side Panel communication drops
   function showPatchUI(platform, selector) {
       const existing = document.getElementById('flo-patch-ui');
       if (existing) existing.remove();
-
+  
+      // Setup strategies array
       const strategyList = Array.isArray(selector) ? selector : [selector];
       let currentStrategy = 0;
       const initialSelector = strategyList[0] || '';
       
-      // Fixed: Flexible detection to account for whitespace/formatting in JSON strings
+      // Identify if the payload is a Macro Array
       const isMacroData = typeof initialSelector === 'string' && initialSelector.trim().startsWith('[');
-
+  
       const ui = document.createElement('div');
       ui.id = 'flo-patch-ui';
       ui.style.cssText = `
@@ -458,75 +487,202 @@ function generateStableSelector(el) {
           </div>
           <div id="flo-patch-status" style="margin-top: 12px; font-size: 13px; font-weight: bold; text-align: center;"></div>
       `;
-
-      document.body.appendChild(ui);
-      document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
-      
+  
+        document.body.appendChild(ui);
+        document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
+  
       document.getElementById('flo-patch-test').addEventListener('click', () => {
-          const testVal = document.getElementById('flo-patch-selector-input').value.trim();
+          let testSel = document.getElementById('flo-patch-selector-input').value.trim();
+          let searchSel = testSel;
+          try { if (testSel.startsWith('[{')) searchSel = JSON.parse(testSel)[0]?.selector || testSel; } catch(e){}
+          let el = findElement(searchSel);
           const status = document.getElementById('flo-patch-status');
-          
-          if (testVal.startsWith('[')) {
-              status.innerText = "Simulating macro steps...";
-              status.style.color = "#0288d1";
-              try {
-                  const steps = JSON.parse(testVal);
-                  // Highlight each element in the macro sequence
-                  steps.forEach((s, idx) => {
-                      setTimeout(() => {
-                          const el = findElement(s.selector);
-                          if (el) {
-                              el.style.outline = '4px solid #f59e0b';
-                              setTimeout(() => el.style.outline = '', 1000);
-                          }
-                      }, idx * 500);
-                  });
-              } catch(e) { status.innerText = "❌ Invalid Macro JSON"; status.style.color = "red"; }
+  
+          // Cycle through strategies if not found
+          if (!el && currentStrategy < strategyList.length - 1) {
+              currentStrategy++;
+              testSel = strategyList[currentStrategy];
+              document.getElementById('flo-patch-selector-input').value = testSel;
+              
+              searchSel = testSel;
+              try { if (testSel.startsWith('[{')) searchSel = JSON.parse(testSel)[0]?.selector || testSel; } catch(e){}
+              el = findElement(searchSel);
+          }
+  
+          if (el) {
+              const origOutline = el.style.outline;
+              el.style.outline = '4px solid #ce0e2d'; // Red highlight
+              console.log("PIRATE AI: Test Element Value/Text ->", el.value || el.innerText);
+              status.innerText = `✅ Found Strategy ${currentStrategy + 1}! (Highlighted in red)`;
+              status.style.color = "green";
+              setTimeout(() => { el.style.outline = origOutline; }, 2000);
           } else {
-              const el = findElement(testVal);
-              if (el) {
-                  el.style.outline = '4px solid #ce0e2d';
-                  status.innerText = "✅ Element Found! (Highlighted)";
-                  status.style.color = "green";
-                  setTimeout(() => el.style.outline = '', 2000);
-              } else {
-                  status.innerText = "❌ Not found on current page.";
-                  status.style.color = "red";
-              }
+              status.innerText = "❌ All strategies failed. Please enter manually.";
+              status.style.color = "red";
           }
       });
-
+  
       document.getElementById('flo-patch-save').addEventListener('click', () => {
           const section = document.getElementById('flo-patch-section').value;
-          const field = document.getElementById('flo-patch-field').value.trim();
-          const finalData = document.getElementById('flo-patch-selector-input').value.trim();
-          
-          if (!field) { alert("Please enter a field name."); return; }
-          
-          const status = document.getElementById('flo-patch-status');
-          status.innerText = "Syncing to Cloud...";
-          status.style.color = "#ce0e2d";
-
-          chrome.runtime.sendMessage({
-              action: 'patchSelectorConfig',
-              platform: platform,
-              section: section,
-              field: field,
-              selector: finalData,
-              actionType: isMacroData ? 'macro' : 'click'
-          }, (res) => {
-              if (res && res.success) { 
-                  status.innerText = "✅ Cloud Config Updated!"; 
-                  status.style.color = "green";
-                  setTimeout(() => ui.remove(), 2000); 
-              } else { 
-                  status.innerText = "❌ Sync Failed: " + (res?.error || "Unknown"); 
-                  status.style.color = "red";
-              }
-          });
-      });
+            const field = document.getElementById('flo-patch-field').value.trim();
+            const actionType = document.getElementById('flo-patch-action').value;
+            const finalSelector = document.getElementById('flo-patch-selector-input').value.trim();
+  
+            if (!field) {
+                alert("Please enter a field name (e.g., agreementCheckbox).");
+                return;
+            }
+  
+            const status = document.getElementById('flo-patch-status');
+            status.innerText = "Syncing to Cloud...";
+            status.style.color = "#ce0e2d";
+  
+            chrome.runtime.sendMessage({
+                action: 'patchSelectorConfig',
+                platform: platform,
+                section: section,
+                field: field,
+                selector: finalSelector,
+                actionType: actionType
+            }, (res) => {
+                if (res && res.success) {
+                    status.innerText = "✅ Cloud Config Updated!";
+                    status.style.color = "green";
+                    setTimeout(() => ui.remove(), 2500);
+                } else {
+                    status.innerText = "❌ Failed: " + (res?.error || "Unknown error");
+                    status.style.color = "red";
+                }
+            });
+        });
+    }
+  
+     function handleTrainingClick(e) {
+      if (!isTrainingMode) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  
+      const target = (e.composedPath && e.composedPath()[0]) || e.target;
+      const targetTag = target.tagName;
+      const isGeneric = ['DIV', 'SPAN', 'SECTION', 'MAIN', 'BODY'].includes(targetTag) && !target.getAttribute('role');
+  
+      if (isGeneric) {
+          const confirmNuke = confirm(`⚠️ FAT FINGER WARNING:\nYou just clicked a generic ${targetTag} element.\n\nMapping background containers usually breaks the auto-reporter for the whole team.\n\nAre you sure you want to map this?`);
+          if (!confirmNuke) {
+              e.target.style.outline = '';
+              return; // Exit without showing the Patch UI
+          }
+      }
+        
+        e.target.style.outline = '';
+        e.target.style.cursor = '';
+        isTrainingMode = false;
+        
+        // Visual feedback flash
+        const originalBg = e.target.style.backgroundColor;
+        e.target.style.backgroundColor = 'rgba(206, 14, 45, 0.3)';
+        setTimeout(() => e.target.style.backgroundColor = originalBg, 500);
+        
+         document.removeEventListener('mouseover', handleTrainingMouseOver, true);
+        document.removeEventListener('mouseout', handleTrainingMouseOut, true);
+        document.removeEventListener('click', handleTrainingClick, true);
+  
+        // Deep-scan to pierce through transparent overlays/wrappers and Shadow DOM
+      const shadowTarget = (e.composedPath && e.composedPath()[0]) || e.target;
+      const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+      const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || shadowTarget;
+      
+      const newSelectors = generateStableSelector(actualTarget);
+  
+      console.log("PIRATE AI: Captured New Selectors ->", newSelectors);
+      
+      // Bring up the in-page UI so we don't rely on the side panel being open!
+      showPatchUI(trainingPlatform, newSelectors);
+      
+      // Attempt to update the side panel silently as a backup, ignoring dropped connections
+      chrome.runtime.sendMessage({
+          action: 'selectorTrainingComplete',
+          platform: trainingPlatform,
+          selector: newSelectors[0]
+      }).catch(() => {});
   }
+  
+    function startSelectorTraining(platform) {
+        if (isTrainingMode) return;
+        isTrainingMode = true;
+        trainingPlatform = platform;
+        
+        document.addEventListener('mouseover', handleTrainingMouseOver, true);
+        document.addEventListener('mouseout', handleTrainingMouseOut, true);
+        document.addEventListener('click', handleTrainingClick, true);
+        console.log("PIRATE AI: Selector Training Mode ACTIVE");
+    }
+  
+    let isMacroMode = false;
+    let macroEvents = [];
+    let macroEndTime = 0;
+    let macroTimerInt = null;
+    let macroTimeout = null;
 
+    function handleMacroEvent(e) {
+        if (!isMacroMode) return;
+        const target = (e.composedPath && e.composedPath()[0]) || e.target;
+        const selectors = generateStableSelector(target);
+        if (!selectors || selectors.length === 0) return;
+        
+        const step = {
+            action: e.type === 'click' ? 'click' : 'input',
+            selector: selectors[0],
+            value: e.type === 'input' ? target.value : undefined,
+            timestamp: Date.now()
+        };
+        // Fire immediately to Service Worker (Dumb Sensor approach)
+        chrome.runtime.sendMessage({ action: 'recordMacroStep', step: step }).catch(() => {});
+    }
+  
+    function startMacroTraining(platform) {
+    if (isMacroMode) return;
+    isMacroMode = true;
+    trainingPlatform = platform;
+    
+    // Clear old events
+    chrome.runtime.sendMessage({ action: 'startMacroSession', platform: trainingPlatform }).catch(() => {});
+    
+    document.addEventListener('click', handleMacroEvent, true);
+    document.addEventListener('input', handleMacroEvent, true);
+    console.log("PIRATE AI: Macro Recording started...");
+
+    // Safety timeout (increased to 2 minutes) in case user forgets to stop
+    macroTimeout = setTimeout(() => {
+        if (isMacroMode) finishMacroTraining();
+    }, 120000);
+}
+
+function finishMacroTraining() {
+    if (!isMacroMode) return;
+    isMacroMode = false;
+    clearTimeout(macroTimeout);
+
+    document.removeEventListener('click', handleMacroEvent, true);
+    document.removeEventListener('input', handleMacroEvent, true);
+    
+    // Tell background to compile the final macro and send to UI
+    chrome.runtime.sendMessage({ action: 'compileMacro' }).catch(() => {});
+    console.log("PIRATE AI: Macro Recording finished.");
+}
+
+// Add to the message listener in content_scraper.js
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // ... existing logic ...
+    if (request.action === 'stopMacroTraining') {
+        finishMacroTraining();
+        sendResponse({ success: true });
+    }
+});
+  
+
+  // ==========================================
+  // 2. MESSAGE LISTENER
+  // ==========================================
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'startSelectorTraining') {
         isTrainingMode = true;

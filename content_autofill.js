@@ -929,25 +929,29 @@
             btn3.style.background = "#ccc"; btn3.style.color = "#333";
             logContainer.style.display = "block";
         });
-  
-        document.getElementById("flo-log-btn").addEventListener("click", () => {
-          const status = document.getElementById("flo-log-status");
-          status.innerText = "Logging...";
-          chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
-            if (response && response.success) {
-              status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
-              setTimeout(() => {
-                  lastReportData = null; 
-                  cachedOverlay = null;  
-                  overlay.remove();
-              }, 2000);
-            } else {
-              status.innerText = "❌ Failed."; status.style.color = "red";
-            }
-          });
-        });
-    }
-    function setupDrag(overlay) {
+
+    document.getElementById("flo-log-btn").addEventListener("click", (e) => {
+      e.target.disabled = true;
+      e.target.innerText = "Processing...";
+      const status = document.getElementById("flo-log-status");
+      status.innerText = "Logging...";
+      chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+        if (response && response.success) {
+          status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
+          setTimeout(() => {
+              lastReportData = null; 
+              cachedOverlay = null;  
+              overlay.remove();
+          }, 2000);
+        } else {
+          status.innerText = "❌ Failed."; status.style.color = "red";
+          e.target.disabled = false;
+          e.target.innerText = "Log to Sheet";
+        }
+      });
+    });
+}
+function setupDrag(overlay) {
       let isDragging = false, startX, startY, initialLeft, initialTop;
       overlay.addEventListener('mousedown', (e) => {
           // Ignore drag on interactive elements to allow clicking
@@ -976,18 +980,18 @@
         const defaults = conf.defaults || {};
         
         // 1. IMPOSE THE 10 VIDEO LIMIT
-        const infringingUrls = data.urls || [];
-        const MAX_YOUTUBE_URLS = 10;
-        const urlsToReport = infringingUrls.slice(0, MAX_YOUTUBE_URLS);
-        
-        if (infringingUrls.length > MAX_YOUTUBE_URLS) {
-            console.warn(`YouTube limits 10 videos per form. Only processing the first 10.`);
-            alert(`YouTube Limits Reports to 10 Videos.\n\nOnly the first 10 videos have been loaded into this form. You will need to submit this form, clear your cart, and run the remaining videos in a new batch.`);
-        }
+            const infringingUrls = data.urls || [];
+            const MAX_YOUTUBE_URLS = 10;
+            const urlsToReport = infringingUrls.slice(0, MAX_YOUTUBE_URLS);
 
-        async function waitAndClick(textOrSel, time=3000) {
-           const btn = await waitForButton(textOrSel, time);
-           if (btn) { 
+            if (infringingUrls.length > MAX_YOUTUBE_URLS) {
+                console.warn(`YouTube limits 10 videos per form. Only processing the first 10.`);
+                alert(`YouTube Limits Reports to 10 Videos.\n\nThe first 10 videos have been loaded into this form. The remaining videos have been saved in your cart. After submitting this batch, run the reporter again to process the rest.`);
+            }
+
+            async function waitAndClick(textOrSel, time=3000) {
+            const btn = await waitForButton(textOrSel, time);
+            if (btn) {
                btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
                btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
                btn.click(); 

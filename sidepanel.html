@@ -220,7 +220,7 @@
     .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
     input:checked + .slider { background-color: #10b981; }
     input:checked + .slider:before { transform: translateX(16px); }
-    
+
  /* Recording Pulse Animation */
     @keyframes recording-pulse {
         0% { box-shadow: inset 0 0 0 0px rgba(206, 14, 45, 0); }
@@ -379,7 +379,7 @@
         Finds active links for a specific platform in your sheet and queues them up so you can report them all at once.
       </div>
       <div class="flex-row">
-          <select id="platformScanSelect" style="flex: 1;">
+          <select id="platformScanSelect" style="width: 110px;">
             <option value="tiktok">TikTok</option>
             <option value="youtube">YouTube</option>
             <option value="instagram">Instagram</option>
@@ -389,7 +389,7 @@
             <option value="other">Other</option>
           </select>
           <label for="doubleTapStartRow" style="margin:0; font-size: 11px; white-space: nowrap;">Start Row:</label>
-          <input type="number" id="doubleTapStartRow" min="1" value="2" title="Start Row" style="width: 60px;">
+          <input type="number" id="doubleTapStartRow" min="1" value="2" title="Start Row" style="flex: 1;">
           <button id="doubleTapBtn" class="btn btn-warning" style="width: auto; padding: 9px 12px;">Scan</button>
       </div>
 

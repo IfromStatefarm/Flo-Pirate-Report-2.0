@@ -961,7 +961,7 @@ async function handleProcessNewItem(tab, data) {
 }
 
 // ------------------------------------------
-// UPDATED BATCH REPORT LOGIC (LAZY SCRAPE)
+// BATCH REPORT LOGIC
 // ------------------------------------------
 async function handleBatchReport(formData) {
   try {
@@ -970,6 +970,14 @@ async function handleBatchReport(formData) {
     const savedName = storage.last_reporter || "Unknown User";
     const finalReporterName = formData.reporterName || savedName;
     const enforcedByEmail = await getUserEmail() || "Unknown";
+    
+    // --- YOUTUBE LIMIT LOGIC ---
+    let remainingCart = [];
+    const isYouTube = cart.length > 0 && (cart[0].url.includes('youtube') || cart[0].url.includes('youtu.be'));
+    if (isYouTube && cart.length > 10) {
+        remainingCart = cart.slice(10);
+        cart = cart.slice(0, 10);
+    }
 
     // --- PHASE 1: FRESH SCRAPE (LAZY LOADING) ---
     const updatedCart = [];
@@ -1176,11 +1184,16 @@ async function handleBatchReport(formData) {
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // Cleanup
+    // Cleanup: Keep remaining items for the next batch if over the limit
+if (remainingCart.length > 0) {
+    await chrome.storage.local.set({ 'piracy_cart': remainingCart });
+} else {
     await chrome.storage.local.remove('piracy_cart');
     await clearImages();
-    return { success: true };
-  } catch (e) {
+}
+
+return { success: true };
+} catch (e) {
     console.error("Batch Report Error:", e);
     return { success: false, error: e.message };
   }
