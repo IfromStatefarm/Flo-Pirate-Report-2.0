@@ -71,6 +71,14 @@
     <div class="lab-instructions" style="margin-top: 0; margin-bottom: 5px;">The source-of-truth for active event URLs, whitelists, and Double XP bounty events.</div>
     <input type="text" id="event_sheet_id" placeholder="Paste Spreadsheet ID here">
   </div>
+  <div class="form-group">
+    <label for="report_mode">Reporting Mode:</label>
+    <div class="lab-instructions" style="margin-top: 0; margin-bottom: 5px;">"Scout" skips the takedown form and logs items directly as 'Open'. "All" uses the full DMCA workflow.</div>
+    <select id="report_mode" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; background-color: white;">
+      <option value="scout">Scout Mode (Log Only)</option>
+      <option value="all">All Mode (Full Reporting)</option>
+    </select>
+  </div>
 
   <div class="lab-section">
     <div class="lab-title"> The Lab (Community & Beta)</div>

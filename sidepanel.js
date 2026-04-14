@@ -51,6 +51,35 @@ document.addEventListener('DOMContentLoaded', async () => {
   const saveSelectorBtn = document.getElementById('saveSelectorBtn');
   const patchStatus = document.getElementById('patchStatus');
   let currentCapturedPlatform = null;
+  
+  // --- RANDOM CLIPPY QUOTES ---
+  const clippyPhrases = [
+    "Alright, let’s make the internet a better place—one report at a time.",
+    "You’ve got this. Let’s go catch some rule-breakers.",
+    "Every report counts—let’s clean up the game.",
+    "Time to step up and defend the sport.",
+    "You’re not just browsing—you’re making a difference.",
+    "Let’s turn fair play into the only play.",
+    "Eyes sharp—pirates won’t catch themselves.",
+    "You’re on the front lines now. Let’s go.",
+    "Small actions, big impact. Let’s get to work.",
+    "This is how we keep the game honest.",
+    "Stay focused. Spot it, report it, done.",
+    "You’re part of the team now—let’s win this.",
+    "Let’s protect the streams that matter.",
+    "Game face on—it’s go time.",
+    "You’ve got the tools. Now let’s use them.",
+    "One clean click at a time—let’s do this.",
+    "Together, we shut piracy down.",
+    "Let’s raise the standard—starting now.",
+    "Ready, set… report.",
+    "Go make Clippy proud. Let’s hunt."
+  ];
+  
+  const clippyFeedbackEl = document.getElementById('clippy-feedback-text');
+  if (clippyFeedbackEl) {
+      clippyFeedbackEl.innerText = clippyPhrases[Math.floor(Math.random() * clippyPhrases.length)];
+  }
 
   // 🚨 CRITICAL FIX: Escaping unclosed HTML tags 🚨
   // sidepanel.html is missing a few closing </div> tags, causing the Walkthrough UI to get trapped 
@@ -268,7 +297,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           chrome.storage.local.set({ last_vertical: vertical });
           
           if (vertical) {
-                if (crawlStatusEl) crawlStatusEl.innerText = "Loading events...";
               if (eventInput) eventInput.placeholder = "Loading events...";
               
               try {
@@ -501,7 +529,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           await chrome.storage.local.set({ reporterInfo });
 
-          // 4. Open Reporting Page
+          // 4. Open Reporting Page or Skip (Scout Mode)
+          const syncData = await chrome.storage.sync.get(['report_mode']);
+          if ((syncData.report_mode || 'scout') === 'scout') {
+              startBtn.innerText = `Logging (Scout Mode)...`;
+              const payload = { reporterName, vertical, eventName, mode: 'scout', uploadScreenshots: true };
+              chrome.runtime.sendMessage({ action: 'processQueue', data: payload });
+              setTimeout(() => { startBtn.innerText = "Start Report"; startBtn.disabled = false; }, 3000);
+              return;
+          }
+
           startBtn.innerText = `Opening ${platform}...`;
           
           chrome.tabs.create({ url: reportUrl }, (tab) => {

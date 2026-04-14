@@ -1123,8 +1123,10 @@ async function handleBatchReport(formData) {
       const scoutedByEmails = [...new Set(items.map(i => i.scoutedBy || "Unknown"))].join(', ');
       const totalScoutScore = items.reduce((acc, item) => acc + ((item.scoutScore || 10) * xpMult), 0);
       
+      const statusText = formData.mode === 'scout' ? "Open" : "Reported";
+      
       const appendResponse = await appendToSheet(token, { 
-          values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", "Reported", "Generating Links...", scoutedByEmails, enforcedByEmail, totalScoutScore, enforcerScore, "", "", "", "", reportId] 
+          values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", statusText, "Generating Links...", scoutedByEmails, enforcedByEmail, totalScoutScore, enforcerScore, "", "", "", "", reportId] 
       });
       // 6. APPLY RICH TEXT LINKS TO COLUMN K
       const updatedRange = appendResponse?.updates?.updatedRange;

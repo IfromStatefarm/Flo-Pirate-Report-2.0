@@ -3,11 +3,12 @@ import { fetchConfig } from './utils/google_api.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Load basic saved settings
-  chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id', 'beta_opt_in'], (items) => {
+  chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id', 'beta_opt_in', 'report_mode'], (items) => {
     if (items.piracy_folder_id) document.getElementById('piracy_folder_id').value = items.piracy_folder_id;
     if (items.piracy_sheet_id) document.getElementById('piracy_sheet_id').value = items.piracy_sheet_id;
     if (items.event_sheet_id) document.getElementById('event_sheet_id').value = items.event_sheet_id;
     document.getElementById('beta_opt_in').checked = !!items.beta_opt_in;
+    document.getElementById('report_mode').value = items.report_mode || 'scout';
   });
 
   // 2. Fetch dynamic content from events_config.json in Drive
@@ -61,12 +62,14 @@ document.getElementById('save').addEventListener('click', () => {
   const sheetId = document.getElementById('piracy_sheet_id').value.trim();
   const eventSheetId = document.getElementById('event_sheet_id').value.trim();
   const betaOptIn = document.getElementById('beta_opt_in').checked;
+  const reportMode = document.getElementById('report_mode').value;
 
   chrome.storage.sync.set({ 
     piracy_folder_id: folderId, 
     piracy_sheet_id: sheetId,
     event_sheet_id: eventSheetId,
-    beta_opt_in: betaOptIn
+    beta_opt_in: betaOptIn,
+    report_mode: reportMode
   }, () => {
     const status = document.getElementById('status');
     status.style.color = 'green';
