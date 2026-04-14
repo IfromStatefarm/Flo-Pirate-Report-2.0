@@ -936,19 +936,24 @@
         isDragging = false;
     });
 
-    try {
-      const storage = await new Promise((resolve, reject) => {
-        chrome.storage.local.get('piracy_cart', (items) => {
-          if (chrome.runtime.lastError) resolve({ piracy_cart: [] });
-          else resolve(items);
+   try {
+        const storage = await new Promise((resolve, reject) => {
+          chrome.storage.local.get('piracy_cart', (items) => {
+            if (chrome.runtime.lastError) resolve({ piracy_cart: [] });
+            else resolve(items);
+          });
         });
-      });
-      const cart = storage.piracy_cart || [];
-      updateCount(cart.length);
-    } catch (e) {
-      console.error("Storage load error:", e);
-      updateCount(0); 
-    }
+        const cart = storage.piracy_cart || [];
+        updateCount(cart.length);
+
+        // Fire event to trigger Clippy's spotlight if a valid video exists
+        if (scrapePageStrategy()) {
+            window.dispatchEvent(new CustomEvent('validVideoFound'));
+        }
+      } catch (e) {
+        console.error("Storage load error:", e);
+        updateCount(0); 
+      }
   }
 
   function updateCount(n) {

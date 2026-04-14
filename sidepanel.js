@@ -82,6 +82,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   chrome.runtime.onMessage.addListener((msg) => {
+    // Event-Driven URL capture from background ping
+    if (msg.action === 'activeUrlChanged' && sourceDisplay) {
+        sourceDisplay.value = msg.url;
+        if (grabBtn) grabBtn.disabled = true;
+    }
+
     // New listener for Double Tap progress and Closer Scanner updates
     if (msg.action === 'scanProgress' && crawlStatusEl) {
         crawlStatusEl.innerText = msg.message;
@@ -263,8 +269,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           
           if (vertical) {
                 if (crawlStatusEl) crawlStatusEl.innerText = "Loading events...";
-              document.getElementById('eventInput')?.classList.add('clippy-focus');
-              
               if (eventInput) eventInput.placeholder = "Loading events...";
               
               try {
@@ -434,14 +438,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   if (nukeBtn) nukeBtn.addEventListener('click', () => handleNukeClick(nukeBtn));
 
-  // --- START REPORT LOGIC ---
-  if (startBtn) {
+   if (startBtn) {
       startBtn.addEventListener('click', async () => {
           const reporterName = reporterInput.value;
           const vertical = verticalSelect.value;
           const eventName = eventInput.value;
           const sourceUrl = document.getElementById('sourceUrlDisplay').value;
           
+          startBtn.classList.remove('clippy-focus');
+          chrome.storage.local.set({ highlight_start_disabled: true });
+
           if (!reporterName || !vertical || !eventName) {
               alert("Please fill in Reporter, Vertical, and Event Name.");
               return;
@@ -461,17 +467,17 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
 
-          // 2. Determine Platform & URL
-          const firstUrl = cart[0].url;
+           // 2. Determine Platform & URL
+                   const firstUrl = cart[0].url;
           let reportUrl = "";
           let platform = "TikTok";
 
           if (firstUrl.includes("youtube") || firstUrl.includes("youtu.be")) {
               platform = "YouTube";
-              reportUrl = "[https://www.youtube.com/copyright_complaint_form](https://www.youtube.com/copyright_complaint_form)";
+              reportUrl = "https://www.youtube.com/copyright_complaint_form";
           } else if (firstUrl.includes("tiktok")) {
               platform = "TikTok";
-              reportUrl = "[https://www.tiktok.com/legal/report/Copyright](https://www.tiktok.com/legal/report/Copyright)";
+              reportUrl = "https://www.tiktok.com/legal/report/Copyright";
           } else {
               // Fallback or handle other platforms
               platform = "Other";
@@ -480,6 +486,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               startBtn.innerText = "Start Report";
               return;
           }
+
 
           // 3. Save Context for Content Script
           const reporterInfo = {
@@ -812,14 +819,37 @@ if (selectorPatchUI) selectorPatchUI.style.display = 'block';
   }
 
   // Triggered when items are added to cart (Listener for processNewItem or similar)
-  chrome.storage.onChanged.addListener((changes, namespace) => {
-      if (namespace === 'local' && changes.piracy_cart) {
-          const cartSize = changes.piracy_cart.newValue?.length || 0;
-          if (cartSize > 0) {
-              document.getElementById('startBtn')?.classList.add('clippy-focus');
+      chrome.storage.onChanged.addListener((changes, namespace) => {
+          if (namespace === 'local' && changes.piracy_cart) {
+              evaluateWorkflowFocus(changes.piracy_cart.newValue?.length || 0);
           }
+      });
+
+      function evaluateWorkflowFocus(cartSize) {
+          chrome.storage.local.get(['highlight_start_disabled'], (res) => {
+              if (res.highlight_start_disabled) return;
+
+              // Clear all existing spotlights
+              document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
+              
+              if (cartSize === 0) {
+                  const clippyText = document.getElementById('clippy-feedback-text');
+                  if (clippyText) clippyText.innerText = "Open YouTube or TikTok and click '+ Add' on a video!";
+              } else if (!document.getElementById('reporterName').value.trim()) {
+                  document.getElementById('reporterName').classList.add('clippy-focus');
+              } else if (!document.getElementById('verticalSelect').value) {
+                  document.getElementById('verticalSelect').classList.add('clippy-focus');
+              } else if (!document.getElementById('eventInput').value.trim()) {
+                  document.getElementById('eventInput').classList.add('clippy-focus');
+              } else if (!document.getElementById('sourceUrlDisplay').value.trim()) {
+                  document.getElementById('searchEventBtn').classList.add('clippy-focus');
+              } else {
+                  document.getElementById('startBtn').classList.add('clippy-focus');
+                  const clippyText = document.getElementById('clippy-feedback-text');
+                  if (clippyText) clippyText.innerText = "Ready! Click Start Report to generate your PDF.";
+              }
+          });
       }
-  });
 
   chrome.storage.local.get(['rogue_target_data'], (res) => {
       if (res.rogue_target_data) renderRogueWalkthrough(res.rogue_target_data);

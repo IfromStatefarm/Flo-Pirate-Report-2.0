@@ -42,6 +42,19 @@ function base64ToBlob(dataURI) {
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
 
+// EVENT-DRIVEN URL SYNC: Ping Side Panel when active URL changes
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+    const tab = await chrome.tabs.get(activeInfo.tabId);
+    chrome.runtime.sendMessage({ action: 'activeUrlChanged', url: tab.url }).catch(() => {});
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.url && tab.active) {
+        chrome.runtime.sendMessage({ action: 'activeUrlChanged', url: changeInfo.url }).catch(() => {});
+    }
+});
+
+// ==========================================
 // AUTO-OPEN SIDE PANEL ON LEGAL PAGES
 /*chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {

@@ -8,6 +8,31 @@
     let clippyHost;
     let clippyShadow;
     let clippyContainer; // Hoisted to prevent reference errors
+    let chatterInterval; // Timer for random idle phrases
+    // Idle phrases to keep Clippy lively when not actively guiding the user
+    const idlePhrases = [
+        "Welcome aboard. Let's hunt some pirates!",
+        "Clippy here—ready to clean up the high seas?",
+        "Initializing Pirate Hunter… stand by.",
+        "Let's lock in and keep your streams legit.",
+        "Good choice. I'll handle the sketchy stuff.",
+        "Gear up—pirate hunting mode activated.",
+        "Setting sail for safer streaming waters.",
+        "You bring the snacks, I'll block the pirates.",
+        "All set—let's keep things clean and official.",
+        "I've got your back. Let's do this right.",
+        "Installing good vibes and zero piracy.",
+        "Welcome to the no-pirates zone.",
+        "Ready when you are. Let's make it legit.",
+        "Booting up… scanning for trouble ahead.",
+        "From here on out, we play by the rules.",
+        "Nice setup. Let's keep your streams championship-level.",
+        "System check complete—pirate defense online.",
+        "Let's make every click a clean one.",
+        "Locked, loaded, and ready to spot bad links.",
+        "Alright, partner—let's go catch some pirates."
+    ];
+
 
     // 1. Inject the Modular UI
     function injectClippy() {
@@ -78,12 +103,12 @@
 
         // Allow user to permanently dismiss Clippy (Skip Tutorial)
         clippyShadow.getElementById('flo-clippy-close').addEventListener('click', () => {
-            // 1. Hide immediately for snappy UI response
-            clippyHost.style.display = 'none';
+            // 1. Hide bubble immediately but keep the icon for help/status
+            clippyShadow.getElementById('flo-clippy-bubble').style.display = 'none';
             
             // 2. Write permanent bypass flag to Chrome storage
             chrome.storage.local.set({ onboarding_step: 'COMPLETE' }, () => {
-                console.log("PIRATE AI: Tutorial permanently dismissed by user.");
+                console.log("PIRATE AI: Tutorial dismissed. Clippy entering standby mode.");
             });
         });
         
@@ -92,6 +117,26 @@
             const bubble = clippyShadow.getElementById('flo-clippy-bubble');
             bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none';
         });
+
+        // Start random chatter every 65 seconds if the bubble is closed
+        if (!chatterInterval) {
+            chatterInterval = setInterval(() => {
+                const bubble = clippyShadow.getElementById('flo-clippy-bubble');
+                
+                // Only talk if the bubble is currently closed
+                if (bubble && bubble.style.display === 'none') {
+                    const randomPhrase = idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
+                    showMessage(`<strong>Clippy Says:</strong><br><br>${randomPhrase}`);
+                    
+                    // Auto-hide the idle chatter after 5 seconds
+                    setTimeout(() => {
+                        if (bubble.style.display === 'block') {
+                            bubble.style.display = 'none';
+                        }
+                    }, 5000);
+                }
+            }, 65000);
+        }
     }
 
     // Expose to window for the Error Concierge
@@ -100,7 +145,7 @@
     };
 
     // Helper to show messages in the bubble with optional targeting
-    function showMessage(text) {
+    function showMessage(text, targetSelector = null) {
         if (!clippyHost) injectClippy();
         const bubble = clippyShadow.getElementById('flo-clippy-bubble');
         const textDiv = clippyShadow.getElementById('flo-clippy-text');
@@ -154,10 +199,10 @@
                 else if (url.includes('tiktok.com') || url.includes('youtube.com')) {
                     showMessage("You made it! 🎯<br><br>When you find pirated content, just click the <b>+ Add</b> button on my Pirate AI overlay (top right) to capture the evidence.");
                     
-                    const spotlightInterval = setInterval(() => {
+                    // Listen for scraper confirmation instead of polling the DOM
+                    window.addEventListener('validVideoFound', () => {
                         const addBtn = document.getElementById('flo-add');
                         if (addBtn) {
-                            clearInterval(spotlightInterval);
                             addBtn.style.position = 'relative';
                             addBtn.style.zIndex = '2147483647'; // Ensures it sits above the new shadow
                             addBtn.style.boxShadow = '0 0 0 9999px rgba(0,0,0,0.7), 0 0 15px 2px rgba(206,14,45,0.8)';
@@ -165,14 +210,24 @@
                             // Dismiss spotlight when the user clicks the button
                             addBtn.addEventListener('click', () => addBtn.style.boxShadow = 'none', { once: true });
                         }
-                    }, 500);
+                    }, { once: true });
 
                     // Mark onboarding complete so he doesn't show up on every video permanently
                     chrome.storage.local.set({ onboarding_step: 'COMPLETE' });
                 }
             } 
             else if (state === 'COMPLETE') {
-                hideClippy();
+                // Keep the icon visible as a help menu/status indicator, but keep the bubble hidden
+                if (!clippyHost) injectClippy();
+                clippyContainer.style.display = 'flex';
+                clippyShadow.getElementById('flo-clippy-img').style.display = 'block';
+                clippyShadow.getElementById('flo-clippy-bubble').style.display = 'none';
+                
+                // Reset position to default corner
+                clippyContainer.style.top = 'auto';
+                clippyContainer.style.left = 'auto';
+                clippyContainer.style.bottom = '30px';
+                clippyContainer.style.right = '30px';
             }
         } catch (e) {
             console.warn("Clippy state check failed:", e);
