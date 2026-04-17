@@ -11,6 +11,26 @@
     let chatterInterval; // Timer for random idle phrases
     // Idle phrases to keep Clippy lively when not actively guiding the user
     const idlePhrases = [
+        "Alright, let's make the internet a better place—one report at a time.",
+        "You've got this. Let's go catch some rule-breakers.",
+        "Every report counts—let's clean up the game.",
+        "Time to step up and defend the sport.",
+        "You're not just browsing—you're making a difference.",
+        "Let’s turn fair play into the only play.",
+        "Eyes sharp—pirates won't catch themselves.",
+        "You’re on the front lines now. Let's go.",
+        "Small actions, big impact. Let's get to work.",
+        "This is how we keep the game honest.",
+        "Stay focused. Spot it, report it, done.",
+        "You’re part of the team now—let’s win this.",
+        "Let’s protect the streams that matter.",
+        "Game face on—it’s go time.",
+        "You’ve got the tools. Now let’s use them.",
+        "One clean click at a time—let’s do this.",
+        "Together, we shut piracy down.",
+        "Let’s raise the standard—starting now.",
+        "Ready, set… report.",
+        "Go make Clippy proud. Let's hunt.",
         "Welcome aboard. Let's hunt some pirates!",
         "Clippy here—ready to clean up the high seas?",
         "Initializing Pirate Hunter… stand by.",
@@ -101,7 +121,7 @@
         clippyShadow.appendChild(clippyContainer);
         document.body.appendChild(clippyHost);
 
-        // Allow user to permanently dismiss Clippy (Skip Tutorial)
+         // Allow user to permanently dismiss Clippy (Skip Tutorial)
         clippyShadow.getElementById('flo-clippy-close').addEventListener('click', () => {
             // 1. Hide bubble immediately but keep the icon for help/status
             clippyShadow.getElementById('flo-clippy-bubble').style.display = 'none';
@@ -115,11 +135,16 @@
        // Clicking clippy toggles the bubble
         clippyShadow.getElementById('flo-clippy-img').addEventListener('click', () => {
             const bubble = clippyShadow.getElementById('flo-clippy-bubble');
-            bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none';
+            if (bubble.style.display === 'none') {
+                const randomPhrase = idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
+                showMessage(`<strong>Clippy Says:</strong><br><br>${randomPhrase}`);
+            } else {
+                bubble.style.display = 'none';
+            }
         });
 
-        // Start random chatter every 65 seconds if the bubble is closed
-        if (!chatterInterval) {
+        // Start random chatter every 65 seconds ONLY if on the options.html page
+        if (!chatterInterval && window.location.href.includes('options.html')) {
             chatterInterval = setInterval(() => {
                 const bubble = clippyShadow.getElementById('flo-clippy-bubble');
                 

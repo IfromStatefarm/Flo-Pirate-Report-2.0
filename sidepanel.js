@@ -82,6 +82,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       clippyFeedbackEl.innerText = clippyPhrases[Math.floor(Math.random() * clippyPhrases.length)];
   }
 
+  const closeClippyBtn = document.getElementById('close-clippy-btn');
+  if (closeClippyBtn) {
+      closeClippyBtn.addEventListener('click', () => {
+          document.getElementById('clippy-process-bubble').style.display = 'none';
+      });
+  }
+
   // 🚨 CRITICAL FIX: Escaping unclosed HTML tags 🚨
   // sidepanel.html is missing a few closing </div> tags, causing the Walkthrough UI to get trapped 
   // inside the mainUiContainer. When the main container hides, it takes the walkthrough down with it.
@@ -888,11 +895,14 @@ if (startMacroBtn && stopMacroBtn) {
   }
 
   // Triggered when items are added to cart (Listener for processNewItem or similar)
-      chrome.storage.onChanged.addListener((changes, namespace) => {
-          if (namespace === 'local' && changes.piracy_cart) {
-              evaluateWorkflowFocus(changes.piracy_cart.newValue?.length || 0);
-          }
-      });
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace === 'local' && changes.piracy_cart) {
+          evaluateWorkflowFocus(changes.piracy_cart.newValue?.length || 0);
+      }
+      if (namespace === 'local' && changes.rogue_target_data && changes.rogue_target_data.newValue) {
+          renderRogueWalkthrough(changes.rogue_target_data.newValue);
+      }
+  });
 
       function evaluateWorkflowFocus(cartSize) {
           chrome.storage.local.get(['highlight_start_disabled'], (res) => {

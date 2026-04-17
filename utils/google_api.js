@@ -141,7 +141,12 @@ export async function logRogueToSheet(token, data, userNotes) {
   let nextRow = (colData.values ? colData.values.length : 0) + 1;
   if (nextRow < 3) nextRow = 3;
 
-  const scrapedInfo = `URL: ${data.url}\nIframes:\n${data.iframes?.join('\n') || 'None'}\nVideos:\n${data.videos?.join('\n') || 'None'}`;
+  // Format all extracted data fields into the string written to the sheet
+  const trafficSummary = data.networkTraffic?.map(t => `[IP: ${t.ip}] ${t.url}`).join('\n') || 'None';
+  const emailSummary = data.emails?.join(', ') || 'None';
+  const forensicSummary = data.forensics ? JSON.stringify(data.forensics, null, 2) : 'None';
+  
+  const scrapedInfo = `URL: ${data.url}\n\nIframes:\n${data.iframes?.join('\n') || 'None'}\n\nVideos:\n${data.videos?.join('\n') || 'None'}\n\nNetwork Traffic (IPs):\n${trafficSummary}\n\nEmails:\n${emailSummary}\n\nForensics:\n${forensicSummary}`;
   
   // 4. Append scraped details (Odd Col) and user notes (Even Col)
   await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!${getColLetter(targetColIdx)}${nextRow}:${getColLetter(targetColIdx + 1)}${nextRow}?valueInputOption=USER_ENTERED`, {
@@ -357,7 +362,6 @@ async function findOrCreateFolder(token, parentId, name) {
   });
   return d.id;
 }
-
 // ==========================================
 // 3. FILE UPLOAD LOGIC
 // ==========================================

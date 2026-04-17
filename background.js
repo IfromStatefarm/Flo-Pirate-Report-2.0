@@ -5,6 +5,7 @@ import {
   appendToSheet, 
   ensureYearlyReportFolder,
   ensureDailyScreenshotFolder,
+  ensureRogueScreenshotFolder,
   logRogueToSheet, 
   fetchConfig, 
   getEventData,       
@@ -45,12 +46,18 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
 // EVENT-DRIVEN URL SYNC: Ping Side Panel when active URL changes
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
     const tab = await chrome.tabs.get(activeInfo.tabId);
-    chrome.runtime.sendMessage({ action: 'activeUrlChanged', url: tab.url }).catch(() => {});
+    const url = tab.url ? tab.url.toLowerCase() : '';
+    if (url.includes('flosports') || url.includes('varsity') || url.includes('milesplit')) {
+        chrome.runtime.sendMessage({ action: 'activeUrlChanged', url: tab.url }).catch(() => {});
+    }
 });
-
+// Also listen for URL changes within the same tab (e.g., SPA navigation)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.url && tab.active) {
-        chrome.runtime.sendMessage({ action: 'activeUrlChanged', url: changeInfo.url }).catch(() => {});
+        const url = changeInfo.url.toLowerCase();
+        if (url.includes('flosports') || url.includes('varsity') || url.includes('milesplit')) {
+            chrome.runtime.sendMessage({ action: 'activeUrlChanged', url: changeInfo.url }).catch(() => {});
+        }
     }
 });
 
@@ -787,12 +794,20 @@ if (request.action === 'compileMacro') {
   if (request.action === 'initRogueTakedown') {
      // Transform Map into an array of objects for easier handling in the UI
      const trafficArray = Array.from(sniffedNetworkTraffic.entries()).map(([url, ip]) => ({ url, ip }));
-     const rogueData = { ...request.data, networkTraffic: trafficArray };
      
-     chrome.storage.local.set({ rogue_target_data: rogueData }, () => {
-         sniffedNetworkTraffic.clear(); // Reset map after capture
-     });
-     sendResponse({ success: true });
+     (async () => {
+         let screenshotUrl = null;
+         try {
+             screenshotUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 50 });
+         } catch (e) { console.warn("Screenshot failed:", e); }
+
+         const rogueData = { ...request.data, networkTraffic: trafficArray, screenshot: screenshotUrl };
+         
+         chrome.storage.local.set({ rogue_target_data: rogueData }, () => {
+             sniffedNetworkTraffic.clear(); // Reset map after capture
+             sendResponse({ success: true });
+         });
+     })();
      return true;
  }
 
@@ -807,11 +822,11 @@ if (request.action === 'compileMacro') {
                   
                   const urlObj = new URL(request.data.url);
                   const domain = urlObj.hostname.replace(/^www\./, '').toLowerCase();
-                  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                  const dateStr = new Date().toLocaleDateString("en-US", { month: '2-digit', day: '2-digit', year: 'numeric' }).replace(/\//g, '.');
                   
                   // Clean the URL to prevent invalid filename characters
-                  const safeLink = request.data.url.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
-                  const filename = `${domain}_${timestamp}_${safeLink}.jpg`;
+                  const safeLink = urlObj.pathname.replace(/[^a-zA-Z0-9]/g, '.').replace(/^\.+|\.+$/g, '').substring(0, 40) || 'stream';
+                  const filename = `${domain}.${safeLink}.${dateStr}.jpg`;
                   
                   const uploadRes = await uploadToDrive(token, folderId, filename, imageBlob, 'image/jpeg');
                   finalNotes += `\n\nEvidence Screenshot: ${uploadRes.webViewLink}`;
