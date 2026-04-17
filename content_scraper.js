@@ -6,6 +6,10 @@
   if (window.hasFloScraperRun) return;
   window.hasFloScraperRun = true;
 
+  // Global Exemption List: Prevents overlay from opening and logic from running
+  const EXEMPT_WEBSITES = ['houston.flosports.net', 'google.com', 'amazon.com', 'hockeytech.zen.zixi.com'];
+  if (EXEMPT_WEBSITES.some(domain => window.location.hostname.toLowerCase().includes(domain))) return;
+
   let currentCount = 0;
 
   // DEFAULT SELECTORS (Robust Fallbacks)

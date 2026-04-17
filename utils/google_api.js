@@ -146,7 +146,8 @@ export async function logRogueToSheet(token, data, userNotes) {
   const emailSummary = data.emails?.join(', ') || 'None';
   const forensicSummary = data.forensics ? JSON.stringify(data.forensics, null, 2) : 'None';
   
-  const scrapedInfo = `URL: ${data.url}\n\nIframes:\n${data.iframes?.join('\n') || 'None'}\n\nVideos:\n${data.videos?.join('\n') || 'None'}\n\nNetwork Traffic (IPs):\n${trafficSummary}\n\nEmails:\n${emailSummary}\n\nForensics:\n${forensicSummary}`;
+  let scrapedInfo = `URL: ${data.url}\n\nIframes:\n${data.iframes?.join('\n') || 'None'}\n\nVideos:\n${data.videos?.join('\n') || 'None'}\n\nNetwork Traffic (IPs):\n${trafficSummary}\n\nEmails:\n${emailSummary}\n\nForensics:\n${forensicSummary}`;
+  if (scrapedInfo.length > 4900) scrapedInfo = scrapedInfo.substring(0, 4900) + "\n\n...[TRUNCATED DUE TO GOOGLE SHEETS CELL LIMIT]";
   
   // 4. Append scraped details (Odd Col) and user notes (Even Col)
   await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/'${tabName}'!${getColLetter(targetColIdx)}${nextRow}:${getColLetter(targetColIdx + 1)}${nextRow}?valueInputOption=USER_ENTERED`, {
@@ -298,23 +299,34 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
 export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
   const token = await getAuthToken();
   const { eventSheetId } = await getOptions();
-  const range = `'${vertical}'!A:A`; // Forces the append API to find the next empty row based strictly on Column A where event names are, ensuring no gaps if URLs are missing in other columns. The API will append to the first empty row in Column A, which is where we put event names.
   
-  const row = new Array(9).fill(""); 
+  // 1. Find the true last row by fetching Column A
+  const getRange = `'${vertical}'!A:A`;
+  const getData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(getRange)}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  
+  // Calculate the next empty row (1-indexed for Sheets)
+  const nextRow = (getData.values ? getData.values.length : 0) + 1;
+
+  // 2. Prepare the row data
+  const row = new Array(9).fill("");
   row[0] = eventName;
 
   const colMap = {
-    'tiktok': 1, 'instagram': 2, 'youtube': 3, 'twitter': 4, 
+    'tiktok': 1, 'instagram': 2, 'youtube': 3, 'twitter': 4,
     'twitch': 5, 'facebook': 6, 'discord': 7, 'rumble': 8
   };
-  
+
   const targetIndex = colMap[platform?.toLowerCase()] || 1;
   row[targetIndex] = eventUrl;
-
+  
   const body = { values: [row] };
 
-  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
-    method: 'POST',
+  // 3. Force a precise PUT request to bypass table detection
+  const putRange = `'${vertical}'!A${nextRow}:I${nextRow}`;
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(putRange)}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });

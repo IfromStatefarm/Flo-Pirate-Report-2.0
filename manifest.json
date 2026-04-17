@@ -67,7 +67,8 @@
         "*://x.com/*",
         "*://www.twitch.tv/*",
         "*://discord.com/*",
-        "*://timstreams.net/*"
+        "*://timstreams.net/*",
+        "<all_urls>"
       ],
       "js": ["content_scraper.js", "clippy.js"],
       "run_at": "document_idle",

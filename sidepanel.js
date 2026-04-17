@@ -110,6 +110,19 @@ document.addEventListener('DOMContentLoaded', async () => {
           chrome.storage.local.set({ last_seen_version: currentVersion });
       }
   });
+  // --- SETTINGS GEAR LOGIC (MV3 Compliant) ---
+  const optionsGearBtn = document.getElementById('openOptionsGearBtn');
+  if (optionsGearBtn) {
+      optionsGearBtn.addEventListener('click', () => {
+          if (chrome.runtime.openOptionsPage) {
+              // This natively handles focusing the options tab if it's already open
+              chrome.runtime.openOptionsPage(); 
+          } else {
+              // Fallback just in case
+              window.open(chrome.runtime.getURL('options.html'));
+          }
+      });
+  }
   // --- Message Listener for Crawler & Closer ---
   // Accept heartbeat connections to prevent Service Worker zombification
   chrome.runtime.onConnect.addListener((port) => {
@@ -130,6 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         crawlStatusEl.innerText = msg.message;
         return;
     }
+    
     // Closer Status Update
     if (msg.action === 'closerProgress') {
         if (closerStatusEl) {
