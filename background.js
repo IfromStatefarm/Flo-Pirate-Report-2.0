@@ -334,9 +334,16 @@ async function runSheetScanner(startRowUI = 1) {
         const activeRanges = [];
 
         for (let j = 0; j < matches.length; j++) {
-            if (stopScannerSignal) break;
+                if (activeLinks.length >= 100) break;
+                const { url, index, end } = matches[j];
 
-            const { url, index, end } = matches[j];
+                // 1. Filter out internal links and exempt websites
+                const EXEMPT_WEBSITES = ['varsity.com', 'flosports', 'floracing', 'milesplit', 'houston.flosports.net', 'google.com', 'amazon.com', 'hockeytech.zen.zixi.com'];
+                if (EXEMPT_WEBSITES.some(site => url.includes(site))) continue;
+
+                // 2. Ensure URL matches the selected platform
+                const pTarget = platform.toLowerCase();
+                let isPlatformMatch = false;
 
             const isCrossedOut = isUrlCrossedOut(index, end, cellData.formatRuns, cellData.cellStrikethrough);
 
