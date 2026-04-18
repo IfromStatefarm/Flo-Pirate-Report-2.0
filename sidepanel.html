@@ -179,7 +179,8 @@
         .clippy-focus {
             position: relative;
             z-index: 99999;
-            box-shadow: 0 0 0 9999px rgba(0,0,0,0.7), 0 0 15px 2px rgba(206,14,45,0.8);
+            /* The box-shadow creates a glowing effect around the focused element, simulating a spotlight. Adjust the color and spread as needed. */
+            box-shadow: 0 0 15px 2px rgba(206,14,45,0.8);
             pointer-events: auto;
             animation: spotlight-pulse 1.5s infinite;
         }

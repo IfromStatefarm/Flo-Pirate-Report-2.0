@@ -918,35 +918,62 @@ if (startMacroBtn && stopMacroBtn) {
       }
   });
 
-      function evaluateWorkflowFocus(cartSize) {
-          chrome.storage.local.get(['highlight_start_disabled'], (res) => {
-              if (res.highlight_start_disabled) return;
+      // Re-evaluate focus immediately when the user types or selects an option
+  ['reporterName', 'verticalSelect', 'eventInput', 'sourceUrlDisplay'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', () => {
+          chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
+      });
+  });
 
-              // Clear all existing spotlights
-              document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
-              
-              if (cartSize === 0) {
-                  const clippyText = document.getElementById('clippy-feedback-text');
-                  if (clippyText) clippyText.innerText = "Open YouTube or TikTok and click '+ Add' on a video!";
-              } else if (!document.getElementById('reporterName').value.trim()) {
-                  document.getElementById('reporterName').classList.add('clippy-focus');
-              } else if (!document.getElementById('verticalSelect').value) {
-                  document.getElementById('verticalSelect').classList.add('clippy-focus');
-              } else if (!document.getElementById('eventInput').value.trim()) {
-                  document.getElementById('eventInput').classList.add('clippy-focus');
-              } else if (!document.getElementById('sourceUrlDisplay').value.trim()) {
-                  document.getElementById('searchEventBtn').classList.add('clippy-focus');
-              } else {
-                  document.getElementById('startBtn').classList.add('clippy-focus');
-                  const clippyText = document.getElementById('clippy-feedback-text');
-                  if (clippyText) clippyText.innerText = "Ready! Click Start Report to generate your PDF.";
-              }
-          });
-      }
+  function evaluateWorkflowFocus(cartSize) {
+      chrome.storage.local.get(['highlight_start_disabled'], (res) => {
+          if (res.highlight_start_disabled) return;
+
+          // Clear all existing spotlights
+          document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
+          
+          if (cartSize === 0) {
+              const clippyText = document.getElementById('clippy-feedback-text');
+              if (clippyText) clippyText.innerText = "Open YouTube or TikTok and click '+ Add' on a video!";
+              return;
+          }
+          
+          let missingFields = false;
+
+          // Check all 4 fields independently to highlight them together
+          if (!document.getElementById('reporterName').value.trim()) {
+              document.getElementById('reporterName').classList.add('clippy-focus');
+              missingFields = true;
+          }
+          if (!document.getElementById('verticalSelect').value) {
+              document.getElementById('verticalSelect').classList.add('clippy-focus');
+              missingFields = true;
+          }
+          if (!document.getElementById('eventInput').value.trim()) {
+              document.getElementById('eventInput').classList.add('clippy-focus');
+              missingFields = true;
+          }
+          if (!document.getElementById('sourceUrlDisplay').value.trim()) {
+              document.getElementById('sourceUrlDisplay').classList.add('clippy-focus');
+              missingFields = true;
+          }
+
+          if (missingFields) {
+              const clippyText = document.getElementById('clippy-feedback-text');
+              if (clippyText) clippyText.innerText = "Please fill in all 4 highlighted boxes to continue.";
+          } else {
+              document.getElementById('startBtn').classList.add('clippy-focus');
+              const clippyText = document.getElementById('clippy-feedback-text');
+              if (clippyText) clippyText.innerText = "Ready! Click Start Report to generate your PDF.";
+          }
+      });
+  }
 
   chrome.storage.local.get(['rogue_target_data'], (res) => {
       if (res.rogue_target_data) renderRogueWalkthrough(res.rogue_target_data);
   });
+
 
   if (generateDmcaBtn) {
       generateDmcaBtn.addEventListener('click', () => {
