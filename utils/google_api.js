@@ -893,9 +893,9 @@ export async function fetchLeaderboardData(userEmail) {
     const rows = data.values || [];
     if (rows.length < 2) return { scoutPoints: 0, enforcerPoints: 0, leaderboard: [], rank: "Rookie Spotter" };
 
-    // Get Last Sunday Midnight Central Time
+    // Get the first day of the current month Midnight Central Time
     const ctDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-    ctDate.setDate(ctDate.getDate() - ctDate.getDay());
+    ctDate.setDate(1);
     ctDate.setHours(0, 0, 0, 0);
 
     const scoutScores = {};
@@ -906,7 +906,7 @@ export async function fetchLeaderboardData(userEmail) {
         const row = rows[i];
         if (!row[0]) continue;
         
-        // Only count rows that occurred on or after the most recent Sunday
+        // Only count rows that occurred on or after the 1st of the month
         if (new Date(row[0]) >= ctDate) {
             let scout = (row[6] || "").trim().toLowerCase();     // Column G (Index 6)
             let enforcer = (row[12] || "").trim().toLowerCase(); // Column M (Index 12)
