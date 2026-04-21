@@ -692,6 +692,7 @@
           status.innerText = "Logging...";
           chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
             if (response && response.success) {
+              new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
               status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
               setTimeout(() => {
                   lastReportData = null; // Clear so the interval stops re-triggering
@@ -798,6 +799,7 @@
         status.innerText = "Logging...";
         chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
           if (response && response.success) {
+            new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
             status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
             setTimeout(() => {
                 lastReportData = null; // Clear so the interval stops
@@ -938,6 +940,7 @@
       status.innerText = "Logging...";
       chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
         if (response && response.success) {
+          new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
           status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
           setTimeout(() => {
               lastReportData = null; 

@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (statusEl) statusEl.innerText = request.status;
     }
     if (request.action === 'progressComplete') {
+      new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
       if (progBar) progBar.style.width = '100%';
       if (statusEl) {
          statusEl.innerText = "Success! All reports filed.";

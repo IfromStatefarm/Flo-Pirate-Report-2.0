@@ -243,7 +243,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             if (stats.teamTotal >= 1000 && !window.teamGoalMet) {
                 window.teamGoalMet = true;
-                new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
                 document.getElementById('gamification-header').style.backgroundColor = '#d1fae5';
             }
 
@@ -307,7 +306,6 @@ document.addEventListener('DOMContentLoaded', async () => {
               
               if (stats.teamTotal >= 1000 && !window.teamGoalMet) {
                   window.teamGoalMet = true;
-                  new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
                   document.getElementById('gamification-header').style.backgroundColor = '#d1fae5';
               }
 
@@ -1012,6 +1010,7 @@ if (startMacroBtn && stopMacroBtn) {
               notes: userNotes
           }, (res) => {
               if (res?.success) {
+                  new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
                   rogueLogBtn.innerText = "✅ Saved!";
                   setTimeout(() => { 
                       rogueLogBtn.innerText = "Save to Pirate Websites Sheet"; 
