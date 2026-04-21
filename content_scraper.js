@@ -714,7 +714,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         showPatchUI(request.platform, JSON.stringify(request.macro, null, 2));
         sendResponse({ success: true });
     }
-    return true;
   });
 
   // ==========================================

@@ -6,7 +6,7 @@ let consecutiveFailures = 0;
 let crawlQueue = [];
 let configData = null;
 const ALLOWED_EMAIL = "@flosports.tv";
-
+// --- SECURITY LOCK OVERLAY (Duplicated for Side Panel context) ---
 document.addEventListener('DOMContentLoaded', async () => {
   const loadingEl = document.getElementById('loading');
   const verticalSelect = document.getElementById('verticalSelect');
@@ -278,6 +278,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           verticalSelect.dispatchEvent(new Event('change'));
       }
   });
+  
+  // PATCH: Trigger initial UI evaluation to set the proper button text on load
+  chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
+
   chrome.storage.local.get(['rogue_target_data'], (rogueRes) => {
       if (rogueRes.rogue_target_data) {
           renderRogueWalkthrough(rogueRes.rogue_target_data);
@@ -385,7 +389,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           showClippyToast("Please select a Vertical and enter an Event Name.", 'images/clippy smrik.gif');
       }
   };
-
+// Levenshtein distance function for fuzzy matching
   if (eventInput) {
         eventInput.addEventListener('change', () => {
             const ev = window.currentEventMap && window.currentEventMap[eventInput.value.toLowerCase().trim()];
@@ -484,19 +488,24 @@ document.addEventListener('DOMContentLoaded', async () => {
           setTimeout(() => { btn.innerText = originalText; btn.disabled = false; if (nukeStatus) nukeStatus.innerText = ""; }, 2000);
       }
   };
-
+// Attach the same handler to both buttons, but only allow it to run if the rogue toggle is ON for the stream button
   if (nukeStreamBtn) nukeStreamBtn.addEventListener('click', () => {
       if (rogueToggle && !rogueToggle.checked) return; // Prevent click if Safety is ON
       handleNukeClick(nukeStreamBtn);
   });
   if (nukeBtn) nukeBtn.addEventListener('click', () => handleNukeClick(nukeBtn));
 
-   if (startBtn) {
+    if (startBtn) {
       startBtn.addEventListener('click', async () => {
           const reporterName = reporterInput.value;
           const vertical = verticalSelect.value;
           const eventName = eventInput.value;
           const sourceUrl = document.getElementById('sourceUrlDisplay').value;
+          
+          // PATCH: Fetch mode early and define default text for resets
+          const syncData = await chrome.storage.sync.get(['report_mode']);
+          const isScout = (syncData.report_mode || 'scout') === 'scout';
+          const defaultBtnText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
           
           startBtn.classList.remove('clippy-focus');
           chrome.storage.local.set({ highlight_start_disabled: true });
@@ -516,7 +525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (cart.length === 0) {
               alert("Queue is empty. Use the 'Add' buttons on video pages first.");
               startBtn.disabled = false;
-              startBtn.innerText = "Start Report";
+              startBtn.innerText = defaultBtnText; // PATCHED
               return;
           }
 
@@ -527,16 +536,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           if (firstUrl.includes("youtube") || firstUrl.includes("youtu.be")) {
               platform = "YouTube";
-              reportUrl = "https://www.youtube.com/copyright_complaint_form";
+              reportUrl = "[https://www.youtube.com/copyright_complaint_form](https://www.youtube.com/copyright_complaint_form)";
           } else if (firstUrl.includes("tiktok")) {
               platform = "TikTok";
-              reportUrl = "https://www.tiktok.com/legal/report/Copyright";
+              reportUrl = "[https://www.tiktok.com/legal/report/Copyright](https://www.tiktok.com/legal/report/Copyright)";
           } else {
               // Fallback or handle other platforms
               platform = "Other";
               alert("Auto-reporting is currently optimized for TikTok and YouTube. Please manually report other platforms.");
               startBtn.disabled = false;
-              startBtn.innerText = "Start Report";
+              startBtn.innerText = defaultBtnText; // PATCHED
               return;
           }
 
@@ -555,12 +564,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           await chrome.storage.local.set({ reporterInfo });
 
           // 4. Open Reporting Page or Skip (Scout Mode)
-          const syncData = await chrome.storage.sync.get(['report_mode']);
-          if ((syncData.report_mode || 'scout') === 'scout') {
+          if (isScout) { // PATCHED
               startBtn.innerText = `Logging (Scout Mode)...`;
               const payload = { reporterName, vertical, eventName, mode: 'scout', uploadScreenshots: true };
               chrome.runtime.sendMessage({ action: 'processQueue', data: payload });
-              setTimeout(() => { startBtn.innerText = "Start Report"; startBtn.disabled = false; }, 3000);
+              setTimeout(() => { startBtn.innerText = defaultBtnText; startBtn.disabled = false; }, 3000); // PATCHED
               return;
           }
 
@@ -585,7 +593,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
               // Done. The content script on that page will pick up 'reporterInfo' and 'piracy_cart'.
               startBtn.disabled = false;
-              startBtn.innerText = "Start Report";
+              startBtn.innerText = defaultBtnText; // PATCHED
           });
       });
   }
@@ -768,7 +776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 if (selectorPatchUI) selectorPatchUI.style.display = 'block';
   const startMacroBtn = document.getElementById('startMacroBtn');
 const stopMacroBtn = document.getElementById('stopMacroBtn');
-
+// Reuse the same platform select dropdown for macro recording
 if (startMacroBtn && stopMacroBtn) {
     startMacroBtn.addEventListener('click', async () => {
         const platform = repairPlatformSelect ? repairPlatformSelect.value : 'tiktok';
@@ -928,48 +936,53 @@ if (startMacroBtn && stopMacroBtn) {
           chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
       });
   });
+function evaluateWorkflowFocus(cartSize) {
+      // PATCH: Fetch mode first and set button text BEFORE any early returns
+      chrome.storage.sync.get(['report_mode'], (syncRes) => {
+          const isScout = (syncRes.report_mode || 'scout') === 'scout';
+          const startBtn = document.getElementById('startBtn');
+          if (startBtn) startBtn.innerText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
 
-  function evaluateWorkflowFocus(cartSize) {
-      chrome.storage.local.get(['highlight_start_disabled'], (res) => {
-          if (res.highlight_start_disabled) return;
+          chrome.storage.local.get(['highlight_start_disabled'], (res) => {
+              if (res.highlight_start_disabled) return;
 
-          // Clear all existing spotlights
-          document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
-          
-          if (cartSize === 0) {
+              // Clear all existing spotlights
+              document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
+              
+              if (cartSize === 0) {
+                  const clippyText = document.getElementById('clippy-feedback-text');
+                  if (clippyText) clippyText.innerText = "Open YouTube or TikTok and click '+ Add' on a video!";
+                  return;
+              }
+              
+              let missingFields = false;
+
+              // Check all 4 fields independently to highlight them together
+              if (!document.getElementById('reporterName').value.trim()) {
+                  document.getElementById('reporterName').classList.add('clippy-focus');
+                  missingFields = true;
+              }
+              if (!document.getElementById('verticalSelect').value) {
+                  document.getElementById('verticalSelect').classList.add('clippy-focus');
+                  missingFields = true;
+              }
+              if (!document.getElementById('eventInput').value.trim()) {
+                  document.getElementById('eventInput').classList.add('clippy-focus');
+                  missingFields = true;
+              }
+              if (!document.getElementById('sourceUrlDisplay').value.trim()) {
+                  document.getElementById('sourceUrlDisplay').classList.add('clippy-focus');
+                  missingFields = true;
+              }
+
               const clippyText = document.getElementById('clippy-feedback-text');
-              if (clippyText) clippyText.innerText = "Open YouTube or TikTok and click '+ Add' on a video!";
-              return;
-          }
-          
-          let missingFields = false;
-
-          // Check all 4 fields independently to highlight them together
-          if (!document.getElementById('reporterName').value.trim()) {
-              document.getElementById('reporterName').classList.add('clippy-focus');
-              missingFields = true;
-          }
-          if (!document.getElementById('verticalSelect').value) {
-              document.getElementById('verticalSelect').classList.add('clippy-focus');
-              missingFields = true;
-          }
-          if (!document.getElementById('eventInput').value.trim()) {
-              document.getElementById('eventInput').classList.add('clippy-focus');
-              missingFields = true;
-          }
-          if (!document.getElementById('sourceUrlDisplay').value.trim()) {
-              document.getElementById('sourceUrlDisplay').classList.add('clippy-focus');
-              missingFields = true;
-          }
-
-          if (missingFields) {
-              const clippyText = document.getElementById('clippy-feedback-text');
-              if (clippyText) clippyText.innerText = "Please fill in all 4 highlighted boxes to continue.";
-          } else {
-              document.getElementById('startBtn').classList.add('clippy-focus');
-              const clippyText = document.getElementById('clippy-feedback-text');
-              if (clippyText) clippyText.innerText = "Ready! Click Start Report to generate your PDF.";
-          }
+              if (missingFields) {
+                  if (clippyText) clippyText.innerText = "Please fill in all 4 highlighted boxes to continue.";
+              } else {
+                  if (startBtn) startBtn.classList.add('clippy-focus');
+                  if (clippyText) clippyText.innerText = isScout ? "Ready! Click to save these links to the intelligence log." : "Ready! Click Start Report to generate your PDF.";
+              }
+          });
       });
   }
 
@@ -997,6 +1010,10 @@ if (startMacroBtn && stopMacroBtn) {
               return;
           }
 
+          // Unlock audio context instantly on click
+          window.successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
+          window.successAudio.play().then(() => window.successAudio.pause()).catch(()=>{});
+
           // Explicitly grab the latest notes from the UI
           const userNotes = document.getElementById('rogueUserNotes')?.value || "";
 
@@ -1010,9 +1027,12 @@ if (startMacroBtn && stopMacroBtn) {
               notes: userNotes
           }, (res) => {
               if (res?.success) {
-                  new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
+                  if (window.successAudio) {
+                      window.successAudio.currentTime = 0;
+                      window.successAudio.play().catch(e => console.log("Audio blocked:", e));
+                  }
                   rogueLogBtn.innerText = "✅ Saved!";
-                  setTimeout(() => { 
+                  setTimeout(() => {
                       rogueLogBtn.innerText = "Save to Pirate Websites Sheet"; 
                       rogueLogBtn.disabled = false; 
                       // Auto-close the walkthrough on success
@@ -1071,7 +1091,7 @@ if (startMacroBtn && stopMacroBtn) {
       });
   }
 });
-
+// --- AUTO-CRAWL LOGIC for Bulk Reporting ---
 function processNextCrawlItem() {
     const statusEl = document.getElementById('crawlStatus');
     const vertical = document.getElementById('verticalSelect').value;
@@ -1094,7 +1114,7 @@ function processNextCrawlItem() {
         } 
     });
 }
-
+// This function can be called from background.js after each crawl attempt to continue the process
 function stopCrawl(reason) {
     isCrawling = false;
     const statusEl = document.getElementById('crawlStatus');
@@ -1110,7 +1130,7 @@ function stopCrawl(reason) {
         btn.style.backgroundColor = "#f39c12"; // Restore orange
     }
 }
-
+// --- Populate Verticals Dropdown ---
 function populateVerticals(selectEl) {
   if (!selectEl) return;
   selectEl.innerHTML = '<option value="">Select Vertical...</option>';

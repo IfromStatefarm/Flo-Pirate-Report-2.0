@@ -91,7 +91,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (statusEl) statusEl.innerText = request.status;
     }
     if (request.action === 'progressComplete') {
-      new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
+      if (window.successAudio) {
+          window.successAudio.currentTime = 0;
+          window.successAudio.play().catch(e => console.log("Audio blocked:", e));
+      }
       if (progBar) progBar.style.width = '100%';
       if (statusEl) {
          statusEl.innerText = "Success! All reports filed.";
@@ -142,6 +145,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     reportBtn.addEventListener('click', async () => {
       // --- SECURITY CHECK BEFORE SUBMIT ---
       if (!(await verifyAccessBeforeAction())) return;
+
+      // Unlock audio context instantly on click
+      window.successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
+      window.successAudio.play().then(() => window.successAudio.pause()).catch(()=>{});
 
       const reporterName = document.getElementById('reporterName').value;
       const vertical = document.getElementById('verticalSelect').value;

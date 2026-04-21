@@ -162,10 +162,18 @@ async function getFreshTikTokViews(url) {
         const tab = await chrome.tabs.create({ url: url, active: false });
         tabId = tab.id;
 
+        tabId = tab.id;
+
         // Wait for tab to load completely
         await new Promise(resolve => {
+            const safetyTimeout = setTimeout(() => {
+                chrome.tabs.onUpdated.removeListener(listener);
+                resolve();
+            }, 8000); // 8-second safety timeout prevents infinite hangs
+
             const listener = (tid, info) => {
                 if (tid === tabId && info.status === 'complete') {
+                    clearTimeout(safetyTimeout);
                     chrome.tabs.onUpdated.removeListener(listener);
                     resolve();
                 }

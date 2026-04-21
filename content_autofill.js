@@ -5,6 +5,14 @@
     if (window.floAutofillRunning) return;
     window.floAutofillRunning = true;
 
+// --- Listen for live progress updates from background.js ---
+    chrome.runtime.onMessage.addListener((request) => {
+        if (request.action === 'progressUpdate') {
+            const statusEl = document.getElementById("flo-log-status");
+            if (statusEl) statusEl.innerText = request.status;
+        }
+    });
+
     if (typeof AUTOFILL_CONFIG === 'undefined') {
       var AUTOFILL_CONFIG = {}; 
     }
@@ -688,13 +696,18 @@
         });
   
         document.getElementById("flo-log-btn").addEventListener("click", () => {
-          const status = document.getElementById("flo-log-status");
-          status.innerText = "Logging...";
-          chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
-            if (response && response.success) {
-              new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
-              status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
-              setTimeout(() => {
+        // Unlock audio context instantly on click
+        const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
+        successAudio.play().then(() => successAudio.pause()).catch(()=>{});
+
+        const status = document.getElementById("flo-log-status");
+        status.innerText = "Logging...";
+        chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+          if (response && response.success) {
+            successAudio.currentTime = 0;
+            successAudio.play().catch(e => console.log("Audio blocked:", e));
+            status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
+            setTimeout(() => {
                   lastReportData = null; // Clear so the interval stops re-triggering
                   cachedOverlay = null;  // Clear cache memory
                   overlay.remove();
@@ -934,16 +947,20 @@
         });
 
     document.getElementById("flo-log-btn").addEventListener("click", (e) => {
-      e.target.disabled = true;
-      e.target.innerText = "Processing...";
-      const status = document.getElementById("flo-log-status");
-      status.innerText = "Logging...";
-      chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
-        if (response && response.success) {
-          new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(()=>{});
-          status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
-          setTimeout(() => {
-              lastReportData = null; 
+        // 1. Create the audio object IMMEDIATELY on click to capture user permission
+        const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
+        
+        if (e.target) e.target.disabled = true;
+        const status = document.getElementById("flo-log-status");
+        status.innerText = "Logging...";
+        
+        chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
+          if (response && response.success) {
+            // 2. Play the pre-authorized audio object
+            successAudio.play().catch(err => console.warn("Audio blocked:", err));
+            status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
+            setTimeout(() => {
+              lastReportData = null; // Clear so the interval stops 
               cachedOverlay = null;  
               overlay.remove();
           }, 2000);
