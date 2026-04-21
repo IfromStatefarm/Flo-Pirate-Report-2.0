@@ -2,6 +2,9 @@
 
 (function() { // Wrap in IIFE to prevent variable leaks
   
+     // Guard against IFrame/Ad injection (Only run in main window)
+  if (window.self !== window.top) return;
+  
   // Guard against re-injection
   if (window.hasFloScraperRun) return;
   window.hasFloScraperRun = true;
@@ -965,7 +968,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     // Minimize Logic
-    let isMinimized = isReportingPage;
+       let storedMinState = sessionStorage.getItem('floPirateAiMinimized');
+    let isMinimized = storedMinState !== null ? storedMinState === 'true' : isReportingPage;
     const minBtn = document.getElementById('flo-min-btn');
     const mainContent = document.getElementById('flo-main-content');
     const dragHandle = document.getElementById('flo-drag-handle');
@@ -1000,13 +1004,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     minBtn.addEventListener('click', () => {
         isMinimized = !isMinimized;
+        sessionStorage.setItem('floPirateAiMinimized', isMinimized);
         toggleMinimize();
     });
 
     if (isMinimized) toggleMinimize(); // Enforce immediately if on reporting page
 
     let isDragging = false;
-    let startX, startY, initialLeft, initialTop;
+      let startX, startY, initialLeft, initialTop;
 
     overlay.addEventListener('mousedown', (e) => {
         if (['BUTTON', 'INPUT', 'A', 'SELECT'].includes(e.target.tagName)) return;

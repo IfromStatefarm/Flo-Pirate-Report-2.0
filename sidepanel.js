@@ -134,8 +134,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   chrome.runtime.onMessage.addListener((msg) => {
     // Event-Driven URL capture from background ping
     if (msg.action === 'activeUrlChanged' && sourceDisplay) {
-        sourceDisplay.value = msg.url;
-        if (grabBtn) grabBtn.disabled = true;
+        chrome.storage.local.get(['highlight_start_disabled'], (res) => {
+            // Only auto-populate if the user hasn't locked in a search and the field is empty
+            if (!res.highlight_start_disabled && !sourceDisplay.value.trim()) {
+                sourceDisplay.value = msg.url;
+                if (grabBtn) grabBtn.disabled = true;
+            }
+        });
     }
 
     // New listener for Double Tap progress and Closer Scanner updates

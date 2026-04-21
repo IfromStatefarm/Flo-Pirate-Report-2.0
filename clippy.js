@@ -1,6 +1,9 @@
 // clippy.js
 
 (function() {
+// Guard against IFrame/Ad injection (Only run in main window)
+    if (window.self !== window.top) return;
+
     // Prevent duplicate injections
     if (window.hasClippyRun) return;
     window.hasClippyRun = true;

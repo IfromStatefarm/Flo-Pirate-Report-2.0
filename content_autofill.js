@@ -582,7 +582,7 @@
         setupDrag(overlay);
   
         // Minimize Logic
-        let isWizMinimized = false;
+        let isWizMinimized = sessionStorage.getItem('floWizMinimized') === 'true';
         const minBtn = document.getElementById('flo-wiz-min-btn');
         const closeBtn = document.getElementById('flo-wiz-close-btn');
         const mainContent = document.getElementById('flo-wiz-main-content');
@@ -748,18 +748,19 @@
       setupDrag(overlay);
 
       // Minimize Logic
-      let isWizMinimized = false;
-      const minBtn = document.getElementById('flo-wiz-min-btn');
-      const closeBtn = document.getElementById('flo-wiz-close-btn');
-      const mainContent = document.getElementById('flo-wiz-main-content');
-      const title = document.getElementById('flo-wiz-title');
-      const topBar = document.getElementById('flo-wiz-top-bar');
+        let isWizMinimized = sessionStorage.getItem('floWizMinimized') === 'true';
+        const minBtn = document.getElementById('flo-wiz-min-btn');
+        const closeBtn = document.getElementById('flo-wiz-close-btn');
+        const mainContent = document.getElementById('flo-wiz-main-content');
+        const title = document.getElementById('flo-wiz-title');
+        const topBar = document.getElementById('flo-wiz-top-bar');
 
-      minBtn.addEventListener('click', () => {
-          isWizMinimized = !isWizMinimized;
-          if (isWizMinimized) {
-              mainContent.style.display = 'none';
-              minBtn.innerHTML = '+';
+        minBtn.addEventListener('click', () => {
+            isWizMinimized = !isWizMinimized;
+            sessionStorage.setItem('floWizMinimized', isWizMinimized);
+            if (isWizMinimized) {
+                mainContent.style.display = 'none';
+                minBtn.innerHTML = '+';
               title.innerText = 'Helper ✥';
               overlay.style.width = 'auto';
               topBar.style.borderBottom = 'none';
