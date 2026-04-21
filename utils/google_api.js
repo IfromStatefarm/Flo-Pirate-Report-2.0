@@ -762,6 +762,45 @@ export async function getColumnHData() {
   const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
   return data.values || [];
 }
+export async function getColumnHData() {
+  const { reportSheetId } = await getOptions();
+  if (!reportSheetId) return [];
+  const token = await getAuthToken();
+  const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
+
+  const range = `'${sheetName}'!H:H`; 
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`;
+  
+  const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
+  return data.values || [];
+}
+
+export async function getRecommendedStartRow() {
+  const { reportSheetId } = await getOptions();
+  if (!reportSheetId) return 2;
+  const token = await getAuthToken();
+  const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
+
+  // Fetch columns A through D
+  const range = `'${sheetName}'!A:D`;
+  const data = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`, { 
+      headers: { Authorization: `Bearer ${token}` } 
+  });
+  
+  const rows = data.values || [];
+  let lastFilledRow = 0;
+  
+  // Reverse loop to efficiently find the last row containing any data
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i] && rows[i].some(cell => cell && cell.trim() !== "")) {
+      lastFilledRow = i + 1; // 1-indexed for the UI
+      break;
+    }
+  }
+  
+  // Calculate max row minus 20, flooring it at 2 so we never target the header row
+  return Math.max(2, lastFilledRow - 20);
+}
 
 export async function updateRowStatus(rowIndex, status) {
   const { reportSheetId } = await getOptions();
@@ -781,14 +820,15 @@ export async function updateRowStatus(rowIndex, status) {
       await formatCellAsTakenDown(rowIndex);
   }
 }
+
 // --- THE CLOSER: ADD ENFORCER BONUS POINTS ---
 export async function addEnforcerBonusPoints(rowIndex, bonusPoints) {
     const { reportSheetId } = await getOptions();
     const token = await getAuthToken();
     const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
     
-    // Fetch current Enforcer Points (Column O / Index 14) and append the bonus
-    const range = `'${sheetName}'!O${rowIndex + 1}`;
+    // Fetch current Enforcer Points (Column U / Index 20) and append the bonus
+    const range = `'${sheetName}'!U${rowIndex + 1}`;
     const cellData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${token}` } });
     
     const currentScore = parseInt(cellData.values?.[0]?.[0]) || 0;
@@ -887,7 +927,7 @@ export async function fetchLeaderboardData(userEmail) {
     const token = await getAuthToken();
     const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
 
-    const range = `'${sheetName}'!A:O`;
+    const range = `'${sheetName}'!A:V`; // Fetch all columns needed for points and names
     const data = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${token}` } });
     
     const rows = data.values || [];
@@ -914,8 +954,8 @@ export async function fetchLeaderboardData(userEmail) {
             scout = scout.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
             enforcer = enforcer.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
             
-            const sPts = parseInt(row[13]) || 0; // Col N (Scout Points)
-            const ePts = parseInt(row[14]) || 0; // Col O (Enforcer Points)
+            const sPts = parseInt(row[19]) || 0; // Col T (Scout Points)
+            const ePts = parseInt(row[20]) || 0; // Col U (Enforcer Points)
 
             if (scout) {
                 scoutScores[scout] = (scoutScores[scout] || 0) + sPts;
@@ -932,13 +972,13 @@ export async function fetchLeaderboardData(userEmail) {
     emailLower = emailLower.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
     const myStats = { s: scoutScores[emailLower] || 0, e: enforcerScores[emailLower] || 0 };
     
-    let scoutRank = "Deckhand";
-    if (myStats.s > 500) scoutRank = "Captain";
-    else if (myStats.s > 100) scoutRank = "First Mate";
+    let scoutRank = "Level 1 Scout Reporter";
+    if (myStats.s > 1000) scoutRank = "Level 3 Scout Reporter";
+    else if (myStats.s > 500) scoutRank = "Level 2 Scout Reporter";
 
-    let enforcerRank = "Privateer";
-    if (myStats.e > 500) enforcerRank = "Davy's Hand";
-    else if (myStats.e > 100) enforcerRank = "Plank Master";
+    let enforcerRank = "Level 1 Enforcer";
+    if (myStats.e > 1000) enforcerRank = "Level 3 Enforcer";
+    else if (myStats.e > 500) enforcerRank = "Level 2 Enforcer";
 
     // --- BETA TESTER PERK (PIONEER BADGE) ---
     const { beta_opt_in } = await chrome.storage.sync.get('beta_opt_in');

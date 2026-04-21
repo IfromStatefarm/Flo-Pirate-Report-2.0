@@ -278,7 +278,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           verticalSelect.dispatchEvent(new Event('change'));
       }
   });
-  
+  // Fetch Dynamic Start Row for Closer and Double Tap
+  chrome.runtime.sendMessage({ action: 'getRecommendedStartRow' }, (res) => {
+      if (res && res.success && res.row) {
+          if (startRowInput) startRowInput.value = res.row;
+          const doubleTapInput = document.getElementById('doubleTapStartRow');
+          if (doubleTapInput) doubleTapInput.value = res.row;
+      }
+  });
   // PATCH: Trigger initial UI evaluation to set the proper button text on load
   chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
 
@@ -395,6 +402,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const ev = window.currentEventMap && window.currentEventMap[eventInput.value.toLowerCase().trim()];
             if (ev && sourceDisplay) {
                 sourceDisplay.value = Object.values(ev.urls).find(u => u) || "";
+
+                //  this line is to disable the grab button if a URL was auto-populated
+                if (grabBtn) grabBtn.disabled = sourceDisplay.value.trim() !== "";
                 
                 if (!sourceDisplay.value.trim()) {
                     sourceDisplay.placeholder = "No URL found for this event.";
@@ -530,16 +540,16 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
 
            // 2. Determine Platform & URL
-                   const firstUrl = cart[0].url;
+          const firstUrl = cart[0].url;
           let reportUrl = "";
           let platform = "TikTok";
 
           if (firstUrl.includes("youtube") || firstUrl.includes("youtu.be")) {
               platform = "YouTube";
-              reportUrl = "[https://www.youtube.com/copyright_complaint_form](https://www.youtube.com/copyright_complaint_form)";
+              reportUrl = "https://www.youtube.com/copyright_complaint_form";
           } else if (firstUrl.includes("tiktok")) {
               platform = "TikTok";
-              reportUrl = "[https://www.tiktok.com/legal/report/Copyright](https://www.tiktok.com/legal/report/Copyright)";
+              reportUrl = "https://www.tiktok.com/legal/report/Copyright";
           } else {
               // Fallback or handle other platforms
               platform = "Other";
@@ -591,13 +601,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                   chrome.tabs.onUpdated.addListener(listener);
               }
 
-              // Done. The content script on that page will pick up 'reporterInfo' and 'piracy_cart'.
+              // The content script on that page will pick up 'reporterInfo' and 'piracy_cart'.
               startBtn.disabled = false;
               startBtn.innerText = defaultBtnText; // PATCHED
           });
       });
   }
-
   // Copy Name Tool
   if (copyEventNameBtn) {
     copyEventNameBtn.addEventListener('click', () => {
@@ -926,6 +935,10 @@ if (startMacroBtn && stopMacroBtn) {
       }
       if (namespace === 'local' && changes.rogue_target_data && changes.rogue_target_data.newValue) {
           renderRogueWalkthrough(changes.rogue_target_data.newValue);
+      }
+      // Listen for real-time changes to the report_mode from the options page
+      if (namespace === 'sync' && changes.report_mode) {
+          chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
       }
   });
 

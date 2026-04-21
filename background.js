@@ -19,7 +19,8 @@ import {
   patchConfigSelector,
   fetchLeaderboardData,
   addEnforcerBonusPoints,
-  submitSuggestionToSheet
+  submitSuggestionToSheet,
+  getRecommendedStartRow
 } from './utils/google_api.js';
 import { generatePDF } from './utils/pdf_gen.js';
 import { saveImage, getImage, clearImages } from './utils/idb_storage.js';
@@ -639,6 +640,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  if (request.action === 'getRecommendedStartRow') {
+    getRecommendedStartRow().then(row => sendResponse({ success: true, row }))
+      .catch(error => sendResponse({ success: false, error: error.message, row: 2 }));
+    return true;
+  }
 
   // --- GAMIFICATION LISTENER ---
   if (request.action === 'getGamificationStats') {
@@ -1191,7 +1197,7 @@ async function handleBatchReport(formData) {
       const statusText = formData.mode === 'scout' ? "Open" : "Reported";
       
       const appendResponse = await appendToSheet(token, { 
-          values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", statusText, "Generating Links...", scoutedByEmails, enforcedByEmail, totalScoutScore, enforcerScore, "", "", "", "", reportId] 
+          values: [todayFormatted, formData.vertical, pdfData.eventName, detectedPlatform, "VOD", viewString, finalReporterName, urlString, "DMCA takedown request", statusText, "Generating Links...", scoutedByEmails, enforcedByEmail, "", "", "", "", "", "", totalScoutScore, enforcerScore, reportId] 
       });
       // 6. APPLY RICH TEXT LINKS TO COLUMN K
       const updatedRange = appendResponse?.updates?.updatedRange;
