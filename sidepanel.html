@@ -412,6 +412,35 @@
       </div>
       
       <div id="crawlStatus" style="font-size: 11px; color: #4b5563; margin-top: 8px; font-weight: bold; text-align: center;"></div>
+      
+      <!-- ========================================== -->
+      <!--      INTELLIGENCE BRIEFING SECTION         -->
+      <!-- ========================================== -->
+      <hr style="border: 0; border-top: 1px solid #d1d5db; margin: 15px 0;">
+
+      <label>3. Intelligence Briefing</label>
+      <div class="hint">
+        Generate tactical PDF reports analyzing piracy trends, resolved rates, and team performance over time.
+      </div>
+      <div class="flex-row">
+          <select id="reportTimeframe" style="flex: 1;">
+            <option value="7">Last 1 Week (7 Days)</option>
+            <option value="14">Last 2 Weeks (14 Days)</option>
+            <option value="21">Last 3 Weeks (21 Days)</option>
+            <option value="28">Last 4 Weeks (28 Days)</option>
+          </select>
+          <button id="generateIntelReportBtn" class="btn btn-info" style="width: auto; padding: 9px 12px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            Briefing
+          </button>
+      </div>
+      <!-- End of Intelligence Briefing -->
     </div>
 
     <!-- LEADERBOARD CARD -->

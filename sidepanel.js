@@ -700,6 +700,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
   }
 
+  // --- INTELLIGENCE BRIEFING LOGIC ---
+    const generateIntelReportBtn = document.getElementById('generateIntelReportBtn');
+    if (generateIntelReportBtn) {
+        generateIntelReportBtn.addEventListener('click', () => {
+            const vertical = verticalSelect.value;
+            
+            if (!vertical) {
+                alert("Please select a Vertical first.");
+                return;
+            }
+
+            const timeframeSelect = document.getElementById('reportTimeframe');
+            const days = parseInt(timeframeSelect.value, 10);
+            
+            const clippyText = document.getElementById('clippy-feedback-text');
+            if (clippyText) {
+                clippyText.innerText = `Analyzing the logs for the last ${days} days... standing by.`;
+            }
+            
+            generateIntelReportBtn.disabled = true;
+            generateIntelReportBtn.innerText = "Analyzing...";
+
+            chrome.runtime.sendMessage({ 
+                action: 'generateIntelligenceReport', 
+                timeframeDays: days,
+                vertical: vertical
+            });
+        });
+    }
+    
   // --- DOUBLE TAP & BULK REPORT LOGIC ---
    if (doubleTapBtn) {
       doubleTapBtn.addEventListener('click', async () => {

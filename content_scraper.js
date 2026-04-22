@@ -9,8 +9,20 @@
   if (window.hasFloScraperRun) return;
   window.hasFloScraperRun = true;
 
+  // --- IDENTITY ENFORCEMENT OVERLAY ---
+  // This function checks if the user is logged in with a @flosports.tv email and shows an overlay if not  
   // Global Exemption List: Prevents overlay from opening and logic from running
-  const EXEMPT_WEBSITES = ['houston.flosports.net', 'google.com', 'amazon.com', 'hockeytech.zen.zixi.com'];
+  const EXEMPT_WEBSITES = [
+    'varsity.com', 'flosports.tv', 'floracing.tv', 'milesplit.com', 'houston.flosports.net', 
+    'google.com', 'amazon.com', 'flocasts.atlassian.net', 'gemini.google.com', 
+    'chatgpt.com', 'fso-heatmap.vercel.app', 'gmail.com', 'app.slack.com', '10.43.29.8', 
+    'flosports.okta.com', 'hockeytech.zen.zixi.com', 'workforcenow.adp.com', 'flosports.kazoohr.com', 'flosports.tv', 'go.flosports.tv', 'floracing.com', 'flocollege.com', 'flowrestling.org', 
+    'arena.flowrestling.com', 'flograppling.com', 'flohockey.tv', 'flocheer.com', 'varsity.tv', 'tv.varsity.com', 'flotrack.org', 'milesplit.com', 'milesplit.live', 'flomarching.com', 'florugby.com',
+    'flobikes.com', 'flofootball.com', 'flohoops.com', 'flobaseball.tv', 'flosoftball.com', 'flofc.com', 'flovolleyball.tv', 'floswimming.com', 'flolive.tv', 'flobowling.com', 'flodance.com', 'flovoice.com', 
+    'florodeo.com', 'flocombat.com', 'floelite.com', 'flogymnastics.com', 'dirtondirt.com', 'trackwrestling.com', 'directathletics.com', 'tfrrs.org', 'tfmeetpro.com', 'hockeytech.com', 'hockeytv.com', 'lucasdirt.com',
+    'flosports', 'app.hibob.com', 'dashboard.airbase.io', 'app.ashbyhq.com', 'flosports.ziphq.com', 'flowrestling.org', 'flograppling', 'floracing', 'flograppling', 'flocycling',  
+    'sites.google.com', 'flosports.latticehq.com', 'keep.google.com', 'github.com', 'flodogs.com','drive.google.com'
+  ];
   if (EXEMPT_WEBSITES.some(domain => window.location.hostname.toLowerCase().includes(domain))) return;
 
   let currentCount = 0;

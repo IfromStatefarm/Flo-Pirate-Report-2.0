@@ -985,6 +985,138 @@ export async function fetchLeaderboardData(userEmail) {
 
     return { scoutPoints: myStats.s, enforcerPoints: myStats.e, topScouts, topEnforcers, overallLeaderboard, scoutRank, enforcerRank, mvp, teamTotal };
 }
+// ==========================================
+// 9. TACTICAL INTELLIGENCE REPORTING
+// ==========================================
+
+function normalize2k(val) {
+    if (typeof val !== 'number') return val;
+    return val >= 1000 ? (val / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : val.toString();
+}
+
+export async function fetchIntelligenceData(timeframeDays) {
+    const { reportSheetId } = await getOptions();
+    if (!reportSheetId) return null;
+
+    const token = await getAuthToken();
+    const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
+
+    const range = `'${sheetName}'!A:V`; 
+    const data = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+    });
+    
+    const rows = data.values || [];
+    if (rows.length < 2) return null;
+
+    // Date filtering (Central Time boundary logic)
+    const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+    const cutoffDate = new Date(ctNow);
+    cutoffDate.setDate(cutoffDate.getDate() - timeframeDays);
+    cutoffDate.setHours(0, 0, 0, 0);
+
+    let totalReported = 0;
+    let totalResolved = 0;
+    let totalUrls = 0;
+    const scoutCounts = {};
+    const enforcerCounts = {};
+    const handleStats = {};
+    const eventCounts = {};
+    const timelineData = {};
+    const userStats = {};
+
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row[0]) continue;
+
+        const rowDate = new Date(row[0]);
+        if (rowDate >= cutoffDate && rowDate <= ctNow) {
+            totalReported++;
+
+            // Resolved Status (Col J / Index 9)
+            const isResolved = (row[9] || "").trim().toLowerCase() === "resolved";
+            if (isResolved) totalResolved++;
+
+            // Scouts (Col G / Index 6) & Enforcers (Col M / Index 12)
+            const normalizeName = (name) => (name || "").toLowerCase().replace(/\./g, ' ').trim().split('@')[0];
+            const scout = normalizeName(row[6]);
+            const enforcer = normalizeName(row[12]);
+            
+            const urlString = row[7] || "";
+            const urlCount = (urlString.match(/https?:\/\//g) || []).length || 1;
+            totalUrls += urlCount;
+
+            // Track user performance for Team Stats
+            [scout, enforcer].forEach(user => {
+                if (!user) return;
+                if (!userStats[user]) userStats[user] = { urls: 0, resolved: 0, total: 0 };
+                userStats[user].total++;
+                userStats[user].urls += urlCount;
+                if (isResolved) userStats[user].resolved++;
+            });
+
+            if (scout) scoutCounts[scout] = (scoutCounts[scout] || 0) + 1;
+            if (enforcer) enforcerCounts[enforcer] = (enforcerCounts[enforcer] || 0) + 1;
+
+            // Target Handles (Col K / Index 10) & URLs (Col H / Index 7)
+            const kText = (row[10] || "").trim();
+            let handle = kText.match(/@([^\s\n]+)/) ? kText.match(/@([^\s\n]+)/)[1] : "Unknown";
+            
+            // Fallback: Check if handle is hidden inside the raw URL
+            if (handle === "Unknown" && row[7] && row[7].includes('@')) {
+                const urlMatch = row[7].match(/@([^\s/?]+)/);
+                if (urlMatch) handle = urlMatch[1];
+            }
+
+            if (!handleStats[handle]) handleStats[handle] = { reports: 0, urls: 0 };
+            handleStats[handle].reports += 1;
+            handleStats[handle].urls += urlCount;
+
+            // Events (Col C / Index 2)
+            const eventName = (row[2] || "Unknown Event").trim();
+            eventCounts[eventName] = (eventCounts[eventName] || 0) + 1;
+
+            // Timeline Data mapping for the Line Graph
+            const dateStr = rowDate.toLocaleDateString("en-US", { month: 'numeric', day: 'numeric' });
+            timelineData[dateStr] = (timelineData[dateStr] || 0) + 1;
+        }
+    }
+
+    const sortObj = (obj, key) => Object.keys(obj).map(k => ({ name: k, count: key ? obj[k][key] : obj[k] })).sort((a, b) => b.count - a.count);
+
+    // MVP calculation (highest sum of scout + enforcer counts)
+    const allUsers = new Set([...Object.keys(scoutCounts), ...Object.keys(enforcerCounts)]);
+    let mvp = { name: "N/A", total: 0 };
+    allUsers.forEach(user => {
+        const total = (scoutCounts[user] || 0) + (enforcerCounts[user] || 0);
+        if (total > mvp.total) mvp = { name: user, total };
+    });
+
+    // Calculate Team Stats
+    const teamStats = Object.keys(userStats).map(name => {
+        const stats = userStats[name];
+        const resolvedRate = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) + '%' : '0%';
+        return { name, urls: stats.urls, resolvedRate };
+    }).sort((a, b) => b.urls - a.urls);
+
+    return {
+        totalReported: normalize2k(totalReported),
+        totalResolved: normalize2k(totalResolved),
+        totalUrls: normalize2k(totalUrls),
+        resolvedRate: totalReported > 0 ? Math.round((totalResolved / totalReported) * 100) + '%' : '0%',
+        topScouts: sortObj(scoutCounts).slice(0, 3),
+        topEnforcers: sortObj(enforcerCounts).slice(0, 3),
+// ... existing code ...
+        topPirates: Object.keys(handleStats).map(k => ({
+            handle: k,
+            reports: handleStats[k].reports,
+            urls: handleStats[k].urls
+        })).sort((a, b) => b.urls - a.urls).slice(0, 5),
+        topEvents: sortObj(eventCounts).slice(0, 3),
+        timelineData,
+        teamStats
+    };
+}
 
 export async function submitSuggestionToSheet(token, text, userEmail) {
     const { eventSheetId } = await getOptions();
