@@ -762,18 +762,6 @@ export async function getColumnHData() {
   const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
   return data.values || [];
 }
-export async function getColumnHData() {
-  const { reportSheetId } = await getOptions();
-  if (!reportSheetId) return [];
-  const token = await getAuthToken();
-  const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
-
-  const range = `'${sheetName}'!H:H`; 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`;
-  
-  const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
-  return data.values || [];
-}
 
 export async function getRecommendedStartRow() {
   const { reportSheetId } = await getOptions();
