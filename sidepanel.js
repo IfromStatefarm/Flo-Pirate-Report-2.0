@@ -269,8 +269,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     showInitError(e.message || "Unknown Error");
   }
 
+  // Dynamically set the Google Sheet link
+  chrome.storage.sync.get(['piracy_sheet_id'], (res) => {
+      const sheetLink = document.getElementById('automationSheetLink');
+      if (sheetLink && res.piracy_sheet_id) sheetLink.href = `https://docs.google.com/spreadsheets/d/${res.piracy_sheet_id}/edit`;
+  });
+
   // Load Saved State
   chrome.storage.local.get(['last_reporter', 'last_vertical'], (res) => {
+      if (res.last_reporter && reporterInput) reporterInput.value = res.last_reporter;
+
       if (res.last_reporter && reporterInput) reporterInput.value = res.last_reporter;
       if (res.last_vertical && verticalSelect) {
           verticalSelect.value = res.last_vertical;
