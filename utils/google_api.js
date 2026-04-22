@@ -994,7 +994,7 @@ function normalize2k(val) {
     return val >= 1000 ? (val / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : val.toString();
 }
 
-export async function fetchIntelligenceData(timeframeDays) {
+export async function fetchIntelligenceData(startDateStr, endDateStr) {
     const { reportSheetId } = await getOptions();
     if (!reportSheetId) return null;
 
@@ -1009,19 +1009,19 @@ export async function fetchIntelligenceData(timeframeDays) {
     const rows = data.values || [];
     if (rows.length < 2) return null;
 
-    // Date filtering (Central Time boundary logic)
-    const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-    const cutoffDate = new Date(ctNow);
-    cutoffDate.setDate(cutoffDate.getDate() - timeframeDays);
-    cutoffDate.setHours(0, 0, 0, 0);
+    // Date filtering (Start and End exact boundaries)
+    const cutoffDate = new Date(startDateStr + 'T00:00:00');
+    const ctNow = new Date(endDateStr + 'T23:59:59');
 
     let totalReported = 0;
     let totalResolved = 0;
     let totalUrls = 0;
+    let totalEstimatedViews = 0;
     const scoutCounts = {};
     const enforcerCounts = {};
     const handleStats = {};
     const eventCounts = {};
+    const eventViewStats = {};
     const timelineData = {};
     const userStats = {};
 
@@ -1045,6 +1045,18 @@ export async function fetchIntelligenceData(timeframeDays) {
             const urlString = row[7] || "";
             const urlCount = (urlString.match(/https?:\/\//g) || []).length || 1;
             totalUrls += urlCount;
+
+            // Parse Views (Col F / Index 5)
+            const viewsStr = String(row[5] || "0").toLowerCase();
+            let rowViews = 0;
+            if (viewsStr !== "pending" && viewsStr !== "n/a" && viewsStr !== "deleted" && viewsStr !== "error") {
+                if (viewsStr.includes('k')) rowViews = parseFloat(viewsStr) * 1000;
+                else if (viewsStr.includes('m')) rowViews = parseFloat(viewsStr) * 1000000;
+                else rowViews = parseFloat(viewsStr.replace(/[^\d.]/g, '')) || 0;
+            }
+            if (rowViews === 0 && urlCount > 0) rowViews = urlCount * 1500; // Fallback estimate
+            
+            totalEstimatedViews += rowViews;
 
             // Track user performance for Team Stats
             if (scout) {
@@ -1077,13 +1089,21 @@ export async function fetchIntelligenceData(timeframeDays) {
                 if (urlMatch) handle = urlMatch[1];
             }
 
-            if (!handleStats[handle]) handleStats[handle] = { reports: 0, urls: 0 };
+            const platform = (row[3] || "Unknown").trim();
+
+            if (!handleStats[handle]) handleStats[handle] = { reports: 0, urls: 0, platforms: new Set() };
             handleStats[handle].reports += 1;
             handleStats[handle].urls += urlCount;
+            if (platform && platform !== "Unknown") handleStats[handle].platforms.add(platform);
 
             // Events (Col C / Index 2)
             const eventName = (row[2] || "Unknown Event").trim();
             eventCounts[eventName] = (eventCounts[eventName] || 0) + 1;
+
+            // Track views per event
+            if (!eventViewStats[eventName]) eventViewStats[eventName] = 0;
+            eventViewStats[eventName] += rowViews;
+
 
             // Timeline Data mapping for the Line Graph
             const dateStr = rowDate.toLocaleDateString("en-US", { month: 'numeric', day: 'numeric' });
@@ -1113,18 +1133,27 @@ export async function fetchIntelligenceData(timeframeDays) {
         totalReported: normalize2k(totalReported),
         totalResolved: normalize2k(totalResolved),
         totalUrls: normalize2k(totalUrls),
+        totalEstimatedViews: normalize2k(totalEstimatedViews),
         resolvedRate: totalReported > 0 ? Math.round((totalResolved / totalReported) * 100) + '%' : '0%',
         topScouts: sortObj(scoutCounts).slice(0, 3),
         topEnforcers: sortObj(enforcerCounts).slice(0, 3),
         topPirates: Object.keys(handleStats).map(k => ({
             handle: k,
             reports: handleStats[k].reports,
-            urls: handleStats[k].urls
+            urls: handleStats[k].urls,
+            platforms: handleStats[k].platforms.size > 0 ? Array.from(handleStats[k].platforms).join(', ') : "Unknown"
         })).sort((a, b) => b.urls - a.urls).slice(0, 5),
         topEvents: sortObj(eventCounts).slice(0, 3),
+        eventViews: Object.keys(eventViewStats).map(k => ({
+            name: k,
+            views: eventViewStats[k],
+            formattedViews: normalize2k(eventViewStats[k])
+        })).sort((a, b) => b.views - a.views),
         timelineData,
-        teamStats
+        teamStats,
+        mvp
     };
+
 }
 
 export async function submitSuggestionToSheet(token, text, userEmail) {

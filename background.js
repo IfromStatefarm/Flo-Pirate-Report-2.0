@@ -699,11 +699,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               const token = await getAuthToken();
               
               // 1. Fetch data
-              const stats = await fetchIntelligenceData(request.timeframeDays);
+              const stats = await fetchIntelligenceData(request.startDate, request.endDate);
               if (!stats) throw new Error("No data available for this timeframe.");
               
               // 2. Generate PDF
               const pdfBlob = await generateIntelligencePDF(stats);
+
               
               // 3. Ensure "Tactical Briefings" folder exists under root
               const storage = await chrome.storage.sync.get('piracy_folder_id');

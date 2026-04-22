@@ -400,6 +400,11 @@ export async function generateIntelligencePDF(stats) {
       const scout = stats.topScouts?.[i] || { name: "-", count: 0 };
       const enforcer = stats.topEnforcers?.[i] || { name: "-", count: 0 };
       
+      // Helper to capitalize first and last names
+      const cap = (n) => n && n !== "-" ? n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : n;
+      const sName = cap(scout.name);
+      const eName = cap(enforcer.name);
+
       // Subtle Row Backgrounds for Leaderboard
       if (i % 2 === 0) {
           doc.setFillColor(249, 250, 251);
@@ -407,8 +412,8 @@ export async function generateIntelligencePDF(stats) {
           doc.rect(pageWidth / 2 + 5, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
       }
       
-      doc.text(`${i + 1}. ${scout.name} (${scout.count} hits)`, margin + 2, y);
-      doc.text(`${i + 1}. ${enforcer.name} (${enforcer.count} hits)`, pageWidth / 2 + 7, y);
+      doc.text(`${i + 1}. ${sName} (${scout.count} hits)`, margin + 2, y);
+      doc.text(`${i + 1}. ${eName} (${enforcer.count} hits)`, pageWidth / 2 + 7, y);
       y += 8;
     }
     y += 10;
@@ -480,9 +485,12 @@ export async function generateIntelligencePDF(stats) {
     doc.setFillColor(229, 231, 235);
     doc.rect(margin, y, maxTextWidth, 8, 'F');
     doc.setFontSize(9);
+    
     doc.text("PIRATE HANDLE", margin + 2, y + 6);
-    doc.text("URLS HIT", margin + 100, y + 6);
-    doc.text("EST. VIEWS", margin + 140, y + 6);
+    doc.text("PLATFORM", margin + 70, y + 6);
+    doc.text("URLS HIT", margin + 115, y + 6);
+    doc.text("EST. VIEWS", margin + 150, y + 6);
+    
     y += 12;
 
     doc.setFont("helvetica", "normal");
@@ -490,20 +498,39 @@ export async function generateIntelligencePDF(stats) {
         stats.topPirates.forEach((pirate, i) => {
             ensureSpace(10);
             
-            // Table Truncation for Handle (Limits to ~40 characters safely)
+            // Table Truncation for Handle
             let displayHandle = `@${pirate.handle}`;
-            if (displayHandle.length > 40) {
-                displayHandle = displayHandle.substring(0, 37) + "...";
+            if (displayHandle.length > 32) {
+                displayHandle = displayHandle.substring(0, 29) + "...";
+            }
+            
+            // Platform String & Truncation (FIXED DECLARATION)
+            let displayPlatform = String(pirate.platforms || "Unknown");
+            if (displayPlatform.length > 20) {
+                displayPlatform = displayPlatform.substring(0, 17) + "...";
             }
 
-            doc.text(displayHandle, margin + 2, y);
-            doc.text(String(pirate.urls), margin + 100, y);
+            // Construct channel URL based on the platform
+            let channelUrl = `https://www.google.com/search?q=${pirate.handle}`; // fallback
+            const platLower = displayPlatform.toLowerCase();
+            if (platLower.includes('tiktok')) channelUrl = `https://www.tiktok.com/@${pirate.handle}`;
+            else if (platLower.includes('youtube')) channelUrl = `https://www.youtube.com/@${pirate.handle}`;
+            else if (platLower.includes('instagram')) channelUrl = `https://www.instagram.com/${pirate.handle}`;
+            else if (platLower.includes('twitter') || platLower.includes('x')) channelUrl = `https://x.com/${pirate.handle}`;
+
+            // Draw as a clickable blue link, then reset color
+            doc.setTextColor(0, 0, 255);
+            doc.textWithLink(displayHandle, margin + 2, y, { url: channelUrl });
+            doc.setTextColor(17, 24, 39);
+            
+            doc.text(displayPlatform, margin + 70, y);
+            doc.text(String(pirate.urls), margin + 115, y);
 
             // Estimate Views: URLs * 1500, normalized to 'k'
             const est = pirate.urls * 1500;
             const estViews = est >= 1000 ? (est / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(est);
 
-            doc.text(estViews, margin + 140, y);
+            doc.text(estViews, margin + 150, y);
 
             // Add subtle row separators
             doc.setDrawColor(243, 244, 246);
@@ -552,6 +579,62 @@ export async function generateIntelligencePDF(stats) {
         });
     } else {
         doc.text("No team data identified in this timeframe.", margin + 2, y);
+    }
+
+    // --- 7. EVENT VIEW ANALYSIS ---
+    ensureSpace(40);
+    doc.setTextColor(17, 24, 39);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("EVENT VIEW ANALYSIS", margin, y);
+    y += 8;
+
+    doc.setFillColor(229, 231, 235);
+    doc.rect(margin, y, maxTextWidth, 8, 'F');
+    doc.setFontSize(9);
+    doc.text("EVENT NAME", margin + 2, y + 6);
+    doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
+    y += 12;
+
+    doc.setFont("helvetica", "bold");
+    doc.text("ALL EVENTS COMBINED", margin + 2, y);
+    
+    // Sum up the raw views to avoid string parsing issues, normalize output with toLocaleString()
+    let calculatedTotalViews = 0;
+    if (stats.eventViews && stats.eventViews.length > 0) {
+        calculatedTotalViews = stats.eventViews.reduce((sum, ev) => sum + (Number(ev.views) || 0), 0);
+    } else if (stats.totalEstimatedViews) {
+        // Fallback safely if eventViews array isn't populated but total string is
+        let valStr = String(stats.totalEstimatedViews).toLowerCase();
+        if (valStr.includes('k')) calculatedTotalViews = parseFloat(valStr) * 1000;
+        else if (valStr.includes('m')) calculatedTotalViews = parseFloat(valStr) * 1000000;
+        else calculatedTotalViews = parseFloat(valStr.replace(/[^\d.]/g, '')) || 0;
+    }
+
+    const safeTotalViews = (isNaN(calculatedTotalViews) || calculatedTotalViews === 0) ? "100" : calculatedTotalViews.toLocaleString();
+    doc.text(safeTotalViews, margin + 150, y);
+    y += 8;
+    
+    doc.setFont("helvetica", "normal");
+    if (stats.eventViews && stats.eventViews.length > 0) {
+        stats.eventViews.forEach((ev) => {
+            ensureSpace(10);
+            
+            let displayEventName = ev.name || "Unknown";
+            if (displayEventName.length > 65) displayEventName = displayEventName.substring(0, 62) + "...";
+
+            doc.text(displayEventName, margin + 2, y);
+            
+            // Apply normalization to individual event views too
+            const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
+            doc.text(safeEventViews, margin + 150, y);
+
+            doc.setDrawColor(243, 244, 246);
+            doc.line(margin, y + 2, pageWidth - margin, y + 2);
+            y += 8;
+        });
+    } else {
+        doc.text("No event view data identified in this timeframe.", margin + 2, y);
     }
 
     return doc.output('blob');

@@ -711,12 +711,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            const timeframeSelect = document.getElementById('reportTimeframe');
-            const days = parseInt(timeframeSelect.value, 10);
+            const startDate = document.getElementById('reportStartDate').value;
+            const endDate = document.getElementById('reportEndDate').value;
+            
+            if (!startDate || !endDate) {
+                alert("Please select both a start and end date.");
+                return;
+            }
             
             const clippyText = document.getElementById('clippy-feedback-text');
             if (clippyText) {
-                clippyText.innerText = `Analyzing the logs for the last ${days} days... standing by.`;
+                clippyText.innerText = `Analyzing logs from ${startDate} to ${endDate}... standing by.`;
             }
             
             generateIntelReportBtn.disabled = true;
@@ -724,12 +729,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             chrome.runtime.sendMessage({ 
                 action: 'generateIntelligenceReport', 
-                timeframeDays: days,
+                startDate: startDate,
+                endDate: endDate,
                 vertical: vertical
+            }, (res) => {
+                generateIntelReportBtn.disabled = false;
+                generateIntelReportBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Briefing`;
+                
+                if (clippyText) clippyText.innerText = res?.success ? "Briefing generated successfully!" : "Failed to generate briefing.";
+                if (res && res.error) alert("Briefing Error: " + res.error);
             });
         });
     }
-    
+
   // --- DOUBLE TAP & BULK REPORT LOGIC ---
    if (doubleTapBtn) {
       doubleTapBtn.addEventListener('click', async () => {
