@@ -1047,13 +1047,22 @@ export async function fetchIntelligenceData(timeframeDays) {
             totalUrls += urlCount;
 
             // Track user performance for Team Stats
-            [scout, enforcer].forEach(user => {
-                if (!user) return;
-                if (!userStats[user]) userStats[user] = { urls: 0, resolved: 0, total: 0 };
-                userStats[user].total++;
-                userStats[user].urls += urlCount;
-                if (isResolved) userStats[user].resolved++;
-            });
+            if (scout) {
+                if (!userStats[scout]) userStats[scout] = { scouted: 0, enforced: 0, urls: 0, resolved: 0, total: 0 };
+                userStats[scout].total++;
+                userStats[scout].scouted += urlCount;
+                userStats[scout].urls += urlCount;
+                if (isResolved) userStats[scout].resolved++;
+            }
+            if (enforcer) {
+                if (!userStats[enforcer]) userStats[enforcer] = { scouted: 0, enforced: 0, urls: 0, resolved: 0, total: 0 };
+                userStats[enforcer].enforced += urlCount;
+                if (scout !== enforcer) {
+                    userStats[enforcer].total++;
+                    userStats[enforcer].urls += urlCount;
+                    if (isResolved) userStats[enforcer].resolved++;
+                }
+            }
 
             if (scout) scoutCounts[scout] = (scoutCounts[scout] || 0) + 1;
             if (enforcer) enforcerCounts[enforcer] = (enforcerCounts[enforcer] || 0) + 1;
@@ -1096,7 +1105,8 @@ export async function fetchIntelligenceData(timeframeDays) {
     const teamStats = Object.keys(userStats).map(name => {
         const stats = userStats[name];
         const resolvedRate = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) + '%' : '0%';
-        return { name, urls: stats.urls, resolvedRate };
+        const displayName = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        return { name: displayName, urls: stats.urls, scouted: stats.scouted, enforced: stats.enforced, resolvedRate };
     }).sort((a, b) => b.urls - a.urls);
 
     return {
@@ -1106,7 +1116,6 @@ export async function fetchIntelligenceData(timeframeDays) {
         resolvedRate: totalReported > 0 ? Math.round((totalResolved / totalReported) * 100) + '%' : '0%',
         topScouts: sortObj(scoutCounts).slice(0, 3),
         topEnforcers: sortObj(enforcerCounts).slice(0, 3),
-// ... existing code ...
         topPirates: Object.keys(handleStats).map(k => ({
             handle: k,
             reports: handleStats[k].reports,
