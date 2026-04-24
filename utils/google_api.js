@@ -1081,12 +1081,15 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
 
             // Target Handles (Col K / Index 10) & URLs (Col H / Index 7)
             const kText = (row[10] || "").trim();
-            let handle = kText.match(/@([^\s\n]+)/) ? kText.match(/@([^\s\n]+)/)[1] : "Unknown";
+            let rawHandle = kText.match(/@([^\s\n]+)/) ? kText.match(/@([^\s\n]+)/)[1] : "Unknown";
+            
+            // Normalize handle to ensure unique grouping (strip @ and lowercase)
+            let handle = rawHandle.replace(/^@/, "").toLowerCase().trim();
             
             // Fallback: Check if handle is hidden inside the raw URL
-            if (handle === "Unknown" && row[7] && row[7].includes('@')) {
+            if (handle === "unknown" && row[7] && row[7].includes('@')) {
                 const urlMatch = row[7].match(/@([^\s/?]+)/);
-                if (urlMatch) handle = urlMatch[1];
+                if (urlMatch) handle = urlMatch[1].toLowerCase().trim();
             }
 
             const platform = (row[3] || "Unknown").trim();
@@ -1105,9 +1108,11 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
             eventViewStats[eventName] += rowViews;
 
 
-            // Timeline Data mapping for the Line Graph
-            const dateStr = rowDate.toLocaleDateString("en-US", { month: 'numeric', day: 'numeric' });
-            timelineData[dateStr] = (timelineData[dateStr] || 0) + 1;
+            // Timeline Data mapping for the Line Graph & Appendix
+            const dateStr = new Date(row[0]).toLocaleDateString("en-US", { year: 'numeric', month: 'numeric', day: 'numeric' });
+            if (!timelineData[dateStr]) timelineData[dateStr] = { count: 0, resolved: 0 };
+            timelineData[dateStr].count += 1;
+            if (isResolved) timelineData[dateStr].resolved += 1;
         }
     }
 
@@ -1151,7 +1156,9 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
         })).sort((a, b) => b.views - a.views),
         timelineData,
         teamStats,
-        mvp
+        mvp,
+        startDate: startDateStr,
+        endDate: endDateStr
     };
 
 }

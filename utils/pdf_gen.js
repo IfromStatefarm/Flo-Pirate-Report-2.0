@@ -334,7 +334,8 @@ export async function generateIntelligencePDF(stats) {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(`REPORT GENERATED: ${new Date().toLocaleString()}`, pageWidth / 2, 32, { align: "center" });
+    doc.text(`REPORTING PERIOD: ${stats.startDate} TO ${stats.endDate}`, pageWidth / 2, 30, { align: "center" });
+    doc.text(`REPORT GENERATED: ${new Date().toLocaleString()}`, pageWidth / 2, 36, { align: "center" });
     y = 60;
 
     // --- 2. KPI DASHBOARD (3-Column Grid) ---
@@ -351,26 +352,31 @@ export async function generateIntelligencePDF(stats) {
     const efficiency = parseInt(stats.resolvedRate) > 0 ? Math.min(100, Math.round(parseInt(stats.resolvedRate) * 1.1)) : 0;
 
     const kpis = [
-      { label: "TOTAL TAKEDOWNS", value: stats.totalReported || "0" },
-      { label: "TOTAL URLS", value: stats.totalUrls || "0" },
-      { label: "RESOLVED RATE", value: stats.resolvedRate || "0%" },
-      { label: "EFFICIENCY SCORE", value: `${efficiency}/100` }
+      { label: "TOTAL TAKEDOWNS", value: stats.totalReported || "0", desc: "Confirmed Reports Filed" },
+      { label: "TOTAL URLS", value: stats.totalUrls || "0", desc: "Pirated Links Processed" },
+      { label: "RESOLVED RATE", value: stats.resolvedRate || "0%", desc: "Successful Report Takedown %" },
+      { label: "EFFICIENCY SCORE", value: `${efficiency}/100`, desc: "Overall Squad Rating" }
     ];
 
     kpis.forEach((kpi, i) => {
       const boxX = margin + (i * (boxWidth + gap));
       doc.setFillColor(243, 244, 246); // Light Gray
       doc.setDrawColor(209, 213, 219);
-      doc.rect(boxX, y, boxWidth, 22, 'FD');
+      doc.rect(boxX, y, boxWidth, 26, 'FD');
 
       doc.setTextColor(107, 114, 128);
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
-      doc.text(kpi.label, boxX + (boxWidth / 2), y + 8, { align: "center" });
+      doc.text(kpi.label, boxX + (boxWidth / 2), y + 6, { align: "center" });
 
       doc.setTextColor(17, 24, 39);
       doc.setFontSize(16);
-      doc.text(String(kpi.value), boxX + (boxWidth / 2), y + 17, { align: "center" });
+      doc.text(String(kpi.value), boxX + (boxWidth / 2), y + 15, { align: "center" });
+
+      doc.setTextColor(156, 163, 175);
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.text(kpi.desc, boxX + (boxWidth / 2), y + 22, { align: "center" });
     });
     y += 35;
 
@@ -436,6 +442,41 @@ export async function generateIntelligencePDF(stats) {
         const counts = dates.map(d => stats.timelineData[d]);
         const maxCount = Math.max(...counts, 10); // Floor max scale at 10
         const stepX = maxTextWidth / Math.max(dates.length, 1);
+        
+        // Safely calculate month span
+        const firstDate = new Date(dates[0]);
+        const lastDate = new Date(dates[dates.length - 1]);
+        let monthsSpan = 0;
+        if (!isNaN(firstDate.getTime()) && !isNaN(lastDate.getTime())) {
+            monthsSpan = (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + (lastDate.getMonth() - firstDate.getMonth());
+        }
+        
+        let requiredInterval = 0;
+        if (monthsSpan > 6 && monthsSpan <= 12) requiredInterval = 1;
+        else if (monthsSpan > 12 && monthsSpan <= 36) requiredInterval = 2;
+        else if (monthsSpan > 36) requiredInterval = Math.floor(monthsSpan / 12);
+
+        const labelStep = Math.ceil(dates.length / 8);
+
+        // Y-Axis Scale & Gridlines
+        doc.setTextColor(156, 163, 175);
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        
+        const topY = y + 10;
+        const midY = y + 10 + ((gHeight - 15) / 2);
+        const bottomY = y + gHeight - 5;
+
+        // Labels (Right-aligned just outside the chart box)
+        doc.text(String(maxCount), margin - 2, topY, { align: "right" });
+        doc.text(String(Math.round(maxCount / 2)), margin - 2, midY, { align: "right" });
+        doc.text("0", margin - 2, bottomY, { align: "right" });
+        // Subtle horizontal gridlines
+        doc.setDrawColor(229, 231, 235);
+        doc.setLineWidth(0.2);
+        doc.line(margin, topY, margin + maxTextWidth, topY);
+        doc.line(margin, midY, margin + maxTextWidth, midY);
+
 
         doc.setDrawColor(206, 14, 45); // FloSports Red
         doc.setFillColor(206, 14, 45);
@@ -443,8 +484,10 @@ export async function generateIntelligencePDF(stats) {
 
         let prevX = null;
         let prevY = null;
+        let lastPrintedMonthDate = new Date(0);
+        let lastLabelX = -999; // Anti-collision tracker
 
-        dates.forEach((date, i) => {
+         dates.forEach((dateStr, i) => {
             const count = counts[i];
             const ptX = margin + (i * stepX) + (stepX / 2);
             // Invert Y axis (higher counts draw higher up)
@@ -455,12 +498,34 @@ export async function generateIntelligencePDF(stats) {
             }
             doc.circle(ptX, ptY, 1.5, 'FD'); // Plot point
 
-            // X-Axis labels (print alternating if too many)
-            if (dates.length < 10 || i % 2 === 0) {
-                doc.setTextColor(107, 114, 128);
-                doc.setFontSize(8);
-                doc.setFont("helvetica", "normal");
-                doc.text(date, ptX, y + gHeight + 5, { align: "center" });
+            // X-Axis labels (print dynamically spaced to prevent overlap)
+            let shouldPrintLabel = false;
+            let displayLabel = dateStr;
+            const currDate = new Date(dateStr);
+
+            if (monthsSpan > 6 && !isNaN(currDate.getTime())) {
+                const monthDiff = (currDate.getFullYear() - lastPrintedMonthDate.getFullYear()) * 12 + (currDate.getMonth() - lastPrintedMonthDate.getMonth());
+                if (monthDiff >= requiredInterval || i === dates.length - 1) {
+                    shouldPrintLabel = true;
+                    lastPrintedMonthDate = currDate;
+                    displayLabel = currDate.toLocaleDateString("en-US", { month: 'short', year: '2-digit' });
+                }
+            } else if (i % labelStep === 0 || i === dates.length - 1) {
+                shouldPrintLabel = true;
+                if (!isNaN(currDate.getTime())) {
+                    displayLabel = currDate.toLocaleDateString("en-US", { month: 'numeric', day: 'numeric' });
+                }
+            }
+
+            if (shouldPrintLabel) {
+                // Prevent label collision/squishing (minimum 14mm spacing)
+                if (ptX - lastLabelX > 14 || i === 0) {
+                    doc.setTextColor(107, 114, 128);
+                    doc.setFontSize(8);
+                    doc.setFont("helvetica", "normal");
+                    doc.text(displayLabel, ptX, y + gHeight + 5, { align: "center" });
+                    lastLabelX = ptX;
+                }
             }
 
             prevX = ptX;
@@ -473,6 +538,7 @@ export async function generateIntelligencePDF(stats) {
         doc.text("Insufficient data to plot timeline.", pageWidth / 2, y + (gHeight / 2), { align: "center" });
     }
     y += gHeight + 15;
+
 
     // --- 5. TARGET LIST (TOP 5 PIRATES) ---
     ensureSpace(40);
@@ -635,6 +701,74 @@ export async function generateIntelligencePDF(stats) {
         });
     } else {
         doc.text("No event view data identified in this timeframe.", margin + 2, y);
+    }
+
+   // --- 8. APPENDIX: DAILY DATA TABLE ---
+    doc.addPage();
+    y = margin + 10;
+    doc.setFillColor(30, 41, 59);
+    doc.rect(0, 0, pageWidth, 25, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("APPENDIX: DAILY ENFORCEMENT LOG", margin, 17);
+    y = 35;
+
+    doc.setFillColor(229, 231, 235);
+    doc.rect(margin, y, maxTextWidth, 8, 'F');
+    doc.setTextColor(17, 24, 39);
+    doc.setFontSize(9);
+    doc.text("DATE", margin + 2, y + 6);
+    doc.text("REPORTS", margin + 60, y + 6);
+    doc.text("RESOLVED", margin + 110, y + 6);
+    doc.text("RESOLVE RATE", margin + 160, y + 6);
+    y += 12;
+
+    doc.setFont("helvetica", "normal");
+    
+    if (stats.timelineData && Object.keys(stats.timelineData).length > 0) {
+        const dates = Object.keys(stats.timelineData).sort((a, b) => new Date(a) - new Date(b));
+        let currentWeekStart = null;
+
+        dates.forEach(dateStr => {
+            const dateObj = new Date(dateStr);
+            const day = dateObj.getDay();
+            const diff = dateObj.getDate() - day + (day === 0 ? -6 : 1); // Group to Monday
+            const weekStart = new Date(dateObj.setDate(diff));
+            const weekLabel = `Week of ${weekStart.toLocaleDateString("en-US", { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+            if (currentWeekStart !== weekLabel) {
+                ensureSpace(16);
+                y += 4;
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(206, 14, 45);
+                doc.text(weekLabel, margin + 2, y);
+                y += 4;
+                doc.setDrawColor(206, 14, 45);
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 6;
+                doc.setTextColor(17, 24, 39);
+                doc.setFont("helvetica", "normal");
+                currentWeekStart = weekLabel;
+            }
+
+            ensureSpace(8);
+            const dailyStats = stats.timelineData[dateStr];
+            const dCount = dailyStats.count;
+            const dResolved = dailyStats.resolved;
+            const dRate = dCount > 0 ? Math.round((dResolved / dCount) * 100) + '%' : '0%';
+
+            doc.text(dateStr, margin + 2, y);
+            doc.text(String(dCount), margin + 60, y);
+            doc.text(String(dResolved), margin + 110, y);
+            doc.text(dRate, margin + 160, y);
+
+            doc.setDrawColor(243, 244, 246);
+            doc.line(margin, y + 2, pageWidth - margin, y + 2);
+            y += 8;
+        });
+    } else {
+        doc.text("No daily data available.", margin + 2, y);
     }
 
     return doc.output('blob');
