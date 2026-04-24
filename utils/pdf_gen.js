@@ -553,6 +553,54 @@ export async function generateIntelligencePDF(stats) {
     }
     y += gHeight + 15;
 
+      // --- 4.5 PLATFORM BREAKDOWN (NEW) ---
+    ensureSpace(30);
+    doc.setTextColor(17, 24, 39);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("PLATFORM BREAKDOWN", margin, y);
+    y += 8;
+    
+    if (stats.platformTotals && stats.platformTotals.length > 0) {
+        let pX = margin;
+        let pY = y;
+        const tagHeight = 8;
+        
+        doc.setFontSize(9);
+        stats.platformTotals.forEach((p) => {
+            //  Safely fallback to 0 if the data is missing, and format with text
+            const text = `${p.name}: ${p.reports || 0} Reports / ${p.urls || 0} URLs`; 
+            
+            // Estimate width: ~2mm per char at 9pt + 8mm padding
+            const tagWidth = (text.length * 2) + 8;
+            
+            // If the next tag overflows the right margin, wrap to a new line
+            if (pX + tagWidth > pageWidth - margin) {
+                pX = margin;
+                pY += tagHeight + 4;
+            }
+            
+            // Draw a subtle gray background box with a border
+            doc.setFillColor(243, 244, 246);
+            doc.setDrawColor(209, 213, 219);
+            doc.rect(pX, pY, tagWidth, tagHeight, 'FD');
+            
+            // Draw the text centered vertically inside the box
+            doc.setTextColor(17, 24, 39);
+            doc.setFont("helvetica", "bold");
+            doc.text(text, pX + 4, pY + 5.5);
+            
+            // Advance X coordinate for the next tag
+            pX += tagWidth + 4;
+        });
+        y = pY + tagHeight + 15; // Push main cursor down
+    } else {
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text("No platform data identified.", margin, y);
+        y += 15;
+    }
+
 
     // --- 5. TARGET LIST (TOP 5 PIRATES) ---
     ensureSpace(40);
@@ -643,7 +691,7 @@ export async function generateIntelligencePDF(stats) {
 
     doc.setFont("helvetica", "normal");
     if (stats.teamStats && stats.teamStats.length > 0) {
-        stats.teamStats.forEach((member) => {
+        stats.teamStats.slice(0, 20).forEach((member) => {
             ensureSpace(10);
             
             let displayName = member.name || "Unknown";
@@ -700,7 +748,7 @@ export async function generateIntelligencePDF(stats) {
     
     doc.setFont("helvetica", "normal");
     if (stats.eventViews && stats.eventViews.length > 0) {
-        stats.eventViews.forEach((ev) => {
+        stats.eventViews.slice(0, 20).forEach((ev) => {
             ensureSpace(10);
             
             let displayEventName = ev.name || "Unknown";
@@ -720,132 +768,105 @@ export async function generateIntelligencePDF(stats) {
         doc.text("No event view data identified in this timeframe.", margin + 2, y);
     }
 
-    // --- 8. APPENDIX: DAILY DATA TABLE ---
+    // --- 9. APPENDIX: COMPLETE TEAM PERFORMANCE ---
     doc.addPage();
-    tocEntries.push({ title: "Appendix: Daily Enforcement Log", page: doc.internal.getCurrentPageInfo().pageNumber, y: 10 });
     y = margin + 10;
     doc.setFillColor(30, 41, 59);
     doc.rect(0, 0, pageWidth, 25, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text("APPENDIX: DAILY ENFORCEMENT LOG", margin, 17);
+    doc.text("APPENDIX: COMPLETE TEAM PERFORMANCE", margin, 17);
     y = 35;
 
-    const drawAppendixHeader = () => {
-        doc.setFillColor(229, 231, 235);
-        doc.rect(margin, y, maxTextWidth, 8, 'F');
-        doc.setTextColor(17, 24, 39);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold"); // Added to ensure font weight resets properly
-        doc.text("DATE", margin + 2, y + 6);
-        doc.text("REPORTS", margin + 60, y + 6);
-        doc.text("RESOLVED", margin + 110, y + 6);
-        doc.text("RESOLVE RATE", margin + 160, y + 6);
-        y += 12;
-        doc.setFont("helvetica", "normal");
-    };
+    doc.setFillColor(229, 231, 235);
+    doc.rect(margin, y, maxTextWidth, 8, 'F');
+    doc.setTextColor(17, 24, 39);
+    doc.setFontSize(9);
+    doc.text("TEAM MEMBER", margin + 2, y + 6);
+    doc.text("SCOUTED", margin + 85, y + 6);
+    doc.text("ENFORCED", margin + 110, y + 6);
+    doc.text("TOTAL URLS", margin + 135, y + 6);
+    doc.text("RESOLVED", margin + 165, y + 6);
+    y += 12;
 
-    drawAppendixHeader()
-    
-    if (stats.timelineData && Object.keys(stats.timelineData).length > 0) {
-        const dates = Object.keys(stats.timelineData).sort((a, b) => new Date(a) - new Date(b));
-        const weeks = {};
+    doc.setFont("helvetica", "normal");
+    if (stats.teamStats && stats.teamStats.length > 0) {
+        stats.teamStats.forEach((member) => {
+            ensureSpace(10);
+            
+            let displayName = member.name || "Unknown";
+            if (displayName.length > 35) displayName = displayName.substring(0, 32) + "...";
 
-        // Pre-group data into weeks to calculate totals before rendering
-        dates.forEach(dateStr => {
-            const dateObj = new Date(dateStr);
-            const day = dateObj.getDay();
-            const diff = dateObj.getDate() - day + (day === 0 ? -6 : 1); // Group to Monday
-            const weekStart = new Date(dateObj.setDate(diff));
-            const weekLabel = `Week of ${weekStart.toLocaleDateString("en-US", { month: 'short', day: 'numeric', year: 'numeric' })}`;
+            doc.text(displayName, margin + 2, y);
+            doc.text(String(member.scouted || 0), margin + 85, y);
+            doc.text(String(member.enforced || 0), margin + 110, y);
+            doc.text(String(member.urls || 0), margin + 135, y);
+            doc.text(String(member.resolvedRate || "0%"), margin + 165, y);
 
-            if (!weeks[weekLabel]) {
-                weeks[weekLabel] = { count: 0, resolved: 0, days: [] };
-            }
-
-            const val = stats.timelineData[dateStr];
-            const dCount = typeof val === 'object' ? val.count : val;
-            const dResolved = typeof val === 'object' ? (val.resolved || 0) : 0;
-            const dRate = dCount > 0 ? Math.round((dResolved / dCount) * 100) + '%' : '0%';
-
-            weeks[weekLabel].count += dCount;
-            weeks[weekLabel].resolved += dResolved;
-            weeks[weekLabel].days.push({ dateStr, dCount, dResolved, dRate });
+            doc.setDrawColor(243, 244, 246);
+            doc.line(margin, y + 2, pageWidth - margin, y + 2);
+            y += 8;
         });
-
-       // Render the grouped weekly data
-        Object.keys(weeks).forEach(weekLabel => {
-            const week = weeks[weekLabel];
-            const weekRate = week.count > 0 ? Math.round((week.resolved / week.count) * 100) + '%' : '0%';
-
-            if (ensureSpace(16)) drawAppendixHeader();
-            y += 4;
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(206, 14, 45);;
-            doc.text(weekLabel, margin + 2, y);
-            
-            // Print the week's totals matching the column alignment
-            doc.text(String(week.count), margin + 60, y);
-            doc.text(String(week.resolved), margin + 110, y);
-            doc.text(weekRate, margin + 160, y);
-            
-            y += 4;
-            doc.setDrawColor(206, 14, 45);
-            doc.line(margin, y, pageWidth - margin, y);
-            y += 6;
-            
-            doc.setTextColor(17, 24, 39);
-            doc.setFont("helvetica", "normal");
-
-            // Print each day under the week
-            week.days.forEach(day => {
-                if (ensureSpace(8)) drawAppendixHeader();
-                doc.text(day.dateStr, margin + 2, y);
-                doc.text(String(day.dCount), margin + 60, y);
-                doc.text(String(day.dResolved), margin + 110, y);
-                doc.text(day.dRate, margin + 160, y);
-
-                doc.setDrawColor(243, 244, 246);
-                doc.line(margin, y + 2, pageWidth - margin, y + 2);
-                y += 8;
-            });
-        });
-     } else {
-        doc.text("No daily data available.", margin + 2, y);
+    } else {
+        doc.text("No team data identified in this timeframe.", margin + 2, y);
     }
 
-     // --- DRAW TABLE OF CONTENTS ON PAGE 1 ---
-    doc.setPage(1);
-    doc.setFontSize(12);
+    // --- 10. APPENDIX: COMPLETE EVENT VIEW ANALYSIS ---
+    doc.addPage();
+    y = margin + 10;
+    doc.setFillColor(30, 41, 59);
+    doc.rect(0, 0, pageWidth, 25, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(17, 24, 39);
-    doc.text("TABLE OF CONTENTS", margin, tocY);
-    tocY += 8;
-    
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    tocEntries.forEach(entry => {
-        doc.setTextColor(206, 14, 45); // FloSports Red for bullet
-        doc.text("•", margin, tocY);
-        
-        doc.setTextColor(2, 136, 209); // Blue for link
-        doc.text(entry.title, margin + 5, tocY);
-        
-        // Calculate text width for the link bounding box
-        const textWidth = doc.getTextWidth(entry.title);
-        
-        // Draw an underline to visually indicate the hyperlink
-        doc.setDrawColor(2, 136, 209);
-        doc.setLineWidth(0.2);
-        doc.line(margin + 5, tocY + 0.5, margin + 5 + textWidth, tocY + 0.5);
-        
-        // Create an explicit link annotation over the text
-        doc.link(margin + 5, tocY - 3.5, textWidth, 5, { pageNumber: entry.page, top: entry.y });
-        
-        tocY += 6;
-    });
+    doc.setFontSize(16);
+    doc.text("APPENDIX: COMPLETE EVENT VIEW ANALYSIS", margin, 17);
+    y = 35;
 
+    doc.setFillColor(229, 231, 235);
+    doc.rect(margin, y, maxTextWidth, 8, 'F');
+    doc.setTextColor(17, 24, 39);
+    doc.setFontSize(9);
+    doc.text("EVENT NAME", margin + 2, y + 6);
+    doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
+    y += 12;
+
+    doc.setFont("helvetica", "normal");
+    if (stats.eventViews && stats.eventViews.length > 0) {
+        stats.eventViews.forEach((ev) => {
+            ensureSpace(10);
+            
+            let displayEventName = ev.name || "Unknown";
+            if (displayEventName.length > 65) displayEventName = displayEventName.substring(0, 62) + "...";
+
+            doc.text(displayEventName, margin + 2, y);
+            
+            const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
+            doc.text(safeEventViews, margin + 150, y);
+
+            doc.setDrawColor(243, 244, 246);
+            doc.line(margin, y + 2, pageWidth - margin, y + 2);
+            y += 8;
+        });
+    } else {
+        doc.text("No event view data identified in this timeframe.", margin + 2, y);
+    }
+
+    // --- ADD PAGE NUMBERS ---
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(156, 163, 175); // Light gray
+        doc.text(
+            `Page ${i} of ${totalPages}`, 
+            pageWidth / 2, 
+            pageHeight - 10, 
+            { align: "center" }
+        );
+    }
+    
     return doc.output('blob');
 
   } catch (error) {

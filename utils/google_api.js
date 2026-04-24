@@ -1056,6 +1056,7 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
     const handleStats = {};
     const eventCounts = {};
     const eventViewStats = {};
+    const platformStats = {}; // Track totals per platform
     const timelineData = {};
     const userStats = {};
 
@@ -1134,11 +1135,22 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
             if (!handleStats[handle]) handleStats[handle] = { reports: 0, urls: 0, platforms: new Set() };
             handleStats[handle].reports += 1;
             handleStats[handle].urls += urlCount;
-            if (platform && platform !== "Unknown") handleStats[handle].platforms.add(platform);
+            
+            if (platform && platform.toLowerCase() !== "unknown") {
+                const cleanPlatform = platform.toUpperCase();
+                handleStats[handle].platforms.add(cleanPlatform);
+                
+                // --- Ensure this is an object, not just "+ 1" ---
+                if (!platformStats[cleanPlatform]) {
+                    platformStats[cleanPlatform] = { reports: 0, urls: 0 };
+                }
+                platformStats[cleanPlatform].reports += 1;
+                platformStats[cleanPlatform].urls += urlCount;
+            }  
+            
 
             // Events (Col C / Index 2)
-            const rawEventName = (row[2] || "Unknown Event").trim();
-            const eventName = getConsolidatedEventName(rawEventName, Object.keys(eventCounts));
+            const eventName = (row[2] || "Unknown Event").trim();
 
             eventCounts[eventName] = (eventCounts[eventName] || 0) + 1;
 
@@ -1178,6 +1190,10 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
         totalUrls: normalize2k(totalUrls),
         totalEstimatedViews: normalize2k(totalEstimatedViews),
         resolvedRate: totalReported > 0 ? Math.round((totalResolved / totalReported) * 100) + '%' : '0%',
+        
+        //  Ensure 'reports' and 'urls' are both being exported here
+        platformTotals: Object.keys(platformStats).map(k => ({ name: k, reports: platformStats[k].reports, urls: platformStats[k].urls })).sort((a, b) => b.reports - a.reports),
+        
         topScouts: sortObj(scoutCounts).slice(0, 3),
         topEnforcers: sortObj(enforcerCounts).slice(0, 3),
         topPirates: Object.keys(handleStats).map(k => ({
