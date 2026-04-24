@@ -439,7 +439,13 @@ export async function generateIntelligencePDF(stats) {
     if (stats.timelineData && Object.keys(stats.timelineData).length > 0) {
         // Sort dates chronologically
         const dates = Object.keys(stats.timelineData).sort((a, b) => new Date(a) - new Date(b));
-        const counts = dates.map(d => stats.timelineData[d]);
+        
+        // Extract just the count value from the timelineData object for graph math
+        const counts = dates.map(d => {
+            const val = stats.timelineData[d];
+            return typeof val === 'object' ? val.count : val;
+        });
+        
         const maxCount = Math.max(...counts, 10); // Floor max scale at 10
         const stepX = maxTextWidth / Math.max(dates.length, 1);
         
@@ -471,12 +477,12 @@ export async function generateIntelligencePDF(stats) {
         doc.text(String(maxCount), margin - 2, topY, { align: "right" });
         doc.text(String(Math.round(maxCount / 2)), margin - 2, midY, { align: "right" });
         doc.text("0", margin - 2, bottomY, { align: "right" });
+
         // Subtle horizontal gridlines
         doc.setDrawColor(229, 231, 235);
         doc.setLineWidth(0.2);
         doc.line(margin, topY, margin + maxTextWidth, topY);
         doc.line(margin, midY, margin + maxTextWidth, midY);
-
 
         doc.setDrawColor(206, 14, 45); // FloSports Red
         doc.setFillColor(206, 14, 45);
@@ -487,7 +493,7 @@ export async function generateIntelligencePDF(stats) {
         let lastPrintedMonthDate = new Date(0);
         let lastLabelX = -999; // Anti-collision tracker
 
-         dates.forEach((dateStr, i) => {
+        dates.forEach((dateStr, i) => {
             const count = counts[i];
             const ptX = margin + (i * stepX) + (stepX / 2);
             // Invert Y axis (higher counts draw higher up)
@@ -728,8 +734,9 @@ export async function generateIntelligencePDF(stats) {
     
     if (stats.timelineData && Object.keys(stats.timelineData).length > 0) {
         const dates = Object.keys(stats.timelineData).sort((a, b) => new Date(a) - new Date(b));
-        let currentWeekStart = null;
+        const weeks = {};
 
+        // Pre-group data into weeks to calculate totals before rendering
         dates.forEach(dateStr => {
             const dateObj = new Date(dateStr);
             const day = dateObj.getDay();
@@ -737,35 +744,56 @@ export async function generateIntelligencePDF(stats) {
             const weekStart = new Date(dateObj.setDate(diff));
             const weekLabel = `Week of ${weekStart.toLocaleDateString("en-US", { month: 'short', day: 'numeric', year: 'numeric' })}`;
 
-            if (currentWeekStart !== weekLabel) {
-                ensureSpace(16);
-                y += 4;
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(206, 14, 45);
-                doc.text(weekLabel, margin + 2, y);
-                y += 4;
-                doc.setDrawColor(206, 14, 45);
-                doc.line(margin, y, pageWidth - margin, y);
-                y += 6;
-                doc.setTextColor(17, 24, 39);
-                doc.setFont("helvetica", "normal");
-                currentWeekStart = weekLabel;
+            if (!weeks[weekLabel]) {
+                weeks[weekLabel] = { count: 0, resolved: 0, days: [] };
             }
 
-            ensureSpace(8);
-            const dailyStats = stats.timelineData[dateStr];
-            const dCount = dailyStats.count;
-            const dResolved = dailyStats.resolved;
+            const val = stats.timelineData[dateStr];
+            const dCount = typeof val === 'object' ? val.count : val;
+            const dResolved = typeof val === 'object' ? (val.resolved || 0) : 0;
             const dRate = dCount > 0 ? Math.round((dResolved / dCount) * 100) + '%' : '0%';
 
-            doc.text(dateStr, margin + 2, y);
-            doc.text(String(dCount), margin + 60, y);
-            doc.text(String(dResolved), margin + 110, y);
-            doc.text(dRate, margin + 160, y);
+            weeks[weekLabel].count += dCount;
+            weeks[weekLabel].resolved += dResolved;
+            weeks[weekLabel].days.push({ dateStr, dCount, dResolved, dRate });
+        });
 
-            doc.setDrawColor(243, 244, 246);
-            doc.line(margin, y + 2, pageWidth - margin, y + 2);
-            y += 8;
+        // Render the grouped weekly data
+        Object.keys(weeks).forEach(weekLabel => {
+            const week = weeks[weekLabel];
+            const weekRate = week.count > 0 ? Math.round((week.resolved / week.count) * 100) + '%' : '0%';
+
+            ensureSpace(16);
+            y += 4;
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(206, 14, 45);
+            doc.text(weekLabel, margin + 2, y);
+            
+            // Print the week's totals matching the column alignment
+            doc.text(String(week.count), margin + 60, y);
+            doc.text(String(week.resolved), margin + 110, y);
+            doc.text(weekRate, margin + 160, y);
+            
+            y += 4;
+            doc.setDrawColor(206, 14, 45);
+            doc.line(margin, y, pageWidth - margin, y);
+            y += 6;
+            
+            doc.setTextColor(17, 24, 39);
+            doc.setFont("helvetica", "normal");
+
+            // Print each day under the week
+            week.days.forEach(day => {
+                ensureSpace(8);
+                doc.text(day.dateStr, margin + 2, y);
+                doc.text(String(day.dCount), margin + 60, y);
+                doc.text(String(day.dResolved), margin + 110, y);
+                doc.text(day.dRate, margin + 160, y);
+
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
         });
     } else {
         doc.text("No daily data available.", margin + 2, y);
