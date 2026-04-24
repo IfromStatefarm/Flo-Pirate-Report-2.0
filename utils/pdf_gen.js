@@ -852,7 +852,25 @@ export async function generateIntelligencePDF(stats) {
         doc.text("No event view data identified in this timeframe.", margin + 2, y);
     }
 
-    // --- ADD PAGE NUMBERS ---
+     // --- DRAW TABLE OF CONTENTS (Page 1) ---
+    doc.setPage(1);
+    doc.setTextColor(17, 24, 39);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("TABLE OF CONTENTS", margin, 60);
+    
+    let currentTocY = 72;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    
+    tocEntries.forEach((entry, index) => {
+        doc.setTextColor(0, 0, 255); // Blue color to indicate hyperlink
+        doc.textWithLink(`${index + 1}. ${entry.title}`, margin, currentTocY, { pageNumber: entry.page });
+        doc.textWithLink(`Page ${entry.page}`, pageWidth - margin, currentTocY, { align: "right", pageNumber: entry.page });
+        currentTocY += 8;
+    });
+
+    // --- PAGE NUMBERS ---
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);

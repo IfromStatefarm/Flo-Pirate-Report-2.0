@@ -694,56 +694,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
   }
   if (request.action === 'generateIntelligenceReport') {
-      (async () => {
-          try {
-              const token = await getAuthToken();
-              
-              // 1. Fetch data
-              const stats = await fetchIntelligenceData(request.startDate, request.endDate);
-              if (!stats) throw new Error("No data available for this timeframe.");
-              
-              // 2. Generate PDF
-              const pdfBlob = await generateIntelligencePDF(stats);
+    (async () => {
+        try {
+            const token = await getAuthToken();
+            
+            // 1. Fetch data
+            const stats = await fetchIntelligenceData(request.startDate, request.endDate);
+            if (!stats) throw new Error("No data available for this timeframe.");
+            
+            // 2. Generate PDF
+            const pdfBlob = await generateIntelligencePDF(stats);
 
-              
-              // 3. Ensure "Tactical Briefings" folder exists under root
-              const storage = await chrome.storage.sync.get('piracy_folder_id');
-              const driveRootId = storage.piracy_folder_id;
-              if (!driveRootId) throw new Error("Drive Root ID not configured.");
+            // 3. Ensure "Tactical Briefings" folder exists under root
+            const storage = await chrome.storage.sync.get('piracy_folder_id');
+            const driveRootId = storage.piracy_folder_id;
+            if (!driveRootId) throw new Error("Drive Root ID not configured.");
 
-              // Find or create "Tactical Briefings" folder
-              const query = `mimeType='application/vnd.google-apps.folder' and '${driveRootId}' in parents and name='Tactical Briefings' and trashed=false`;
-              const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
-                  headers: { Authorization: `Bearer ${token}` }
-              });
-              const searchData = await searchRes.json();
-              
-              let folderId;
-              if (searchData.files && searchData.files.length > 0) {
-                  folderId = searchData.files[0].id;
-              } else {
-                  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-                      method: 'POST',
-                      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ name: 'Tactical Briefings', mimeType: 'application/vnd.google-apps.folder', parents: [driveRootId] })
-                  });
-                  const createData = await createRes.json();
-                  folderId = createData.id;
-              }
+            // Find or create "Tactical Briefings" folder
+            const query = `mimeType='application/vnd.google-apps.folder' and '${driveRootId}' in parents and name='Tactical Briefings' and trashed=false`;
+            const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const searchData = await searchRes.json();
+            
+            let folderId;
+            if (searchData.files && searchData.files.length > 0) {
+                folderId = searchData.files[0].id;
+            } else {
+                const createRes = await fetch('[https://www.googleapis.com/drive/v3/files](https://www.googleapis.com/drive/v3/files)', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: 'Tactical Briefings', mimeType: 'application/vnd.google-apps.folder', parents: [driveRootId] })
+                });
+                const createData = await createRes.json();
+                folderId = createData.id;
+            }
 
-              // 4. Upload PDF
-              const filename = `Intelligence_Briefing_${request.startDate}_to_${request.endDate}.pdf`;
-              const uploadRes = await uploadToDrive(token, folderId, filename, pdfBlob, 'application/pdf');
+            // 4. Upload PDF
+            const filename = `Intelligence_Briefing_${request.startDate}_to_${request.endDate}.pdf`;
+            const uploadRes = await uploadToDrive(token, folderId, filename, pdfBlob, 'application/pdf');
 
-              // 5. Return webViewLink and open instantly
-              chrome.tabs.create({ url: uploadRes.webViewLink });
-              sendResponse({ success: true, url: uploadRes.webViewLink });
-          } catch (err) {
-              console.error("Intelligence Report Error:", err);
-              sendResponse({ success: false, error: err.message });
-          }
-      })();
-      return true; 
+            // 5. Return webViewLink and open instantly
+            chrome.tabs.create({ url: uploadRes.webViewLink });
+            sendResponse({ success: true, url: uploadRes.webViewLink });
+        } catch (err) {
+            console.error("Intelligence Report Error:", err);
+            sendResponse({ success: false, error: err.message });
+        }
+    })();
+    return true;
   }
   // ---  MACRO REAL-TIME STREAMING ---
   if (request.action === 'startMacroSession') {
