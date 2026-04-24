@@ -994,6 +994,40 @@ function normalize2k(val) {
     return val >= 1000 ? (val / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : val.toString();
 }
 
+// --- NEW: Event Consolidation Helpers ---
+function levenshtein(a, b) {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) matrix[i][j] = matrix[i - 1][j - 1];
+            else matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, Math.min(matrix[i][j], matrix[i - 1][j]) + 1));
+        }
+    }
+    return matrix[b.length][a.length];
+}
+
+function getConsolidatedEventName(rawName, existingNames) {
+    if (rawName === "Unknown Event") return rawName;
+    const cleanStr = (s) => s.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
+    const extractYear = (s) => { const m = s.match(/\b(20\d{2})\b/); return m ? m[1] : null; };
+
+    const nameYear = extractYear(rawName);
+    const nameClean = cleanStr(rawName);
+
+    for (const existing of existingNames) {
+        if (extractYear(existing) === nameYear) {
+            const distance = levenshtein(nameClean, cleanStr(existing));
+            if (distance <= Math.ceil(nameClean.length * 0.25)) { // 75% similarity threshold
+                return existing; 
+            }
+        }
+    }
+    return rawName;
+}
+// ----------------------------------------
+
 export async function fetchIntelligenceData(startDateStr, endDateStr) {
     const { reportSheetId } = await getOptions();
     if (!reportSheetId) return null;
@@ -1050,9 +1084,12 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
             const viewsStr = String(row[5] || "0").toLowerCase();
             let rowViews = 0;
             if (viewsStr !== "pending" && viewsStr !== "n/a" && viewsStr !== "deleted" && viewsStr !== "error") {
-                if (viewsStr.includes('k')) rowViews = parseFloat(viewsStr) * 1000;
-                else if (viewsStr.includes('m')) rowViews = parseFloat(viewsStr) * 1000000;
-                else rowViews = parseFloat(viewsStr.replace(/[^\d.]/g, '')) || 0;
+                const viewItems = viewsStr.split(/[\n,]+/);
+                rowViews = viewItems.reduce((sum, v) => {
+                    if (v.includes('k')) return sum + (parseFloat(v) * 1000 || 0);
+                    if (v.includes('m')) return sum + (parseFloat(v) * 1000000 || 0);
+                    return sum + (parseFloat(v.replace(/[^\d.]/g, '')) || 0);
+                }, 0);
             }
             if (rowViews === 0 && urlCount > 0) rowViews = urlCount * 1500; // Fallback estimate
             
@@ -1100,13 +1137,14 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
             if (platform && platform !== "Unknown") handleStats[handle].platforms.add(platform);
 
             // Events (Col C / Index 2)
-            const eventName = (row[2] || "Unknown Event").trim();
+            const rawEventName = (row[2] || "Unknown Event").trim();
+            const eventName = getConsolidatedEventName(rawEventName, Object.keys(eventCounts));
+
             eventCounts[eventName] = (eventCounts[eventName] || 0) + 1;
 
             // Track views per event
             if (!eventViewStats[eventName]) eventViewStats[eventName] = 0;
             eventViewStats[eventName] += rowViews;
-
 
             // Timeline Data mapping for the Line Graph & Appendix
             const dateStr = new Date(row[0]).toLocaleDateString("en-US", { year: 'numeric', month: 'numeric', day: 'numeric' });

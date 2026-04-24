@@ -732,7 +732,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               }
 
               // 4. Upload PDF
-              const filename = `Intelligence_Briefing_${request.timeframeDays}_Days_${new Date().toISOString().split('T')[0]}.pdf`;
+              const filename = `Intelligence_Briefing_${request.startDate}_to_${request.endDate}.pdf`;
               const uploadRes = await uploadToDrive(token, folderId, filename, pdfBlob, 'application/pdf');
 
               // 5. Return webViewLink and open instantly

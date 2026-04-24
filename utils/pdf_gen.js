@@ -80,6 +80,8 @@ export async function generatePDF(data) {
     doc.text("FLO PIRACY REPORT", pageWidth / 2, y, { align: "center" });
     y += 15;
 
+    
+
     // --- HEADER INFO ---
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(18);
@@ -335,12 +337,16 @@ export async function generateIntelligencePDF(stats) {
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.text(`REPORTING PERIOD: ${stats.startDate} TO ${stats.endDate}`, pageWidth / 2, 30, { align: "center" });
-    doc.text(`REPORT GENERATED: ${new Date().toLocaleString()}`, pageWidth / 2, 36, { align: "center" });
-    y = 60;
+        doc.text(`REPORT GENERATED: ${new Date().toLocaleString()}`, pageWidth / 2, 36, { align: "center" });
+        
+        let tocY = 60; // Save TOC position
+        y = 120; // Push content down to make room for TOC
+        const tocEntries = [];
 
-    // --- 2. KPI DASHBOARD (3-Column Grid) ---
-    ensureSpace(40);
-    doc.setTextColor(17, 24, 39);
+        // --- 2. KPI DASHBOARD (3-Column Grid) ---
+        ensureSpace(40);
+        tocEntries.push({ title: "Enforcement Overview", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        doc.setTextColor(17, 24, 39);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
     doc.text("ENFORCEMENT OVERVIEW", margin, y);
@@ -380,8 +386,9 @@ export async function generateIntelligencePDF(stats) {
     });
     y += 35;
 
-    // --- 3. LEADERBOARDS & MVP ---
+     // --- 3. LEADERBOARDS & MVP ---
     ensureSpace(50);
+    tocEntries.push({ title: "Leaderboards & MVP", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
     doc.setFillColor(254, 243, 199); // Gold/Amber background
     doc.setDrawColor(251, 191, 36); // Gold border
     doc.rect(margin, y, maxTextWidth, 16, 'FD');
@@ -426,6 +433,7 @@ export async function generateIntelligencePDF(stats) {
 
     // --- 4. VECTOR GRAPHICS: TIMELINE ---
     ensureSpace(70);
+    tocEntries.push({ title: "Reports Per Day (Timeline)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.text("REPORTS PER DAY (TIMELINE)", margin, y);
@@ -548,6 +556,7 @@ export async function generateIntelligencePDF(stats) {
 
     // --- 5. TARGET LIST (TOP 5 PIRATES) ---
     ensureSpace(40);
+    tocEntries.push({ title: "High-Value Targets (Top 5 Pirates)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
     doc.setTextColor(17, 24, 39);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
@@ -615,6 +624,7 @@ export async function generateIntelligencePDF(stats) {
 
     // --- 6. TEAM PERFORMANCE (RANKED) ---
     ensureSpace(40);
+    tocEntries.push({ title: "Team Performance Rankings", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
     doc.setTextColor(17, 24, 39);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
@@ -653,8 +663,9 @@ export async function generateIntelligencePDF(stats) {
         doc.text("No team data identified in this timeframe.", margin + 2, y);
     }
 
-    // --- 7. EVENT VIEW ANALYSIS ---
+   // --- 7. EVENT VIEW ANALYSIS ---
     ensureSpace(40);
+    tocEntries.push({ title: "Event View Analysis", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
     doc.setTextColor(17, 24, 39);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
@@ -709,8 +720,9 @@ export async function generateIntelligencePDF(stats) {
         doc.text("No event view data identified in this timeframe.", margin + 2, y);
     }
 
-   // --- 8. APPENDIX: DAILY DATA TABLE ---
+    // --- 8. APPENDIX: DAILY DATA TABLE ---
     doc.addPage();
+    tocEntries.push({ title: "Appendix: Daily Enforcement Log", page: doc.internal.getCurrentPageInfo().pageNumber, y: 10 });
     y = margin + 10;
     doc.setFillColor(30, 41, 59);
     doc.rect(0, 0, pageWidth, 25, 'F');
@@ -720,17 +732,21 @@ export async function generateIntelligencePDF(stats) {
     doc.text("APPENDIX: DAILY ENFORCEMENT LOG", margin, 17);
     y = 35;
 
-    doc.setFillColor(229, 231, 235);
-    doc.rect(margin, y, maxTextWidth, 8, 'F');
-    doc.setTextColor(17, 24, 39);
-    doc.setFontSize(9);
-    doc.text("DATE", margin + 2, y + 6);
-    doc.text("REPORTS", margin + 60, y + 6);
-    doc.text("RESOLVED", margin + 110, y + 6);
-    doc.text("RESOLVE RATE", margin + 160, y + 6);
-    y += 12;
+    const drawAppendixHeader = () => {
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold"); // Added to ensure font weight resets properly
+        doc.text("DATE", margin + 2, y + 6);
+        doc.text("REPORTS", margin + 60, y + 6);
+        doc.text("RESOLVED", margin + 110, y + 6);
+        doc.text("RESOLVE RATE", margin + 160, y + 6);
+        y += 12;
+        doc.setFont("helvetica", "normal");
+    };
 
-    doc.setFont("helvetica", "normal");
+    drawAppendixHeader()
     
     if (stats.timelineData && Object.keys(stats.timelineData).length > 0) {
         const dates = Object.keys(stats.timelineData).sort((a, b) => new Date(a) - new Date(b));
@@ -758,15 +774,15 @@ export async function generateIntelligencePDF(stats) {
             weeks[weekLabel].days.push({ dateStr, dCount, dResolved, dRate });
         });
 
-        // Render the grouped weekly data
+       // Render the grouped weekly data
         Object.keys(weeks).forEach(weekLabel => {
             const week = weeks[weekLabel];
             const weekRate = week.count > 0 ? Math.round((week.resolved / week.count) * 100) + '%' : '0%';
 
-            ensureSpace(16);
+            if (ensureSpace(16)) drawAppendixHeader();
             y += 4;
             doc.setFont("helvetica", "bold");
-            doc.setTextColor(206, 14, 45);
+            doc.setTextColor(206, 14, 45);;
             doc.text(weekLabel, margin + 2, y);
             
             // Print the week's totals matching the column alignment
@@ -784,7 +800,7 @@ export async function generateIntelligencePDF(stats) {
 
             // Print each day under the week
             week.days.forEach(day => {
-                ensureSpace(8);
+                if (ensureSpace(8)) drawAppendixHeader();
                 doc.text(day.dateStr, margin + 2, y);
                 doc.text(String(day.dCount), margin + 60, y);
                 doc.text(String(day.dResolved), margin + 110, y);
@@ -795,9 +811,40 @@ export async function generateIntelligencePDF(stats) {
                 y += 8;
             });
         });
-    } else {
+     } else {
         doc.text("No daily data available.", margin + 2, y);
     }
+
+     // --- DRAW TABLE OF CONTENTS ON PAGE 1 ---
+    doc.setPage(1);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(17, 24, 39);
+    doc.text("TABLE OF CONTENTS", margin, tocY);
+    tocY += 8;
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    tocEntries.forEach(entry => {
+        doc.setTextColor(206, 14, 45); // FloSports Red for bullet
+        doc.text("•", margin, tocY);
+        
+        doc.setTextColor(2, 136, 209); // Blue for link
+        doc.text(entry.title, margin + 5, tocY);
+        
+        // Calculate text width for the link bounding box
+        const textWidth = doc.getTextWidth(entry.title);
+        
+        // Draw an underline to visually indicate the hyperlink
+        doc.setDrawColor(2, 136, 209);
+        doc.setLineWidth(0.2);
+        doc.line(margin + 5, tocY + 0.5, margin + 5 + textWidth, tocY + 0.5);
+        
+        // Create an explicit link annotation over the text
+        doc.link(margin + 5, tocY - 3.5, textWidth, 5, { pageNumber: entry.page, top: entry.y });
+        
+        tocY += 6;
+    });
 
     return doc.output('blob');
 
