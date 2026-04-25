@@ -1051,6 +1051,13 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
     let totalResolved = 0;
     let totalUrls = 0;
     let totalEstimatedViews = 0;
+
+    // Burndown Globals
+    let globalWeightedDaysSum = 0;
+    let globalUnweightedDaysSum = 0;
+    let globalResolvedCalcCount = 0;
+    let globalTotalCalcCount = 0;
+    
     const scoutCounts = {};
     const enforcerCounts = {};
     const handleStats = {};
@@ -1132,6 +1139,34 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
 
             const platform = (row[3] || "Unknown").trim();
 
+            // Burndown Calculation (Column V = index 21)
+            const reportDate = new Date(row[0]);
+            let burndownDays = 0;
+            let isResolvedCalc = false;
+            const today = new Date();
+
+            if (!isNaN(reportDate.getTime())) {
+                if (isResolved && row[21]) {
+                    const resolveDate = new Date(row[21]);
+                    if (!isNaN(resolveDate.getTime())) {
+                        burndownDays = Math.max(0, (resolveDate - reportDate) / (1000 * 60 * 60 * 24));
+                        isResolvedCalc = true;
+                    }
+                } 
+                
+                if (!isResolvedCalc) {
+                    const daysOpen = Math.max(0, (today - reportDate) / (1000 * 60 * 60 * 24));
+                    burndownDays = daysOpen + 14; // 14-day open penalty
+                }
+
+                globalUnweightedDaysSum += burndownDays;
+                globalTotalCalcCount++;
+                if (isResolvedCalc) {
+                    globalWeightedDaysSum += burndownDays;
+                    globalResolvedCalcCount++;
+                }
+            }
+
             if (!handleStats[handle]) handleStats[handle] = { reports: 0, urls: 0, platforms: new Set() };
             handleStats[handle].reports += 1;
             handleStats[handle].urls += urlCount;
@@ -1180,9 +1215,17 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
     const teamStats = Object.keys(userStats).map(name => {
         const stats = userStats[name];
         const resolvedRate = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) + '%' : '0%';
+        const wBurndown = stats.rCount > 0 ? (stats.wSum / stats.rCount).toFixed(1) : 'N/A';
+        const uwBurndown = stats.uwCount > 0 ? (stats.uwSum / stats.uwCount).toFixed(1) : 'N/A';
+        
         const displayName = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        return { name: displayName, urls: stats.urls, scouted: stats.scouted, enforced: stats.enforced, resolvedRate };
+        return { 
+            name: displayName, urls: stats.urls, scouted: stats.scouted, enforced: stats.enforced, resolvedRate, wBurndown, uwBurndown 
+        };
     }).sort((a, b) => b.urls - a.urls);
+
+    const globalWeightedBurndown = globalResolvedCalcCount > 0 ? (globalWeightedDaysSum / globalResolvedCalcCount).toFixed(1) : 'N/A';
+    const globalUnweightedBurndown = globalTotalCalcCount > 0 ? (globalUnweightedDaysSum / globalTotalCalcCount).toFixed(1) : 'N/A';
 
     return {
         totalReported: normalize2k(totalReported),
@@ -1190,6 +1233,8 @@ export async function fetchIntelligenceData(startDateStr, endDateStr) {
         totalUrls: normalize2k(totalUrls),
         totalEstimatedViews: normalize2k(totalEstimatedViews),
         resolvedRate: totalReported > 0 ? Math.round((totalResolved / totalReported) * 100) + '%' : '0%',
+        globalWeightedBurndown: globalWeightedBurndown,
+        globalUnweightedBurndown: globalUnweightedBurndown,
         
         //  Ensure 'reports' and 'urls' are both being exported here
         platformTotals: Object.keys(platformStats).map(k => ({ name: k, reports: platformStats[k].reports, urls: platformStats[k].urls })).sort((a, b) => b.reports - a.reports),

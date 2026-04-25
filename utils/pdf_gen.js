@@ -355,13 +355,11 @@ export async function generateIntelligencePDF(stats) {
     const gap = 5;
     const boxWidth = (maxTextWidth - (gap * 3)) / 4;
     // Calculate a mock Efficiency Score based on volume and resolve rate
-    const efficiency = parseInt(stats.resolvedRate) > 0 ? Math.min(100, Math.round(parseInt(stats.resolvedRate) * 1.1)) : 0;
-
     const kpis = [
       { label: "TOTAL TAKEDOWNS", value: stats.totalReported || "0", desc: "Confirmed Reports Filed" },
       { label: "TOTAL URLS", value: stats.totalUrls || "0", desc: "Pirated Links Processed" },
       { label: "RESOLVED RATE", value: stats.resolvedRate || "0%", desc: "Successful Report Takedown %" },
-      { label: "EFFICIENCY SCORE", value: `${efficiency}/100`, desc: "Overall Squad Rating" }
+      { label: "AVG BURNDOWN", value: `${stats.globalWeightedBurndown}d`, desc: `Unweighted: ${stats.globalUnweightedBurndown}d` }
     ];
 
     kpis.forEach((kpi, i) => {
