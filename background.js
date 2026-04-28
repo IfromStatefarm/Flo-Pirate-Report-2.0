@@ -269,7 +269,7 @@ function sendProgress(status, details) {
     }).catch(() => {}); // Ignore error if panel closed
 }
 
-// --- Improved Strikethrough Detection ---
+// --- UPDATED UTILITY: Improved Strikethrough Detection ---
 function isUrlCrossedOut(startIndex, endIndex, formatRuns, cellStrikethrough) {
     // RULE 1: If the entire cell has strikethrough applied at the base level, all content is "dead"
     if (cellStrikethrough) return true;
@@ -289,11 +289,11 @@ function isUrlCrossedOut(startIndex, endIndex, formatRuns, cellStrikethrough) {
     return appliedFormat?.strikethrough === true;
 }
 
-async function runSheetScanner(startRowUI = 1) {
-  if (isScannerRunning) return;
+async function runSheetScanner(startRowUI = 1, maxConcurrentTabs = 4) {
+  if (isScannerRunning) return; // Concurrency Lock
   isScannerRunning = true;
   stopScannerSignal = false;
-  console.log(`🕵️ Sheet Scanner: Starting from Row ${startRowUI}...`);
+  console.log(`🕵️ Sheet Scanner: Starting from Row ${startRowUI} checking sequentially...`);
   sendProgress(`Starting from Row ${startRowUI}`, "Fetching sheet data with formatting...");
   
   try {
@@ -308,9 +308,7 @@ async function runSheetScanner(startRowUI = 1) {
         return;
     }
 
-    const activeWorkers = [];
-    const MAX_CONCURRENT_TABS = 4;
-
+    // OUTER LOOP: Process one row (cell) at a time sequentially
     for (let i = startIdx; i < rows.length; i++) {
         if (stopScannerSignal) {
             sendProgress("Scanner Stopped", "User interrupted the process.");
@@ -329,96 +327,87 @@ async function runSheetScanner(startRowUI = 1) {
         }
         
         consecutiveBlanks = 0; 
+        const rowIndex = i;
+        const cellValue = cellData.text;
+
+        // Fix: Explicitly escaping forward slashes in regex to avoid SyntaxError in some environments
+        const urlRegex = /https?:\/\/[^\s,]+/g;
+        let match;
+        const matches = [];
+        while ((match = urlRegex.exec(cellValue)) !== null) {
+            matches.push({ url: match[0], index: match.index, end: match.index + match[0].length });
+        }
         
-        const rowTask = (async (rowIndex, cellInfo) => {
-            const cellValue = cellInfo.text;
+        if (matches.length === 0) continue;
 
-            // Fix: Explicitly escaping forward slashes in regex to avoid SyntaxError in some environments
-            const urlRegex = /https?:\/\/[^\s,]+/g;
-            let match;
-            const matches = [];
-            while ((match = urlRegex.exec(cellValue)) !== null) {
-                matches.push({ url: match[0], index: match.index, end: match.index + match[0].length });
-            }
-            
-            if (matches.length === 0) return;
+        sendProgress(`Scanning Row ${rowIndex+1}`, `Checking ${matches.length} link(s)...`);
 
-            sendProgress(`Scanning Row ${rowIndex+1}`, `Checking ${matches.length} link(s)...`);
+        let newlyStruck = 0;
+        let totalActive = 0;
+        let previouslyDeadCount = 0;
+        
+        const deadRanges = []; 
+        const activeRanges = [];
 
-            let newlyStruck = 0;
-            let totalActive = 0;
-            let previouslyDeadCount = 0;
-            
-            const deadRanges = []; 
-            const activeRanges = [];
+        // INNER LOOP: Process URLs sequentially within the cell
+        for (let j = 0; j < matches.length; j++) {
+            if (stopScannerSignal) break;
+            const { url, index, end } = matches[j];
 
-            for (let j = 0; j < matches.length; j++) {
-                if (stopScannerSignal) break;
-                const { url, index, end } = matches[j];
+            // 1. Filter out internal links and exempt websites
+            const EXEMPT_WEBSITES = ['varsity.com', 'flosports.tv', 'floracing.tv', 'milesplit.com', 'houston.flosports.net', 'google.com', 'amazon.com', 'flocasts.atlassian.net','gemini.google.com/', 'chatgpt.com', 'fso-heatmap.vercel.app', 'gmail.com', 'app.slack.com/', '10.43.29.8:3000', 'flosports.okta.com', 'hockeytech.zen.zixi.com/', 'workforcenow.adp.com', 'flosports.kazoohr.com/', 'flosports', 'app.hibob.com', 'dashboard.airbase.io', 'app.ashbyhq.com','flosports.ziphq.com', 'sites.google.com', 'flosports.latticehq.com','keep.google.com', 'drive.google.com'];
+            if (EXEMPT_WEBSITES.some(site => url.includes(site))) continue;
 
-                // 1. Filter out internal links and exempt websites
-                const EXEMPT_WEBSITES = ['varsity.com', 'flosports.tv', 'floracing.tv', 'milesplit.com', 'houston.flosports.net', 'google.com', 'amazon.com', 'flocasts.atlassian.net','gemini.google.com/', 'chatgpt.com', 'fso-heatmap.vercel.app', 'gmail.com', 'app.slack.com/', '10.43.29.8:3000', 'flosports.okta.com', 'hockeytech.zen.zixi.com/', 'workforcenow.adp.com', 'flosports.kazoohr.com/', 'flosports', 'app.hibob.com', 'dashboard.airbase.io', 'app.ashbyhq.com','flosports.ziphq.com', 'sites.google.com', 'flosports.latticehq.com','keep.google.com', 'drive.google.com'];
-                if (EXEMPT_WEBSITES.some(site => url.includes(site))) continue;
+            const isCrossedOut = isUrlCrossedOut(index, end, cellData.formatRuns, cellData.cellStrikethrough);
 
-                const isCrossedOut = isUrlCrossedOut(index, end, cellInfo.formatRuns, cellInfo.cellStrikethrough);
-
-                if (isCrossedOut) {
-                    previouslyDeadCount++;
-                    deadRanges.push({ start: index, end: end, url: url });
-                    continue;
-                }
-
-                sendProgress(`Row ${rowIndex+1}`, `Link ${j+1}/${matches.length}: Checking availability...`);
-                
-                let platform = 'unknown';
-                if (url.includes('tiktok')) platform = 'tiktok';
-                else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
-                else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
-                else if (url.includes('instagram')) platform = 'instagram';
-                else if (url.includes('facebook')) platform = 'facebook';
-                else if (url.includes('twitch')) platform = 'twitch';
-
-                try {
-                    const isDown = await verifyTakedownViaTab(url, platform); 
-                    
-                    if (isDown) {
-                        newlyStruck++;
-                        deadRanges.push({ start: index, end: end, url: url });
-                    } else {
-                        totalActive++;
-                        activeRanges.push({ start: index, end: end, url: url });
-                    }
-                } catch (err) {
-                    totalActive++; 
-                    activeRanges.push({ start: index, end: end, url: url });
-                }
-                
-                await new Promise(r => setTimeout(r, 1000)); 
+            if (isCrossedOut) {
+                previouslyDeadCount++;
+                deadRanges.push({ start: index, end: end, url: url });
+                continue;
             }
 
-            if (stopScannerSignal) return;
+            sendProgress(`Row ${rowIndex+1}`, `Link ${j+1}/${matches.length}: Checking availability...`);
+            
+            let platform = 'unknown';
+            if (url.includes('tiktok')) platform = 'tiktok';
+            else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
+            else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
+            else if (url.includes('instagram')) platform = 'instagram';
+            else if (url.includes('facebook')) platform = 'facebook';
+            else if (url.includes('twitch')) platform = 'twitch';
 
-            // --- APPLY RICH TEXT UPDATES IF NEW DEAD LINKS FOUND ---
-            if (newlyStruck > 0) {
-                sendProgress(`Row ${rowIndex+1}`, `Updating formatting...`);
+            let isDown = false;
+            try {
+                isDown = await verifyTakedownViaTab(url, platform); 
+            } catch (err) {
+                console.error("Link check failed:", err);
+            }
+
+            if (isDown) {
+                newlyStruck++;
+                deadRanges.push({ start: index, end: end, url: url });
+                
+                // --- APPLY RICH TEXT UPDATES IMMEDIATELY ---
+                sendProgress(`Row ${rowIndex+1}`, `Link ${j+1}/${matches.length} is DEAD. Crossing out...`);
                 
                 const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false };
                 const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }, underline: false };
                 const activeLinkStyle = { foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true, strikethrough: false };
 
-                const allLinkRanges = [
-                    ...deadRanges.map(r => ({ ...r, style: deadStyle })),
-                    ...activeRanges.map(r => ({ ...r, style: { ...activeLinkStyle, link: { uri: r.url } } }))
-                ].sort((a, b) => a.start - b.start);
+                // Map all matches so we don't accidentally remove formatting from pending or active links
+                const currentLinkRanges = matches.map(m => {
+                    const isDead = deadRanges.some(dr => dr.url === m.url && dr.start === m.index);
+                    
+                    if (isDead) return { start: m.index, end: m.end, style: deadStyle };
+                    
+                    // Active or Pending -> keep as clickable link
+                    return { start: m.index, end: m.end, style: { ...activeLinkStyle, link: { uri: m.url } } };
+                }).sort((a, b) => a.start - b.start);
 
                 const newRuns = [];
                 let cursor = 0;
                 
-                if (allLinkRanges.length > 0 && allLinkRanges[0].start > 0) {
-                     newRuns.push({ startIndex: 0, format: defaultStyle });
-                }
-                
-                for (const range of allLinkRanges) {
+                for (const range of currentLinkRanges) {
                     if (range.start > cursor) {
                         newRuns.push({ startIndex: cursor, format: defaultStyle });
                     }
@@ -431,31 +420,27 @@ async function runSheetScanner(startRowUI = 1) {
                 }
 
                 await updateCellWithRichText(rowIndex, cellValue, newRuns);
+            } else {
+                totalActive++;
+                activeRanges.push({ start: index, end: end, url: url });
             }
+            
+            await new Promise(r => setTimeout(r, 2000)); // Delay between checking each link
+        } // End of inner loop
 
-            const totalDead = newlyStruck + previouslyDeadCount;
-            if (totalDead > 0 && totalActive === 0) {
-                await updateRowStatus(rowIndex, "Resolved");
-                if (newlyStruck > 0) {
-                    await addEnforcerBonusPoints(rowIndex, newlyStruck * 15);
-                }
-            } else if (totalActive > 0 && totalDead > 0) {
-                 await updateRowStatus(rowIndex, "Investigating");
+        if (stopScannerSignal) break;
+
+        const totalDead = newlyStruck + previouslyDeadCount;
+        if (totalDead > 0 && totalActive === 0) {
+            await updateRowStatus(rowIndex, "Resolved");
+            if (newlyStruck > 0) {
+                await addEnforcerBonusPoints(rowIndex, newlyStruck * 15);
             }
-        })(i, cellData);
-
-        activeWorkers.push(rowTask);
-        rowTask.finally(() => activeWorkers.splice(activeWorkers.indexOf(rowTask), 1));
-        
-        if (activeWorkers.length >= MAX_CONCURRENT_TABS) {
-            await Promise.race(activeWorkers);
+        } else if (totalActive > 0 && totalDead > 0) {
+             await updateRowStatus(rowIndex, "Investigating");
         }
-        
-        await new Promise(r => setTimeout(r, 600)); // Stagger tab creation
-    }
+    } // End of outer loop
     
-    await Promise.all(activeWorkers); // Wait for remaining background tabs to finish
-
     if (!stopScannerSignal) {
         sendProgress("Scanner Complete", "Finished processing rows.");
     }
@@ -464,9 +449,10 @@ async function runSheetScanner(startRowUI = 1) {
     console.error("Sheet Scanner Failed:", e);
     sendProgress("Scanner Failed", e.message);
   } finally {
-    isScannerRunning = false;
+    isScannerRunning = false; // Release Lock
   }
 }
+
 // Uses Tab Loading to check if video exists
 async function verifyTakedownViaTab(url, platform) {
     let tabId = null;
@@ -474,11 +460,15 @@ async function verifyTakedownViaTab(url, platform) {
         const tab = await chrome.tabs.create({ url: url, active: false });
         tabId = tab.id;
 
-        await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => resolve("timeout"), 12000); 
+        await new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                chrome.tabs.onUpdated.removeListener(listener);
+                resolve("timeout");
+            }, 20000); // Bumped to 20s
             
-            const listener = (tid, info) => {
+            const listener = (tid, info, tabData) => {
                 if (tid === tabId && info.status === 'complete') {
+                    if (tabData.url && (tabData.url === 'about:blank' || tabData.url.startsWith('chrome://'))) return;
                     clearTimeout(timeout);
                     chrome.tabs.onUpdated.removeListener(listener);
                     resolve("complete");
@@ -487,55 +477,74 @@ async function verifyTakedownViaTab(url, platform) {
             chrome.tabs.onUpdated.addListener(listener);
         });
         
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 2000)); // Base buffer
 
         const result = await chrome.scripting.executeScript({
             target: { tabId: tabId },
-            func: (plat) => {
-                const text = document.body.innerText.toLowerCase();
-                const title = document.title.toLowerCase();
-                if (title.includes("404") || title.includes("not found") || title.includes("page not found")) return true;
+            func: async (plat) => {
+                return new Promise((resolve) => {
+                    let attempts = 0;
+                    
+                    const checkStatus = () => {
+                        const text = document.body.innerText.toLowerCase();
+                        const title = document.title.toLowerCase();
+                        
+                        if (title.includes("404") || title.includes("not found") || title.includes("page not found")) return resolve(true);
 
-                if (plat === 'tiktok') {
-                    if (text.includes("video currently unavailable")) return true;
-                    if (text.includes("video not found")) return true;
-                    if (text.includes("couldn't find this account")) return true;
-                    if (text.includes("page not available")) return true;
-                    if (document.querySelector('[data-e2e="video-removed"]')) return true;
-                }
-                
-                if (plat === 'youtube') {
-                    if (text.includes("video unavailable")) return true;
-                    if (text.includes("video has been removed")) return true;
-                    if (text.includes("video is private")) return true;
-                    if (text.includes("this video is no longer available")) return true;
-                    if (text.includes("account has been terminated")) return true;
-                    if (text.includes("video is no longer available due to a copyright claim by FloSports")) return true;
-                    if (window.location.href === "https://www.youtube.com/") return true; 
-                }
-                
-                if (plat === 'twitter') {
-                    if (text.includes("this page doesn’t exist")) return true;
-                    if (text.includes("tweet has been deleted")) return true;
-                    if (text.includes("account suspended")) return true;
-                }
-                
-                if (plat === 'instagram' || plat === 'facebook') {
-                    if (text.includes("sorry, this page isn't available")) return true;
-                    if (text.includes("link you followed may be broken")) return true;
-                    if (text.includes("content isn't available")) return true;
-                }
-                
-                // NEW PLATFORMS ADDED HERE
-                if (plat === 'rumble') {
-                    if (text.includes("this video is unavailable") || text.includes("page not found")) return true;
-                }
-                
-                if (plat === 'discord') {
-                    if (text.includes("invalid message") || text.includes("message deleted")) return true;
-                }
+                        if (plat === 'tiktok') {
+                            if (text.includes("video currently unavailable")) return resolve(true);
+                            if (text.includes("video not found")) return resolve(true);
+                            if (text.includes("couldn't find this account")) return resolve(true);
+                            if (text.includes("page not available")) return resolve(true);
+                            if (document.querySelector('[data-e2e="video-removed"]')) return resolve(true);
+                            
+                            // Positive indicator: video is active
+                            if (document.querySelector('[data-e2e="video-views"]') || document.querySelector('video')) return resolve(false);
+                        }
+                        
+                        if (plat === 'youtube') {
+                            if (text.includes("video unavailable")) return resolve(true);
+                            if (text.includes("video has been removed")) return resolve(true);
+                            if (text.includes("video is private")) return resolve(true);
+                            if (text.includes("this video is no longer available")) return resolve(true);
+                            if (text.includes("account has been terminated")) return resolve(true);
+                            if (text.includes("video is no longer available due to a copyright claim by flosports")) return resolve(true);
+                            if (window.location.href === "https://www.youtube.com/") return resolve(true); 
+                            
+                            // Consent / Captcha blocker (Treat as active so user can investigate)
+                            if (text.includes("before you continue to youtube")) return resolve(false);
 
-                return false;
+                            // Strong positive indicators for YouTube
+                            if (document.querySelector('#movie_player') || document.querySelector('ytd-video-primary-info-renderer')) return resolve(false);
+                        }
+                        
+                        if (plat === 'twitter') {
+                            if (text.includes("this page doesn’t exist")) return resolve(true);
+                            if (text.includes("tweet has been deleted")) return resolve(true);
+                            if (text.includes("account suspended")) return resolve(true);
+                        }
+                        
+                        if (plat === 'instagram' || plat === 'facebook') {
+                            if (text.includes("sorry, this page isn't available")) return resolve(true);
+                            if (text.includes("link you followed may be broken")) return resolve(true);
+                            if (text.includes("content isn't available")) return resolve(true);
+                        }
+                        
+                        if (plat === 'rumble') {
+                            if (text.includes("this video is unavailable") || text.includes("page not found")) return resolve(true);
+                        }
+                        
+                        if (plat === 'discord') {
+                            if (text.includes("invalid message") || text.includes("message deleted")) return resolve(true);
+                        }
+
+                        attempts++;
+                        if (attempts >= 30) return resolve(false); // Max ~15 seconds of active polling
+                        setTimeout(checkStatus, 500);
+                    };
+                    
+                    checkStatus();
+                });
             },
             args: [platform]
         });
@@ -1375,7 +1384,7 @@ async function handleScanSheetForActiveLinks(platform, vertical, startRowUI = 1)
 
             }).catch(() => {});
 
-            const checkTask = (async () => {
+             const checkTask = (async () => {
                 // Verify if active (Headless Tab check)
                 const isDown = await verifyTakedownViaTab(url, platform);
                 if (!isDown) {
@@ -1404,7 +1413,7 @@ async function handleScanSheetForActiveLinks(platform, vertical, startRowUI = 1)
                 await Promise.race(activeWorkers);
             }
             
-            await new Promise(r => setTimeout(r, 500)); // Stagger tab creation slightly
+            await new Promise(r => setTimeout(r, 2000)); // Stagger tab creation slightly
         }
     }
     
