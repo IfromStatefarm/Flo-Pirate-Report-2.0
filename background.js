@@ -388,7 +388,7 @@ async function runSheetScanner(startRowUI = 1, maxConcurrentTabs = 4) {
                 deadRanges.push({ start: index, end: end, url: url });
                 
                 // --- APPLY RICH TEXT UPDATES IMMEDIATELY ---
-                sendProgress(`Row ${rowIndex+1}`, `Link ${j+1}/${matches.length} is DEAD. Crossing out...`);
+                sendProgress(`Row ${rowIndex+1}`, `Link ${j+1}/${matches.length} is DOWN. Crossing out...`);
                 
                 const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false };
                 const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }, underline: false };
@@ -423,6 +423,7 @@ async function runSheetScanner(startRowUI = 1, maxConcurrentTabs = 4) {
             } else {
                 totalActive++;
                 activeRanges.push({ start: index, end: end, url: url });
+                sendProgress(`Row ${rowIndex+1}`, `Link ${j+1}/${matches.length} is ACTIVE.`);
             }
             
             await new Promise(r => setTimeout(r, 2000)); // Delay between checking each link
@@ -433,11 +434,16 @@ async function runSheetScanner(startRowUI = 1, maxConcurrentTabs = 4) {
         const totalDead = newlyStruck + previouslyDeadCount;
         if (totalDead > 0 && totalActive === 0) {
             await updateRowStatus(rowIndex, "Resolved");
+            sendProgress(`Row ${rowIndex+1}`, `All links DOWN. Row resolved.`);
             if (newlyStruck > 0) {
                 await addEnforcerBonusPoints(rowIndex, newlyStruck * 15);
             }
+        } else if (totalActive > 0 && totalDead === 0) {
+            await updateRowStatus(rowIndex, "Investigating");
+            sendProgress(`Row ${rowIndex+1}`, `Row is ACTIVE.`);
         } else if (totalActive > 0 && totalDead > 0) {
              await updateRowStatus(rowIndex, "Investigating");
+             sendProgress(`Row ${rowIndex+1}`, `Mixed links. Marked Investigating.`);
         }
     } // End of outer loop
     
@@ -503,31 +509,78 @@ async function verifyTakedownViaTab(url, platform) {
                         }
                         
                         if (plat === 'youtube') {
+                            // DOM-based error indicators (more reliable than text)
+                            if (document.querySelector('yt-player-error-message-renderer') || document.querySelector('ytd-video-error-message-renderer')) return resolve(true);
+
                             if (text.includes("video unavailable")) return resolve(true);
                             if (text.includes("video has been removed")) return resolve(true);
                             if (text.includes("video is private")) return resolve(true);
                             if (text.includes("this video is no longer available")) return resolve(true);
                             if (text.includes("account has been terminated")) return resolve(true);
-                            if (text.includes("video is no longer available due to a copyright claim by flosports")) return resolve(true);
+                            if (text.includes("copyright claim by flosports")) return resolve(true);
                             if (window.location.href === "https://www.youtube.com/") return resolve(true); 
                             
                             // Consent / Captcha blocker (Treat as active so user can investigate)
                             if (text.includes("before you continue to youtube")) return resolve(false);
 
-                            // Strong positive indicators for YouTube
-                            if (document.querySelector('#movie_player') || document.querySelector('ytd-video-primary-info-renderer')) return resolve(false);
+                            // Strong positive indicators: Wait for the actual video metadata to render, not just the empty player shell
+                            if (document.querySelector('ytd-watch-metadata') || document.querySelector('ytd-video-primary-info-renderer')) {
+                                // Double check before closing to catch late-rendering error overlays
+                                setTimeout(() => {
+                                    const doubleCheckText = document.body.innerText.toLowerCase();
+                                    if (document.querySelector('yt-player-error-message-renderer') || 
+                                        document.querySelector('ytd-video-error-message-renderer') ||
+                                        doubleCheckText.includes("video unavailable") ||
+                                        doubleCheckText.includes("video has been removed") ||
+                                        doubleCheckText.includes("video is private") ||
+                                        doubleCheckText.includes("this video is no longer available") ||
+                                        doubleCheckText.includes("copyright claim")) {
+                                        resolve(true); // It's actually DOWN
+                                    } else {
+                                        resolve(false); // Verified ACTIVE
+                                    }
+                                }, 2500);
+                                return; // Stop the polling loop while we wait for the double check
+                            }
                         }
                         
-                        if (plat === 'twitter') {
-                            if (text.includes("this page doesn’t exist")) return resolve(true);
-                            if (text.includes("tweet has been deleted")) return resolve(true);
-                            if (text.includes("account suspended")) return resolve(true);
+                         if (plat === 'twitter' || plat === 'x') {
+                            // Immediate error checks
+                            if (text.includes("this page doesn’t exist") || 
+                                text.includes("this post has been deleted") ||
+                                text.includes("tweet has been deleted") || 
+                                text.includes("account suspended") ||
+                                text.includes("This media has been disabled in response to a report by the copyright owner") ||
+                                text.includes("this media has been disabled")) {
+                                return resolve(true);
+                            }
+
+                            // Strong positive indicators: Wait for the actual post/video container to render
+                            if (document.querySelector('article[data-testid="tweet"]') || document.querySelector('video')) {
+                                // Double check before closing to catch late-rendering state changes
+                                setTimeout(() => {
+                                    const doubleCheckText = document.body.innerText.toLowerCase();
+                                    if (doubleCheckText.includes("this page doesn’t exist") || 
+                                        doubleCheckText.includes("this post has been deleted") ||
+                                        doubleCheckText.includes("tweet has been deleted") || 
+                                        doubleCheckText.includes("account suspended") ||
+                                        doubleCheckText.includes("This media has been disabled in response to a report by the copyright owner") ||
+                                        doubleCheckText.includes("this media has been disabled")) {
+                                        resolve(true); // It's actually DOWN
+                                    } else {
+                                        resolve(false); // Verified ACTIVE
+                                    }
+                                }, 2500);
+                                return; // Stop the polling loop while we wait for the double check
+                            }
                         }
                         
                         if (plat === 'instagram' || plat === 'facebook') {
                             if (text.includes("sorry, this page isn't available")) return resolve(true);
                             if (text.includes("link you followed may be broken")) return resolve(true);
                             if (text.includes("content isn't available")) return resolve(true);
+                            if (text.includes("account has been suspended")) return resolve(true);
+                            if (text.includes("this video isn't available")) return resolve(true);
                         }
                         
                         if (plat === 'rumble') {
@@ -558,6 +611,8 @@ async function verifyTakedownViaTab(url, platform) {
         return false;
     }
 }
+
+
 
 // ==========================================
 // 3. BOT INJECTION LISTENER
