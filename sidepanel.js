@@ -674,18 +674,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
 
           if (isChecked) {
-              const startVal = startRowInput ? startRowInput.value : 1;
-              const startRow = parseInt(startVal) || 1;
-              
-              if (closerStatusEl) {
-                  closerStatusEl.style.display = 'block';
-                  closerStatusEl.innerText = "Initializing Scanner...";
-              }
+                  const startVal = startRowInput ? startRowInput.value : 1;
+                  const startRow = parseInt(startVal) || 1;
+                  
+                  // Grab the dropdown value or default to 4
+                  const tabsSelect = document.getElementById('closerTabsSelect');
+                  const maxTabs = tabsSelect ? parseInt(tabsSelect.value) : 4;
+                  
+                  if (closerStatusEl) {
+                      closerStatusEl.style.display = 'block';
+                      closerStatusEl.innerText = "Initializing Scanner...";
+                  }
 
-              chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow }, (res) => {
-                  if (chrome.runtime.lastError) {
-                      // Revert toggle if error
-                      closerToggle.checked = false;
+                  chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow, maxTabs: maxTabs }, (res) => {
+                      if (chrome.runtime.lastError) {
+                          // Revert toggle if error
+                          closerToggle.checked = false;
                       if (closerToggleLabel) {
                           closerToggleLabel.innerText = "Off";
                           closerToggleLabel.style.color = "#666";

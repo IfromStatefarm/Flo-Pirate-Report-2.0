@@ -375,7 +375,14 @@
       </div>
       <div class="flex-row">
           <label for="startRowInput" style="margin:0; font-size: 11px; white-space: nowrap;">Start Row:</label>
-          <input type="number" id="startRowInput" placeholder="e.g. 2" min="1" value="2" style="flex: 1;">
+          <input type="number" id="startRowInput" placeholder="e.g. 2" min="1" value="2" style="width: 50px;">
+          <label for="closerTabsSelect" style="margin:0; font-size: 11px; white-space: nowrap;">Tabs:</label>
+          <select id="closerTabsSelect" style="flex: 1; min-width: 45px;">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4" selected>4</option>
+          </select>
           <label class="switch">
             <input type="checkbox" id="closerToggle">
             <span class="slider"></span>

@@ -120,6 +120,7 @@ function generateReportId() {
 
 // --- STOP FLAG ---
 let stopScannerSignal = false;
+let isScannerRunning = false;
 
 // ==========================================
 // ROGUE STREAM SNIFFER & IP RESOLVER
@@ -268,9 +269,10 @@ function sendProgress(status, details) {
     }).catch(() => {}); // Ignore error if panel closed
 }
 
-// --- UPDATED UTILITY: Improved Strikethrough Detection ---
+// --- Improved Strikethrough Detection ---
 function isUrlCrossedOut(startIndex, endIndex, formatRuns, cellStrikethrough) {
     // RULE 1: If the entire cell has strikethrough applied at the base level, all content is "dead"
+    if (cellStrikethrough) return true;
     
     if (!formatRuns || formatRuns.length === 0) return false;
 
@@ -288,6 +290,8 @@ function isUrlCrossedOut(startIndex, endIndex, formatRuns, cellStrikethrough) {
 }
 
 async function runSheetScanner(startRowUI = 1) {
+  if (isScannerRunning) return;
+  isScannerRunning = true;
   stopScannerSignal = false;
   console.log(`🕵️ Sheet Scanner: Starting from Row ${startRowUI}...`);
   sendProgress(`Starting from Row ${startRowUI}`, "Fetching sheet data with formatting...");
@@ -303,6 +307,9 @@ async function runSheetScanner(startRowUI = 1) {
         sendProgress("Scanner Stopped", `Row ${startRowUI} is out of bounds. The sheet only has ${rows.length} rows.`);
         return;
     }
+
+    const activeWorkers = [];
+    const MAX_CONCURRENT_TABS = 4;
 
     for (let i = startIdx; i < rows.length; i++) {
         if (stopScannerSignal) {
@@ -322,121 +329,133 @@ async function runSheetScanner(startRowUI = 1) {
         }
         
         consecutiveBlanks = 0; 
-        const cellValue = cellData.text;
-
-        // Fix: Explicitly escaping forward slashes in regex to avoid SyntaxError in some environments
-        const urlRegex = /https?:\/\/[^\s,]+/g;
-        let match;
-        const matches = [];
-        while ((match = urlRegex.exec(cellValue)) !== null) {
-            matches.push({ url: match[0], index: match.index, end: match.index + match[0].length });
-        }
         
-        if (matches.length === 0) continue;
+        const rowTask = (async (rowIndex, cellInfo) => {
+            const cellValue = cellInfo.text;
 
-        sendProgress(`Scanning Row ${i+1}`, `Checking ${matches.length} link(s)...`);
-
-        let newlyStruck = 0;
-        let totalActive = 0;
-        let previouslyDeadCount = 0;
-        
-        const deadRanges = []; 
-        const activeRanges = [];
-
-        for (let j = 0; j < matches.length; j++) {
-            const { url, index, end } = matches[j];
-
-            // 1. Filter out internal links and exempt websites
-            const EXEMPT_WEBSITES = ['varsity.com', 'flosports.tv', 'floracing.tv', 'milesplit.com', 'houston.flosports.net', 'google.com', 'amazon.com', 'flocasts.atlassian.net','gemini.google.com/', 'chatgpt.com', 'fso-heatmap.vercel.app', 'gmail.com', 'app.slack.com/', '10.43.29.8:3000', 'flosports.okta.com', 'hockeytech.zen.zixi.com/', 'workforcenow.adp.com', 'flosports.kazoohr.com/', 'flosports', 'app.hibob.com', 'dashboard.airbase.io', 'app.ashbyhq.com','flosports.ziphq.com', 'sites.google.com', 'flosports.latticehq.com','keep.google.com', 'drive.google.com'];
-            if (EXEMPT_WEBSITES.some(site => url.includes(site))) continue;
-
-            const isCrossedOut = isUrlCrossedOut(index, end, cellData.formatRuns, cellData.cellStrikethrough);
-
-            if (isCrossedOut) {
-                previouslyDeadCount++;
-                deadRanges.push({ start: index, end: end, url: url });
-                continue;
+            // Fix: Explicitly escaping forward slashes in regex to avoid SyntaxError in some environments
+            const urlRegex = /https?:\/\/[^\s,]+/g;
+            let match;
+            const matches = [];
+            while ((match = urlRegex.exec(cellValue)) !== null) {
+                matches.push({ url: match[0], index: match.index, end: match.index + match[0].length });
             }
-
-            sendProgress(`Row ${i+1}`, `Link ${j+1}/${matches.length}: Checking availability...`);
             
-            let platform = 'unknown';
-            if (url.includes('tiktok')) platform = 'tiktok';
-            else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
-            else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
-            else if (url.includes('instagram')) platform = 'instagram';
-            else if (url.includes('facebook')) platform = 'facebook';
-            else if (url.includes('twitch')) platform = 'twitch';
+            if (matches.length === 0) return;
 
-            try {
-                const isDown = await verifyTakedownViaTab(url, platform); 
-                
-                if (isDown) {
-                    newlyStruck++;
+            sendProgress(`Scanning Row ${rowIndex+1}`, `Checking ${matches.length} link(s)...`);
+
+            let newlyStruck = 0;
+            let totalActive = 0;
+            let previouslyDeadCount = 0;
+            
+            const deadRanges = []; 
+            const activeRanges = [];
+
+            for (let j = 0; j < matches.length; j++) {
+                if (stopScannerSignal) break;
+                const { url, index, end } = matches[j];
+
+                // 1. Filter out internal links and exempt websites
+                const EXEMPT_WEBSITES = ['varsity.com', 'flosports.tv', 'floracing.tv', 'milesplit.com', 'houston.flosports.net', 'google.com', 'amazon.com', 'flocasts.atlassian.net','gemini.google.com/', 'chatgpt.com', 'fso-heatmap.vercel.app', 'gmail.com', 'app.slack.com/', '10.43.29.8:3000', 'flosports.okta.com', 'hockeytech.zen.zixi.com/', 'workforcenow.adp.com', 'flosports.kazoohr.com/', 'flosports', 'app.hibob.com', 'dashboard.airbase.io', 'app.ashbyhq.com','flosports.ziphq.com', 'sites.google.com', 'flosports.latticehq.com','keep.google.com', 'drive.google.com'];
+                if (EXEMPT_WEBSITES.some(site => url.includes(site))) continue;
+
+                const isCrossedOut = isUrlCrossedOut(index, end, cellInfo.formatRuns, cellInfo.cellStrikethrough);
+
+                if (isCrossedOut) {
+                    previouslyDeadCount++;
                     deadRanges.push({ start: index, end: end, url: url });
-                } else {
-                    totalActive++;
+                    continue;
+                }
+
+                sendProgress(`Row ${rowIndex+1}`, `Link ${j+1}/${matches.length}: Checking availability...`);
+                
+                let platform = 'unknown';
+                if (url.includes('tiktok')) platform = 'tiktok';
+                else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
+                else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
+                else if (url.includes('instagram')) platform = 'instagram';
+                else if (url.includes('facebook')) platform = 'facebook';
+                else if (url.includes('twitch')) platform = 'twitch';
+
+                try {
+                    const isDown = await verifyTakedownViaTab(url, platform); 
+                    
+                    if (isDown) {
+                        newlyStruck++;
+                        deadRanges.push({ start: index, end: end, url: url });
+                    } else {
+                        totalActive++;
+                        activeRanges.push({ start: index, end: end, url: url });
+                    }
+                } catch (err) {
+                    totalActive++; 
                     activeRanges.push({ start: index, end: end, url: url });
                 }
-            } catch (err) {
-                totalActive++; 
-                activeRanges.push({ start: index, end: end, url: url });
+                
+                await new Promise(r => setTimeout(r, 1000)); 
             }
-            
-            await new Promise(r => setTimeout(r, 1500)); 
-        }
 
-        if (stopScannerSignal) {
-             sendProgress("Scanner Stopped", "Operation cancelled.");
-             break;
-        }
+            if (stopScannerSignal) return;
 
-        // --- APPLY RICH TEXT UPDATES IF NEW DEAD LINKS FOUND ---
-        if (newlyStruck > 0) {
-            sendProgress(`Row ${i+1}`, `Updating formatting...`);
-            
-            const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false };
-            const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }, underline: false };
-            const activeLinkStyle = { foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true, strikethrough: false };
+            // --- APPLY RICH TEXT UPDATES IF NEW DEAD LINKS FOUND ---
+            if (newlyStruck > 0) {
+                sendProgress(`Row ${rowIndex+1}`, `Updating formatting...`);
+                
+                const defaultStyle = { strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false };
+                const deadStyle = { strikethrough: true, foregroundColor: { red: 0.6, green: 0.6, blue: 0.6 }, underline: false };
+                const activeLinkStyle = { foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true, strikethrough: false };
 
-            const allLinkRanges = [
-                ...deadRanges.map(r => ({ ...r, style: deadStyle })),
-                ...activeRanges.map(r => ({ ...r, style: { ...activeLinkStyle, link: { uri: r.url } } }))
-            ].sort((a, b) => a.start - b.start);
+                const allLinkRanges = [
+                    ...deadRanges.map(r => ({ ...r, style: deadStyle })),
+                    ...activeRanges.map(r => ({ ...r, style: { ...activeLinkStyle, link: { uri: r.url } } }))
+                ].sort((a, b) => a.start - b.start);
 
-            const newRuns = [];
-            let cursor = 0;
-            
-            if (allLinkRanges.length > 0 && allLinkRanges[0].start > 0) {
-                 newRuns.push({ startIndex: 0, format: defaultStyle });
-            }
-            
-            for (const range of allLinkRanges) {
-                if (range.start > cursor) {
+                const newRuns = [];
+                let cursor = 0;
+                
+                if (allLinkRanges.length > 0 && allLinkRanges[0].start > 0) {
+                     newRuns.push({ startIndex: 0, format: defaultStyle });
+                }
+                
+                for (const range of allLinkRanges) {
+                    if (range.start > cursor) {
+                        newRuns.push({ startIndex: cursor, format: defaultStyle });
+                    }
+                    newRuns.push({ startIndex: range.start, format: range.style });
+                    cursor = range.end;
+                }
+                
+                if (cursor < cellValue.length) {
                     newRuns.push({ startIndex: cursor, format: defaultStyle });
                 }
-                newRuns.push({ startIndex: range.start, format: range.style });
-                cursor = range.end;
-            }
-            
-            if (cursor < cellValue.length) {
-                newRuns.push({ startIndex: cursor, format: defaultStyle });
+
+                await updateCellWithRichText(rowIndex, cellValue, newRuns);
             }
 
-            await updateCellWithRichText(i, cellValue, newRuns);
-        }
-
-        const totalDead = newlyStruck + previouslyDeadCount;
-        if (totalDead > 0 && totalActive === 0) {
-            await updateRowStatus(i, "Resolved");
-            if (newlyStruck > 0) {
-                await addEnforcerBonusPoints(i, newlyStruck * 15);
+            const totalDead = newlyStruck + previouslyDeadCount;
+            if (totalDead > 0 && totalActive === 0) {
+                await updateRowStatus(rowIndex, "Resolved");
+                if (newlyStruck > 0) {
+                    await addEnforcerBonusPoints(rowIndex, newlyStruck * 15);
+                }
+            } else if (totalActive > 0 && totalDead > 0) {
+                 await updateRowStatus(rowIndex, "Investigating");
             }
-        } else if (totalActive > 0 && totalDead > 0) {
-             await updateRowStatus(i, "Investigating");
+        })(i, cellData);
+
+        activeWorkers.push(rowTask);
+        rowTask.finally(() => activeWorkers.splice(activeWorkers.indexOf(rowTask), 1));
+        
+        if (activeWorkers.length >= MAX_CONCURRENT_TABS) {
+            await Promise.race(activeWorkers);
         }
+        
+        await new Promise(r => setTimeout(r, 600)); // Stagger tab creation
     }
     
+    await Promise.all(activeWorkers); // Wait for remaining background tabs to finish
+
     if (!stopScannerSignal) {
         sendProgress("Scanner Complete", "Finished processing rows.");
     }
@@ -444,6 +463,8 @@ async function runSheetScanner(startRowUI = 1) {
   } catch (e) {
     console.error("Sheet Scanner Failed:", e);
     sendProgress("Scanner Failed", e.message);
+  } finally {
+    isScannerRunning = false;
   }
 }
 // Uses Tab Loading to check if video exists
