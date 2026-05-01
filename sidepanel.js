@@ -558,10 +558,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           } else if (firstUrl.includes("tiktok")) {
               platform = "TikTok";
               reportUrl = "https://www.tiktok.com/legal/report/Copyright";
+          } else if (firstUrl.includes("twitter") || firstUrl.includes("x.com")) {
+              platform = "Twitter";
+              reportUrl = "https://help.x.com/en/forms/ipi/dmca";
           } else {
               // Fallback or handle other platforms
               platform = "Other";
-              alert("Auto-reporting is currently optimized for TikTok and YouTube. Please manually report other platforms.");
+              alert("Auto-reporting is currently optimized for TikTok, X (Twitter), and YouTube. Please manually report other platforms.");
               startBtn.disabled = false;
               startBtn.innerText = defaultBtnText; // PATCHED
               return;

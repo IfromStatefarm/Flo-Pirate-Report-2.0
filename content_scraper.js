@@ -44,6 +44,10 @@
     instagram: {
       handle: 'header a'
     },
+    twitter: {
+      handle: '[data-testid="tweet"] [data-testid="User-Name"] a',
+      views: 'a[href*="analytics"] span, [data-testid="app-text-transition-container"] span'
+    },
     facebook: {
       handle: 'h2 a[role="link"], strong span'
     },
@@ -65,6 +69,7 @@
         if (remote.tiktok && remote.tiktok.scraper) SCRAPER_CONFIG.tiktok = { ...SCRAPER_CONFIG.tiktok, ...remote.tiktok.scraper };
         if (remote.youtube && remote.youtube.scraper) SCRAPER_CONFIG.youtube = { ...SCRAPER_CONFIG.youtube, ...remote.youtube.scraper };
         if (remote.instagram && remote.instagram.scraper) SCRAPER_CONFIG.instagram = { ...SCRAPER_CONFIG.instagram, ...remote.instagram.scraper };
+        if (remote.twitter && remote.twitter.scraper) SCRAPER_CONFIG.twitter = { ...SCRAPER_CONFIG.twitter, ...remote.twitter.scraper };
       }
     } catch (e) {
       // Suppress heavy logging
@@ -262,12 +267,19 @@
     else if (host.includes('twitter.com') || host.includes('x.com')) {
       if (!url.includes('/status/')) return null;
       const pathParts = new URL(url).pathname.split('/');
+      let handle = pathParts[1] || "TwitterUser";
+
+      const domHandle = document.querySelector(SCRAPER_CONFIG.twitter.handle)?.innerText;
+      if (domHandle && domHandle.startsWith('@')) handle = domHandle.substring(1);
+
+      const viewEl = document.querySelector(SCRAPER_CONFIG.twitter.views);
+      const views = viewEl ? viewEl.innerText.trim() : "N/A";
       
       return { 
         platform: "Twitter", 
         url, 
-        handle: pathParts[1] || "TwitterUser", 
-        views: "N/A", 
+        handle, 
+        views, 
         timestamp 
       };
     }
