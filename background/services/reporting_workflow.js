@@ -341,7 +341,7 @@ export function createReportingWorkflow({
             urlString,
             'DMCA takedown request',
             formData.mode === 'scout' ? 'Open' : 'Reported',
-            'Generating Links...',
+            `Report #: ${reportId}\nGenerating Links...`,
             scoutedByEmails,
             enforcedByEmail,
             '',
@@ -362,7 +362,13 @@ export function createReportingWorkflow({
           const match = rangePart.match(/\d+/);
           if (match) {
             const rowIndex = parseInt(match[0], 10) - 1;
-            await setColumnKRichText(rowIndex, channelUrl, handle, pdfUpload.webViewLink || 'https://drive.google.com');
+            await setColumnKRichText(
+              rowIndex,
+              channelUrl,
+              handle,
+              pdfUpload.webViewLink || 'https://drive.google.com',
+              reportId
+            );
           }
         }
 

@@ -54,6 +54,14 @@ const getOptions = async () => {
   };
 };
 
+function normalizeLeaderboardIdentity(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/@flosports\.tv/g, '')
+    .replace(/\./g, ' ');
+}
+
 // --- HELPER: GET SPECIFIC TAB INFO ---
 async function getTargetSheetInfo(token, spreadsheetId) {
     const metaData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, {
@@ -619,17 +627,21 @@ async function setColumnHLinks(token, rowIndex, urlString) {
   });
 }
 
-export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
+export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl, reportId = '') {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
   const { sheetId } = await getTargetSheetInfo(token, reportSheetId);
 
   // 2. Format the display strings
-  const line1 = `Channel: @${handle}`;
-  const line2 = `PDF Report`;
-  const fullText = `${line1}\n${line2}`;
+  const line1 = reportId ? `Report #: ${reportId}` : 'Report #: Pending';
+  const line2 = `Channel: @${handle}`;
+  const line3 = `PDF Report`;
+  const fullText = `${line1}\n${line2}\n${line3}`;
   
   const line1Len = line1.length;
+  const line2Start = line1Len + 1;
+  const line2Len = line2.length;
+  const line3Start = line2Start + line2Len + 1;
 
   // 3. Construct the BatchUpdate request
   // We use textFormatRuns to assign DIFFERENT links to DIFFERENT parts of the same cell
@@ -640,15 +652,15 @@ export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
                   userEnteredValue: { stringValue: fullText },
                   textFormatRuns: [
                       { 
-                        startIndex: 0, 
+                        startIndex: line2Start,
                         format: { link: { uri: channelUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
                       },
                       { 
-                        startIndex: line1Len, 
+                        startIndex: line2Start + line2Len,
                         format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false } 
                       },
                       { 
-                        startIndex: line1Len + 1, 
+                        startIndex: line3Start,
                         format: { link: { uri: pdfUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
                       }
                   ]
@@ -936,11 +948,8 @@ export async function fetchLeaderboardData(userEmail) {
         
         // Only count rows that occurred on or after the 1st of the month
         if (new Date(row[0]) >= ctDate) {
-            let scout = (row[6] || "").trim().toLowerCase();     // Column G (Index 6)
-            let enforcer = (row[12] || "").trim().toLowerCase(); // Column M (Index 12)
-            
-            scout = scout.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
-            enforcer = enforcer.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
+            const scout = normalizeLeaderboardIdentity(row[6]);     // Column G (Index 6)
+            const enforcer = normalizeLeaderboardIdentity(row[12]); // Column M (Index 12)
             
             const sPts = parseInt(row[19]) || 0; // Col T (Scout Points)
             const ePts = parseInt(row[20]) || 0; // Col U (Enforcer Points)
@@ -956,8 +965,10 @@ export async function fetchLeaderboardData(userEmail) {
         }
     }
 
-    let emailLower = userEmail.toLowerCase();
-    emailLower = emailLower.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
+    const emailLower = normalizeLeaderboardIdentity(userEmail);
+    const localState = await chrome.storage.local.get(['last_reporter']);
+    const reporterName = normalizeLeaderboardIdentity(localState.last_reporter);
+    const identityMatchesMvp = [emailLower, reporterName].filter(Boolean);
     const myStats = { s: scoutScores[emailLower] || 0, e: enforcerScores[emailLower] || 0 };
     
     let scoutRank = "Level 1 Scout Reporter";
@@ -981,9 +992,21 @@ export async function fetchLeaderboardData(userEmail) {
     const overallLeaderboard = sortDesc(overallScores);
     
     const mvp = overallLeaderboard.length > 0 ? overallLeaderboard[0] : null;
+    const isCurrentMvp = !!mvp && identityMatchesMvp.includes(mvp.name);
     const teamTotal = Object.values(enforcerScores).reduce((sum, pts) => sum + Math.floor(pts / 20), 0);
 
-    return { scoutPoints: myStats.s, enforcerPoints: myStats.e, topScouts, topEnforcers, overallLeaderboard, scoutRank, enforcerRank, mvp, teamTotal };
+    return {
+        scoutPoints: myStats.s,
+        enforcerPoints: myStats.e,
+        topScouts,
+        topEnforcers,
+        overallLeaderboard,
+        scoutRank,
+        enforcerRank,
+        mvp,
+        isCurrentMvp,
+        teamTotal
+    };
 }
 // ==========================================
 // 9. TACTICAL INTELLIGENCE REPORTING

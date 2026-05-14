@@ -12,10 +12,55 @@ let isCrawling = false;
 let consecutiveFailures = 0;
 let crawlQueue = [];
 let configData = null;
+const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
 
 function refreshGamificationStats() {
   chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
     renderGamificationStats(stats);
+  });
+}
+
+function setupGoalCelebrationOverlay() {
+  const triggerButtons = [
+    document.getElementById('scout-level3-video-btn'),
+    document.getElementById('enforcer-level3-video-btn'),
+    document.getElementById('team-goal-video-btn'),
+    document.getElementById('mvp-video-btn')
+  ].filter(Boolean);
+  const overlay = document.getElementById('goal-video-overlay');
+  const frame = document.getElementById('goal-video-frame');
+  const title = document.getElementById('goal-video-title');
+  const shell = overlay?.querySelector('.goal-video-shell');
+
+  if (triggerButtons.length === 0 || !overlay || !frame || !shell) return;
+
+  const closeOverlay = () => {
+    overlay.style.display = 'none';
+    frame.src = '';
+  };
+
+  triggerButtons.forEach((triggerBtn) => {
+    if (triggerBtn.dataset.overlayBound === 'true') return;
+
+    triggerBtn.dataset.overlayBound = 'true';
+    triggerBtn.addEventListener('click', (event) => {
+      const videoUrl = triggerBtn.dataset.videoUrl;
+      if (!videoUrl) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (title) title.innerText = triggerBtn.dataset.videoTitle || 'Celebration';
+      frame.src = videoUrl;
+      overlay.style.display = 'flex';
+    });
+  });
+
+  overlay.addEventListener('click', closeOverlay);
+  shell.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && overlay.style.display === 'flex') {
+      closeOverlay();
+    }
   });
 }
 // --- SECURITY LOCK OVERLAY (Duplicated for Side Panel context) ---
@@ -65,17 +110,84 @@ document.addEventListener('DOMContentLoaded', async () => {
   const patchStatus = document.getElementById('patchStatus');
   let currentCapturedPlatform = null;
   
+  const clippyBubble = document.getElementById('clippy-process-bubble');
   const clippyFeedbackEl = document.getElementById('clippy-feedback-text');
+  let sidepanelClippyDismissed = false;
+  let sidepanelClippyMode = 'idle';
+  let currentIdleClippyPhrase = '';
+
+  const getRandomSidepanelClippyPhrase = (exclude = '') => {
+      const pool = SIDEPANEL_CLIPPY_PHRASES.filter((phrase) => phrase !== exclude);
+      const sourcePool = pool.length > 0 ? pool : SIDEPANEL_CLIPPY_PHRASES;
+      return sourcePool[Math.floor(Math.random() * sourcePool.length)];
+  };
+
+  const hasConfiguredSetupIds = (syncData) =>
+      SIDEPANEL_SETUP_KEYS.every((key) => String(syncData?.[key] || '').trim());
+
+  const setSidepanelClippyMessage = (text, { mode = 'status' } = {}) => {
+      if (!clippyBubble || !clippyFeedbackEl || sidepanelClippyDismissed) return;
+      sidepanelClippyMode = mode;
+      clippyFeedbackEl.innerText = text;
+      clippyBubble.style.display = 'flex';
+  };
+
+  const showIdleSidepanelClippy = ({ forceNew = false } = {}) => {
+      if (!clippyBubble || !clippyFeedbackEl || sidepanelClippyDismissed) return;
+
+      if (forceNew || !currentIdleClippyPhrase) {
+          currentIdleClippyPhrase = getRandomSidepanelClippyPhrase(currentIdleClippyPhrase);
+      }
+
+      sidepanelClippyMode = 'idle';
+      clippyFeedbackEl.innerText = currentIdleClippyPhrase;
+      clippyBubble.style.display = 'flex';
+  };
+
+  const syncSidepanelClippyToSetup = (syncData = null) => {
+      const applyState = (data) => {
+          if (!hasConfiguredSetupIds(data)) {
+              setSidepanelClippyMessage('Please fill in the 3 setup boxes in Settings to finish setup.', { mode: 'setup' });
+              return;
+          }
+
+          if (sidepanelClippyMode === 'setup' || !currentIdleClippyPhrase) {
+              showIdleSidepanelClippy({ forceNew: true });
+          }
+      };
+
+      if (syncData) {
+          applyState(syncData);
+          return;
+      }
+
+      chrome.storage.sync.get(SIDEPANEL_SETUP_KEYS, applyState);
+  };
+
+  const requestWorkflowFocusRefresh = () => {
+      chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
+  };
+
   if (clippyFeedbackEl) {
-      clippyFeedbackEl.innerText = SIDEPANEL_CLIPPY_PHRASES[Math.floor(Math.random() * SIDEPANEL_CLIPPY_PHRASES.length)];
+      clippyFeedbackEl.style.cursor = 'pointer';
+      clippyFeedbackEl.title = 'Click for a new saying';
+      clippyFeedbackEl.addEventListener('click', () => {
+          if (sidepanelClippyMode !== 'idle' || sidepanelClippyDismissed) return;
+          showIdleSidepanelClippy({ forceNew: true });
+      });
   }
 
   const closeClippyBtn = document.getElementById('close-clippy-btn');
   if (closeClippyBtn) {
       closeClippyBtn.addEventListener('click', () => {
-          document.getElementById('clippy-process-bubble').style.display = 'none';
+          sidepanelClippyDismissed = true;
+          if (clippyBubble) clippyBubble.style.display = 'none';
       });
   }
+
+  syncSidepanelClippyToSetup();
+
+  setupGoalCelebrationOverlay();
 
   // 🚨 CRITICAL FIX: Escaping unclosed HTML tags 🚨
   // sidepanel.html is missing a few closing </div> tags, causing the Walkthrough UI to get trapped 
@@ -127,6 +239,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!res.highlight_start_disabled && !sourceDisplay.value.trim()) {
                 sourceDisplay.value = msg.url;
                 if (grabBtn) grabBtn.disabled = true;
+                requestWorkflowFocusRefresh();
             }
         });
     }
@@ -380,10 +493,57 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (sourceDisplay) {
                     sourceDisplay.value = tab.url;
                     grabBtn.disabled = true;
+                    requestWorkflowFocusRefresh();
                 }
             }
         });
     }
+
+    const updateRogueButtonState = (isEnabled) => {
+        if (!nukeStreamBtn) return;
+        nukeStreamBtn.style.backgroundColor = isEnabled ? '#ce0e2d' : '#1a1a1a';
+        nukeStreamBtn.style.color = 'white';
+        nukeStreamBtn.innerText = isEnabled ? '☢️ Show 3rd Party Nuke Overlay' : '🛡️ 3rd Party Safety: ON';
+        nukeStreamBtn.style.cursor = isEnabled ? 'pointer' : 'not-allowed';
+    };
+
+    const summonPirateOverlayOnCurrentTab = async () => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id || !tab.url) {
+            throw new Error("No active tab found.");
+        }
+
+        if (!/^https?:/i.test(tab.url)) {
+            throw new Error("Pirate AI can only be opened on regular web pages.");
+        }
+
+        await chrome.storage.local.set({ showNukeButton: true });
+
+        const message = {
+            action: 'showPirateOverlay',
+            showNukeButton: true,
+            expand: true
+        };
+
+        try {
+            await chrome.tabs.sendMessage(tab.id, message);
+            return;
+        } catch (error) {
+            await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => {
+                    window.__floForceOverlay = true;
+                }
+            });
+
+            await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                files: ['content_scraper.js']
+            });
+
+            await chrome.tabs.sendMessage(tab.id, message);
+        }
+    };
 
   // --- ROGUE SITE SCRAPE LOGIC (Consolidated for all buttons) ---
   const handleNukeClick = async (btn) => {
@@ -434,9 +594,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
   };
 // Attach the same handler to both buttons, but only allow it to run if the rogue toggle is ON for the stream button
-  if (nukeStreamBtn) nukeStreamBtn.addEventListener('click', () => {
+  if (nukeStreamBtn) nukeStreamBtn.addEventListener('click', async () => {
       if (rogueToggle && !rogueToggle.checked) return; // Prevent click if Safety is ON
-      handleNukeClick(nukeStreamBtn);
+
+      const originalText = nukeStreamBtn.innerText;
+      nukeStreamBtn.innerText = "Opening Overlay...";
+      nukeStreamBtn.disabled = true;
+      if (nukeStatus) nukeStatus.innerText = "Launching Pirate AI on the current tab...";
+
+      try {
+          await summonPirateOverlayOnCurrentTab();
+          if (nukeStatus) nukeStatus.innerText = "Pirate AI ready on the current tab.";
+      } catch (e) {
+          console.error(e);
+          if (nukeStatus) nukeStatus.innerText = e.message || "Failed to launch Pirate AI.";
+      } finally {
+          setTimeout(() => {
+              nukeStreamBtn.disabled = false;
+              updateRogueButtonState(!!rogueToggle?.checked);
+              if (nukeStatus) nukeStatus.innerText = "";
+          }, 1200);
+      }
   });
   if (nukeBtn) nukeBtn.addEventListener('click', () => handleNukeClick(nukeBtn));
 
@@ -448,14 +626,26 @@ document.addEventListener('DOMContentLoaded', async () => {
           const sourceUrl = document.getElementById('sourceUrlDisplay').value;
           
           // PATCH: Fetch mode early and define default text for resets
-          const syncData = await chrome.storage.sync.get(['report_mode']);
-          const isScout = (syncData.report_mode || 'scout') === 'scout';
-          const defaultBtnText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
-          
-          startBtn.classList.remove('clippy-focus');
-          chrome.storage.local.set({ highlight_start_disabled: true });
+                const syncData = await chrome.storage.sync.get(['report_mode']);
+                const isScout = (syncData.report_mode || 'scout') === 'scout';
+                const defaultBtnText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
+                
+                // --- NEW: SCOUT / ENFORCER ACCESS FILTER ---
+                const currentUserEmail = await getUserEmail();
+                if (isScout && (!currentUserEmail || !currentUserEmail.endsWith('@flosports.tv'))) {
+                    alert("Access Denied: Scout mode requires a @flosports.tv email address.");
+                    return;
+                }
+                if (!isScout && currentUserEmail !== 'copyright@flosports.tv') {
+                    alert("Access Denied: Enforcer mode is strictly restricted to copyright@flosports.tv.");
+                    return;
+                }
+                // -------------------------------------------
 
-          if (!reporterName || !vertical || !eventName) {
+                startBtn.classList.remove('clippy-focus');
+                chrome.storage.local.set({ highlight_start_disabled: true });
+
+                if (!reporterName || !vertical || !eventName) {
               alert("Please fill in Reporter, Vertical, and Event Name.");
               return;
           }
@@ -644,9 +834,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             const clippyText = document.getElementById('clippy-feedback-text');
-            if (clippyText) {
-                clippyText.innerText = `Analyzing logs from ${startDate} to ${endDate}... standing by.`;
-            }
+            if (clippyText) setSidepanelClippyMessage(`Analyzing logs from ${startDate} to ${endDate}... standing by.`);
             
             generateIntelReportBtn.disabled = true;
             generateIntelReportBtn.innerText = "Analyzing...";
@@ -660,7 +848,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 generateIntelReportBtn.disabled = false;
                 generateIntelReportBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Briefing`;
                 
-                if (clippyText) clippyText.innerText = res?.success ? "Briefing generated successfully!" : "Failed to generate briefing.";
+                if (clippyText) {
+                    if (res?.success) {
+                        setSidepanelClippyMessage('Briefing generated successfully!');
+                    } else {
+                        setSidepanelClippyMessage('Failed to generate briefing.');
+                    }
+                }
                 if (res && res.error) alert("Briefing Error: " + res.error);
             });
         });
@@ -711,8 +905,15 @@ document.addEventListener('DOMContentLoaded', async () => {
               alert("Please fill in Reporter and Vertical.");
               return;
           }
+                // --- BULK ENFORCER ACCESS FILTER ---
+                  const currentUserEmail = await getUserEmail();
+                  if (currentUserEmail !== 'copyright@flosports.tv') {
+                      alert("Access Denied: Bulk reporting (Enforcer mode) is restricted to copyright@flosports.tv.");
+                      return;
+                  }
+                  // ----------------------------------------
 
-          reportFromSheetBtn.disabled = true;
+                  reportFromSheetBtn.disabled = true;
           reportFromSheetBtn.innerText = "Processing Bulk Report...";
 
           // Trigger the existing bulk reporting logic in background.js
@@ -912,33 +1113,46 @@ if (startMacroBtn && stopMacroBtn) {
       }
       // Listen for real-time changes to the report_mode from the options page
       if (namespace === 'sync' && changes.report_mode) {
-          chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
+          requestWorkflowFocusRefresh();
+      }
+      if (namespace === 'sync' && SIDEPANEL_SETUP_KEYS.some((key) => changes[key])) {
+          syncSidepanelClippyToSetup();
+          requestWorkflowFocusRefresh();
       }
   });
 
       // Re-evaluate focus immediately when the user types or selects an option
   ['reporterName', 'verticalSelect', 'eventInput', 'sourceUrlDisplay'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.addEventListener('input', () => {
-          chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
-      });
+      if (!el) return;
+
+      const refreshFocus = () => requestWorkflowFocusRefresh();
+      el.addEventListener('input', refreshFocus);
+      el.addEventListener('change', refreshFocus);
   });
 function evaluateWorkflowFocus(cartSize) {
       // PATCH: Fetch mode first and set button text BEFORE any early returns
-      chrome.storage.sync.get(['report_mode'], (syncRes) => {
+      chrome.storage.sync.get(['report_mode', ...SIDEPANEL_SETUP_KEYS], (syncRes) => {
           const isScout = (syncRes.report_mode || 'scout') === 'scout';
           const startBtn = document.getElementById('startBtn');
           if (startBtn) startBtn.innerText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
 
           chrome.storage.local.get(['highlight_start_disabled'], (res) => {
-              if (res.highlight_start_disabled) return;
+              if (!hasConfiguredSetupIds(syncRes)) {
+                  setSidepanelClippyMessage('Please fill in the 3 setup boxes in Settings to finish setup.', { mode: 'setup' });
+                  return;
+              }
+
+              if (res.highlight_start_disabled) {
+                  showIdleSidepanelClippy({ forceNew: sidepanelClippyMode !== 'idle' });
+                  return;
+              }
 
               // Clear all existing spotlights
               document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
               
               if (cartSize === 0) {
-                  const clippyText = document.getElementById('clippy-feedback-text');
-                  if (clippyText) clippyText.innerText = "Open YouTube or TikTok and click '+ Add' on a video!";
+                  showIdleSidepanelClippy({ forceNew: sidepanelClippyMode !== 'idle' });
                   return;
               }
               
@@ -962,12 +1176,11 @@ function evaluateWorkflowFocus(cartSize) {
                   missingFields = true;
               }
 
-              const clippyText = document.getElementById('clippy-feedback-text');
               if (missingFields) {
-                  if (clippyText) clippyText.innerText = "Please fill in all 4 highlighted boxes to continue.";
+                  setSidepanelClippyMessage('Please fill in the highlighted boxes to continue.', { mode: 'workflow' });
               } else {
                   if (startBtn) startBtn.classList.add('clippy-focus');
-                  if (clippyText) clippyText.innerText = isScout ? "Ready! Click to save these links to the intelligence log." : "Ready! Click Start Report to generate your PDF.";
+                  showIdleSidepanelClippy({ forceNew: sidepanelClippyMode !== 'idle' });
               }
           });
       });
@@ -1062,19 +1275,14 @@ function evaluateWorkflowFocus(cartSize) {
      chrome.storage.local.get(['showNukeButton'], (res) => {
           const isChecked = !!res.showNukeButton;
           rogueToggle.checked = isChecked;
-          nukeStreamBtn.style.backgroundColor = isChecked ? '#ce0e2d' : '#1a1a1a';
-          nukeStreamBtn.style.color = 'white';
-          nukeStreamBtn.innerText = isChecked ? '☢️ 3rd Party Site Safety OFF' : '🛡️ 3rd Party Safety: ON';
-          nukeStreamBtn.style.cursor = isChecked ? 'pointer' : 'not-allowed';
+          updateRogueButtonState(isChecked);
       });
 
       // Listen for toggle changes
       rogueToggle.addEventListener('change', (e) => {
           const isChecked = e.target.checked;
           chrome.storage.local.set({ showNukeButton: isChecked });
-          nukeStreamBtn.style.backgroundColor = isChecked ? '#ce0e2d' : '#1a1a1a';
-          nukeStreamBtn.innerText = isChecked ? '☢️ 3rd Party Site Safety OFF' : '🛡️ 3rd Party Safety: ON';
-          nukeStreamBtn.style.cursor = isChecked ? 'pointer' : 'not-allowed';
+          updateRogueButtonState(isChecked);
       });
   }
 });
