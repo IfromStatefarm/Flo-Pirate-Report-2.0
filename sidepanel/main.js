@@ -15,10 +15,33 @@ let configData = null;
 const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
 const ENFORCER_ALLOWED_EMAILS = ['social@flosports.tv', 'copyright@flosports.tv', 'copyrights@flosports.tv'];
 const ENFORCER_PLATFORM_MARKERS = Object.freeze({
-  youtubeHandle: '@flosocial4531',
-  youtubeStudioManagerId: 'vcbdhoyo0l5szyprzc85ia',
-  tiktokHandle: '@flosocial3'
+  accountHandles: [
+    '@flosocial3',
+    '@flosocial4531',
+    '@floelite',
+    '@flocollegevolleyball',
+    '@florugby',
+    '@flocollegebasketball',
+    '@floflomarching',
+    '@florodeo',
+    '@floracingwk4fk',
+    '@flogrppling',
+    '@floswimming',
+    '@milesplit',
+    '@flovoice',
+    '@floclimbing1847',
+    '@flobowling',
+    '@flodance',
+    '@flodragracing',
+    '@flosports'
+  ],
+  youtubeStudioManagerIds: [
+    'vcbdhoyo0l5szyprzc85ia',
+    'an9wotyzuy413s3j75rs0a'
+  ]
 });
+
+const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSports platform account session.";
 
 function refreshGamificationStats() {
   chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
@@ -30,16 +53,16 @@ function isApprovedEnforcerPlatformUrl(url) {
   const normalizedUrl = String(url || '').toLowerCase();
   if (!normalizedUrl) return false;
 
+  const hasApprovedHandle = ENFORCER_PLATFORM_MARKERS.accountHandles.some((handle) => normalizedUrl.includes(handle));
+  const hasApprovedStudioId = ENFORCER_PLATFORM_MARKERS.youtubeStudioManagerIds.some((managerId) => normalizedUrl.includes(managerId));
+
   const isApprovedYouTube =
     (normalizedUrl.includes('youtube.com') || normalizedUrl.includes('youtu.be') || normalizedUrl.includes('studio.youtube.com')) &&
-    (
-      normalizedUrl.includes(ENFORCER_PLATFORM_MARKERS.youtubeHandle) ||
-      normalizedUrl.includes(ENFORCER_PLATFORM_MARKERS.youtubeStudioManagerId)
-    );
+    (hasApprovedHandle || hasApprovedStudioId);
 
   const isApprovedTikTok =
     normalizedUrl.includes('tiktok.com') &&
-    normalizedUrl.includes(ENFORCER_PLATFORM_MARKERS.tiktokHandle);
+    hasApprovedHandle;
 
   return isApprovedYouTube || isApprovedTikTok;
 }
@@ -671,7 +694,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     return;
                 }
                 if (!isScout && !(await canUseEnforcerMode())) {
-                    alert("Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSocial YouTube/TikTok account session.");
+                    alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
                     return;
                 }
                 // -------------------------------------------
@@ -941,7 +964,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
                 // --- BULK ENFORCER ACCESS FILTER ---
                   if (!(await canUseEnforcerMode())) {
-                      alert("Access Denied: Bulk reporting (Enforcer mode) requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSocial YouTube/TikTok account session.");
+                      alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
                       return;
                   }
                   // ----------------------------------------

@@ -62,6 +62,24 @@ function normalizeLeaderboardIdentity(value) {
     .replace(/\./g, ' ');
 }
 
+const CHICAGO_MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: 'numeric'
+});
+
+function getChicagoYearMonth(value) {
+    const parsedDate = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+
+    const parts = CHICAGO_MONTH_FORMATTER.formatToParts(parsedDate);
+    const year = Number(parts.find(part => part.type === 'year')?.value);
+    const month = Number(parts.find(part => part.type === 'month')?.value);
+
+    if (!year || !month) return null;
+    return { year, month };
+}
+
 // --- HELPER: GET SPECIFIC TAB INFO ---
 async function getTargetSheetInfo(token, spreadsheetId) {
     const metaData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, {
@@ -918,7 +936,7 @@ export async function bulkAddToCart(items) {
     return uniqueCart.length;
 }
 // ==========================================
-// 8. GAMIFICATION & LEADERBOARD (WEEKLY RESET)
+// 8. GAMIFICATION & LEADERBOARD (CURRENT MONTH)
 // ==========================================
 export async function fetchLeaderboardData(userEmail) {
     const { reportSheetId } = await getOptions();
@@ -933,10 +951,10 @@ export async function fetchLeaderboardData(userEmail) {
     const rows = data.values || [];
     if (rows.length < 2) return { scoutPoints: 0, enforcerPoints: 0, leaderboard: [], rank: "Rookie Spotter" };
 
-    // Get the first day of the current month Midnight Central Time
-    const ctDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-    ctDate.setDate(1);
-    ctDate.setHours(0, 0, 0, 0);
+    const currentChicagoMonth = getChicagoYearMonth(new Date());
+    if (!currentChicagoMonth) {
+        return { scoutPoints: 0, enforcerPoints: 0, leaderboard: [], rank: "Rookie Spotter" };
+    }
 
     const scoutScores = {};
     const enforcerScores = {};
@@ -945,23 +963,25 @@ export async function fetchLeaderboardData(userEmail) {
     for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
         if (!row[0]) continue;
-        
-        // Only count rows that occurred on or after the 1st of the month
-        if (new Date(row[0]) >= ctDate) {
-            const scout = normalizeLeaderboardIdentity(row[6]);     // Column G (Index 6)
-            const enforcer = normalizeLeaderboardIdentity(row[12]); // Column M (Index 12)
-            
-            const sPts = parseInt(row[19]) || 0; // Col T (Scout Points)
-            const ePts = parseInt(row[20]) || 0; // Col U (Enforcer Points)
 
-            if (scout) {
-                scoutScores[scout] = (scoutScores[scout] || 0) + sPts;
-                overallScores[scout] = (overallScores[scout] || 0) + sPts;
-            }
-            if (enforcer) {
-                enforcerScores[enforcer] = (enforcerScores[enforcer] || 0) + ePts;
-                overallScores[enforcer] = (overallScores[enforcer] || 0) + ePts;
-            }
+        // Only count rows whose report date falls inside the current Chicago calendar month.
+        const rowChicagoMonth = getChicagoYearMonth(row[0]);
+        if (!rowChicagoMonth) continue;
+        if (rowChicagoMonth.year !== currentChicagoMonth.year || rowChicagoMonth.month !== currentChicagoMonth.month) continue;
+
+        const scout = normalizeLeaderboardIdentity(row[6]);     // Column G (Index 6)
+        const enforcer = normalizeLeaderboardIdentity(row[12]); // Column M (Index 12)
+        
+        const sPts = parseInt(row[19]) || 0; // Col T (Scout Points)
+        const ePts = parseInt(row[20]) || 0; // Col U (Enforcer Points)
+
+        if (scout) {
+            scoutScores[scout] = (scoutScores[scout] || 0) + sPts;
+            overallScores[scout] = (overallScores[scout] || 0) + sPts;
+        }
+        if (enforcer) {
+            enforcerScores[enforcer] = (enforcerScores[enforcer] || 0) + ePts;
+            overallScores[enforcer] = (overallScores[enforcer] || 0) + ePts;
         }
     }
 
