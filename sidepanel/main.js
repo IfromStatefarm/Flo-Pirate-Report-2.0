@@ -14,50 +14,150 @@ let crawlQueue = [];
 let configData = null;
 const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
 const ENFORCER_ALLOWED_EMAILS = ['social@flosports.tv', 'copyright@flosports.tv', 'copyrights@flosports.tv'];
-const ENFORCER_PLATFORM_MARKERS = Object.freeze({
-  accountHandles: [
-    '@flosocial3',
-    '@flosocial4531',
-    '@floelite',
-    '@flocollegevolleyball',
-    '@florugby',
-    '@flocollegebasketball',
-    '@floflomarching',
-    '@florodeo',
-    '@floracingwk4fk',
-    '@flogrppling',
-    '@floswimming',
-    '@milesplit',
-    '@flovoice',
-    '@floclimbing1847',
-    '@flobowling',
-    '@flodance',
-    '@flodragracing',
-    '@flosports'
-  ],
-  youtubeChannelIds: [
-    'uci1khgc-guvaoej1qpy7sba',
-    'ucjemiyjzlelf1xmfuzemzq',
-    'ucjl8uhcmj3gfmtde5_miggg',
-    'uc3mj0nm-7groyzuqgo-lhmq',
-    'ucjfcsyefs4g-rjhxzoba9ng',
-    'ucbcjdshcwmyzvyofmqfot8q',
-    'ucanzxt5pmv8phtmsnavn7qg',
-    'ucx7mxflg3dxdjtzi5mjriow',
-    'ucngvn3lc9pnoovjsq9x-ldq',
-    'ucrroh-g-vdcl57u-agy3ymq',
-    'uc80xbt9erxjjdlvmter1toq',
-    'ucj8-bad2gi7cn4zuans8qjg',
-    'uc4qlqyxfiebf-xuxrhrbjfg',
-    'ucfjgrug4y7t3zf6fy38mauw'
-  ],
-  youtubeStudioManagerIds: [
-    'vcbdhoyo0l5szyprzc85ia',
-    'an9wotyzuy413s3j75rs0a'
-  ]
+const ENFORCER_PLATFORM_DEFAULTS = Object.freeze({
+  youtube: {
+    authorizedHandles: [
+      '@flosocial4531',
+      '@floelite',
+      '@flocollegevolleyball',
+      '@florugby',
+      '@flocollegebasketball',
+      '@floflomarching',
+      '@florodeo',
+      '@floracingwk4fk',
+      '@flogrppling',
+      '@floswimming',
+      '@milesplit',
+      '@flovoice',
+      '@floclimbing1847',
+      '@flobowling',
+      '@flodance',
+      '@flodragracing',
+      '@flosports'
+    ],
+    authorizedChannelIds: [
+      'uci1khgc-guvaoej1qpy7sba',
+      'ucjemiyjzlelf1xmfuzemzq',
+      'ucjl8uhcmj3gfmtde5_miggg',
+      'uc3mj0nm-7groyzuqgo-lhmq',
+      'ucjfcsyefs4g-rjhxzoba9ng',
+      'ucbcjdshcwmyzvyofmqfot8q',
+      'ucanzxt5pmv8phtmsnavn7qg',
+      'ucx7mxflg3dxdjtzi5mjriow',
+      'ucngvn3lc9pnoovjsq9x-ldq',
+      'ucrroh-g-vdcl57u-agy3ymq',
+      'uc80xbt9erxjjdlvmter1toq',
+      'ucj8-bad2gi7cn4zuans8qjg',
+      'uc4qlqyxfiebf-xuxrhrbjfg',
+      'ucfjgrug4y7t3zf6fy38mauw'
+    ],
+    authorizedStudioManagerIds: [
+      'vcbdhoyo0l5szyprzc85ia',
+      'an9wotyzuy413s3j75rs0a'
+    ]
+  },
+  tiktok: {
+    authorizedHandles: [
+      '@flosocial3'
+    ]
+  }
 });
 
 const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSports platform account session.";
+const ENFORCER_SESSION_SELECTOR_DEFAULTS = Object.freeze({
+  youtube: {
+    channelHandle: [
+      'yt-formatted-string#channel-handle',
+      'ytd-active-account-header-renderer yt-formatted-string#channel-handle'
+    ],
+    accountMenuTrigger: [
+      'button#avatar-btn',
+      '#avatar-btn',
+      'button[aria-label*="account" i]',
+      'button[aria-label*="channel" i]'
+    ],
+    candidateAnchors: [
+      'ytd-guide-renderer a[href]',
+      'ytd-mini-guide-renderer a[href]',
+      'ytd-popup-container a[href]',
+      'ytd-masthead a[href]',
+      'tp-yt-paper-dialog a[href]'
+    ]
+  },
+  tiktok: {
+    accountHandle: [
+      'a[data-e2e="nav-profile"]',
+      '[data-e2e="nav-profile"] a[href]',
+      'header a[href^="/@"]',
+      'nav a[href^="/@"]',
+      '[data-e2e*="profile"] a[href^="/@"]'
+    ]
+  }
+});
+
+function toSelectorList(value, fallback = []) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const selectors = values
+    .map((entry) => (typeof entry === 'string' ? entry : entry?.selector))
+    .filter(Boolean);
+  return selectors.length > 0 ? selectors : fallback;
+}
+
+function toValueList(value, fallback = []) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const parsedValues = values
+    .map((entry) => {
+      if (typeof entry === 'string') return entry;
+      return entry?.value || entry?.handle || entry?.id || entry?.channel_id || entry?.manager_id || '';
+    })
+    .filter(Boolean);
+  return parsedValues.length > 0 ? parsedValues : fallback;
+}
+
+function getEnforcerAccessConfig() {
+  const platformSelectors = configData?.platform_selectors || {};
+  const youtubeSession = platformSelectors.youtube?.session || {};
+  const tiktokSession = platformSelectors.tiktok?.session || {};
+
+  return {
+    youtube: {
+      authorizedHandles: toValueList(
+        youtubeSession.authorized_handles || youtubeSession.approved_handles,
+        ENFORCER_PLATFORM_DEFAULTS.youtube.authorizedHandles
+      ),
+      authorizedChannelIds: toValueList(
+        youtubeSession.authorized_channel_ids || youtubeSession.approved_channel_ids,
+        ENFORCER_PLATFORM_DEFAULTS.youtube.authorizedChannelIds
+      ),
+      authorizedStudioManagerIds: toValueList(
+        youtubeSession.authorized_studio_manager_ids || youtubeSession.approved_studio_manager_ids || youtubeSession.authorized_studio_ids,
+        ENFORCER_PLATFORM_DEFAULTS.youtube.authorizedStudioManagerIds
+      ),
+      channelHandle: toSelectorList(
+        youtubeSession.channel_handle || youtubeSession.account_handle || youtubeSession.handle,
+        ENFORCER_SESSION_SELECTOR_DEFAULTS.youtube.channelHandle
+      ),
+      accountMenuTrigger: toSelectorList(
+        youtubeSession.account_menu_trigger || youtubeSession.menu_trigger,
+        ENFORCER_SESSION_SELECTOR_DEFAULTS.youtube.accountMenuTrigger
+      ),
+      candidateAnchors: toSelectorList(
+        youtubeSession.candidate_anchors || youtubeSession.anchor_selectors,
+        ENFORCER_SESSION_SELECTOR_DEFAULTS.youtube.candidateAnchors
+      )
+    },
+    tiktok: {
+      authorizedHandles: toValueList(
+        tiktokSession.authorized_handles || tiktokSession.approved_handles,
+        ENFORCER_PLATFORM_DEFAULTS.tiktok.authorizedHandles
+      ),
+      accountHandle: toSelectorList(
+        tiktokSession.account_handle || tiktokSession.handle,
+        ENFORCER_SESSION_SELECTOR_DEFAULTS.tiktok.accountHandle
+      )
+    }
+  };
+}
 
 function refreshGamificationStats() {
   chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
@@ -65,21 +165,27 @@ function refreshGamificationStats() {
   });
 }
 
-function isApprovedEnforcerPlatformUrl(url) {
+function isApprovedEnforcerPlatformUrl(url, accessConfig = getEnforcerAccessConfig()) {
   const normalizedUrl = String(url || '').toLowerCase();
   if (!normalizedUrl) return false;
 
-  const hasApprovedHandle = ENFORCER_PLATFORM_MARKERS.accountHandles.some((handle) => normalizedUrl.includes(handle));
-  const hasApprovedChannelId = ENFORCER_PLATFORM_MARKERS.youtubeChannelIds.some((channelId) => normalizedUrl.includes(channelId));
-  const hasApprovedStudioId = ENFORCER_PLATFORM_MARKERS.youtubeStudioManagerIds.some((managerId) => normalizedUrl.includes(managerId));
+  const youtubeHandles = (accessConfig.youtube?.authorizedHandles || []).map((handle) => String(handle).toLowerCase());
+  const youtubeChannelIds = (accessConfig.youtube?.authorizedChannelIds || []).map((channelId) => String(channelId).toLowerCase());
+  const youtubeStudioIds = (accessConfig.youtube?.authorizedStudioManagerIds || []).map((managerId) => String(managerId).toLowerCase());
+  const tiktokHandles = (accessConfig.tiktok?.authorizedHandles || []).map((handle) => String(handle).toLowerCase());
+
+  const hasApprovedYouTubeHandle = youtubeHandles.some((handle) => normalizedUrl.includes(handle));
+  const hasApprovedChannelId = youtubeChannelIds.some((channelId) => normalizedUrl.includes(channelId));
+  const hasApprovedStudioId = youtubeStudioIds.some((managerId) => normalizedUrl.includes(managerId));
+  const hasApprovedTikTokHandle = tiktokHandles.some((handle) => normalizedUrl.includes(handle));
 
   const isApprovedYouTube =
     (normalizedUrl.includes('youtube.com') || normalizedUrl.includes('youtu.be') || normalizedUrl.includes('studio.youtube.com')) &&
-    (hasApprovedHandle || hasApprovedChannelId || hasApprovedStudioId);
+    (hasApprovedYouTubeHandle || hasApprovedChannelId || hasApprovedStudioId);
 
   const isApprovedTikTok =
     normalizedUrl.includes('tiktok.com') &&
-    hasApprovedHandle;
+    hasApprovedTikTokHandle;
 
   return isApprovedYouTube || isApprovedTikTok;
 }
@@ -92,18 +198,20 @@ function isEnforcerPlatformTabUrl(url) {
     normalizedUrl.includes('tiktok.com');
 }
 
-async function tabHasApprovedEnforcerSession(tabId) {
+async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAccessConfig()) {
   try {
     const [injected] = await chrome.scripting.executeScript({
       target: { tabId, allFrames: false },
-      func: (platformMarkers) => {
+      func: async (sessionAccessConfig) => {
         const normalize = (value) => String(value || '').trim().toLowerCase();
-        const approvedHandles = (platformMarkers.accountHandles || []).map(normalize).filter(Boolean);
-        const approvedChannelIds = (platformMarkers.youtubeChannelIds || []).map(normalize).filter(Boolean);
-        const approvedStudioIds = (platformMarkers.youtubeStudioManagerIds || []).map(normalize).filter(Boolean);
         const currentUrl = normalize(window.location.href);
         const isYouTube = currentUrl.includes('youtube.com') || currentUrl.includes('youtu.be') || currentUrl.includes('studio.youtube.com');
         const isTikTok = currentUrl.includes('tiktok.com');
+        const platformConfig = sessionAccessConfig || {};
+        const approvedYouTubeHandles = (platformConfig.youtube?.authorizedHandles || []).map(normalize).filter(Boolean);
+        const approvedChannelIds = (platformConfig.youtube?.authorizedChannelIds || []).map(normalize).filter(Boolean);
+        const approvedStudioIds = (platformConfig.youtube?.authorizedStudioManagerIds || []).map(normalize).filter(Boolean);
+        const approvedTikTokHandles = (platformConfig.tiktok?.authorizedHandles || []).map(normalize).filter(Boolean);
 
         const candidateStrings = [];
         const pushCandidate = (value) => {
@@ -125,9 +233,28 @@ async function tabHasApprovedEnforcerSession(tabId) {
           candidateStrings.push(String(value));
         };
 
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const selectorList = (selectors) => Array.isArray(selectors) ? selectors.filter(Boolean) : [];
+        const findFirstElement = (selectors) => {
+          for (const selector of selectorList(selectors)) {
+            try {
+              const element = document.querySelector(selector);
+              if (element) return element;
+            } catch (error) {
+              // Ignore invalid selectors from remote config.
+            }
+          }
+          return null;
+        };
         const scanSelectors = (selectors) => {
-          selectors.forEach((selector) => {
-            document.querySelectorAll(selector).forEach((el) => {
+          selectorList(selectors).forEach((selector) => {
+            let elements = [];
+            try {
+              elements = Array.from(document.querySelectorAll(selector));
+            } catch (error) {
+              return;
+            }
+            elements.forEach((el) => {
               pushCandidate(el.href || el.getAttribute?.('href'));
               pushCandidate(el.getAttribute?.('title'));
               pushCandidate(el.getAttribute?.('aria-label'));
@@ -145,43 +272,46 @@ async function tabHasApprovedEnforcerSession(tabId) {
 
           pushCandidate(ytcfgGet('DELEGATED_SESSION_ID'));
           pushCandidate(window.ytcfg?.data_?.DELEGATED_SESSION_ID);
-          scanSelectors([
-            'ytd-guide-renderer a[href]',
-            'ytd-mini-guide-renderer a[href]',
-            'ytd-popup-container a[href]',
-            'ytd-masthead a[href]',
-            'tp-yt-paper-dialog a[href]',
-            '#avatar-btn',
-            'button[aria-label*="account" i]',
-            'button[aria-label*="channel" i]'
-          ]);
+          scanSelectors(platformConfig.youtube?.channelHandle);
+          scanSelectors(platformConfig.youtube?.candidateAnchors);
+
+          const hasApprovedHandleBeforeMenu = candidateStrings
+            .map(normalize)
+            .filter(Boolean)
+            .some((candidate) => approvedHandles.some((handle) => candidate.includes(handle)));
+
+          if (!hasApprovedHandleBeforeMenu) {
+            const trigger = findFirstElement(platformConfig.youtube?.accountMenuTrigger);
+            if (trigger) {
+              trigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+              await wait(250);
+              scanSelectors(platformConfig.youtube?.channelHandle);
+              scanSelectors(platformConfig.youtube?.candidateAnchors);
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            }
+          }
         }
 
         if (isTikTok) {
-          scanSelectors([
-            'a[data-e2e="nav-profile"]',
-            '[data-e2e="nav-profile"] a[href]',
-            'header a[href^="/@"]',
-            'nav a[href^="/@"]',
-            '[data-e2e*="profile"] a[href^="/@"]'
-          ]);
+          scanSelectors(platformConfig.tiktok?.accountHandle);
         }
 
         const normalizedCandidates = candidateStrings
           .map(normalize)
           .filter(Boolean);
 
-        const hasApprovedHandle = normalizedCandidates.some((candidate) => approvedHandles.some((handle) => candidate.includes(handle)));
+        const hasApprovedYouTubeHandle = normalizedCandidates.some((candidate) => approvedYouTubeHandles.some((handle) => candidate.includes(handle)));
+        const hasApprovedTikTokHandle = normalizedCandidates.some((candidate) => approvedTikTokHandles.some((handle) => candidate.includes(handle)));
         const hasApprovedYouTubeId = normalizedCandidates.some((candidate) =>
           approvedChannelIds.some((channelId) => candidate.includes(channelId)) ||
           approvedStudioIds.some((managerId) => candidate.includes(managerId))
         );
 
-        if (isYouTube) return hasApprovedHandle || hasApprovedYouTubeId;
-        if (isTikTok) return hasApprovedHandle;
+        if (isYouTube) return hasApprovedYouTubeHandle || hasApprovedYouTubeId;
+        if (isTikTok) return hasApprovedTikTokHandle;
         return false;
       },
-      args: [ENFORCER_PLATFORM_MARKERS]
+      args: [accessConfig]
     });
 
     return !!injected?.result;
@@ -197,14 +327,23 @@ async function canUseEnforcerMode() {
     return true;
   }
 
-  const tabs = await chrome.tabs.query({ currentWindow: true });
+  const accessConfig = getEnforcerAccessConfig();
+  const tabs = await chrome.tabs.query({});
   const candidateTabs = tabs
     .filter((tab) => isEnforcerPlatformTabUrl(tab.url))
-    .sort((left, right) => Number(Boolean(right.active)) - Number(Boolean(left.active)));
+    .sort((left, right) => {
+      const activityDelta = Number(Boolean(right.active)) - Number(Boolean(left.active));
+      if (activityDelta !== 0) return activityDelta;
+
+      const incognitoDelta = Number(Boolean(right.incognito)) - Number(Boolean(left.incognito));
+      if (incognitoDelta !== 0) return incognitoDelta;
+
+      return (right.lastAccessed || 0) - (left.lastAccessed || 0);
+    });
 
   for (const tab of candidateTabs) {
-    if (isApprovedEnforcerPlatformUrl(tab.url)) return true;
-    if (tab.id && await tabHasApprovedEnforcerSession(tab.id)) return true;
+    if (isApprovedEnforcerPlatformUrl(tab.url, accessConfig)) return true;
+    if (tab.id && await tabHasApprovedEnforcerSession(tab.id, accessConfig)) return true;
   }
 
   return false;

@@ -132,6 +132,40 @@ function getColLetter(index) {
   return letter;
 }
 
+function isPlainObject(value) {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeConfigDefaults(defaultValue, remoteValue) {
+  if (remoteValue === undefined) return defaultValue;
+  if (defaultValue === undefined) return remoteValue;
+
+  if (Array.isArray(defaultValue) || Array.isArray(remoteValue)) {
+    return Array.isArray(remoteValue) ? remoteValue : defaultValue;
+  }
+
+  if (isPlainObject(defaultValue) && isPlainObject(remoteValue)) {
+    const merged = { ...defaultValue };
+    Object.keys(remoteValue).forEach((key) => {
+      merged[key] = mergeConfigDefaults(defaultValue[key], remoteValue[key]);
+    });
+    return merged;
+  }
+
+  return remoteValue;
+}
+
+async function loadBundledConfigDefaults() {
+  try {
+    const response = await fetch(chrome.runtime.getURL('events_config.json'));
+    if (!response.ok) return {};
+    return await response.json();
+  } catch (error) {
+    console.warn('Failed to load bundled config defaults.', error);
+    return {};
+  }
+}
+
 export async function logRogueToSheet(token, data, userNotes) {
   const { eventSheetId } = await getOptions();
   const tabName = 'Pirate Websites';
@@ -430,6 +464,7 @@ export async function fetchConfig() {
   if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
 
   const token = await getAuthToken();
+  const bundledDefaults = await loadBundledConfigDefaults();
   
   const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
   const data = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
@@ -441,9 +476,10 @@ export async function fetchConfig() {
   }
 
   const fileId = data.files[0].id;
-  return await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+  const remoteConfig = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` }
   });
+  return mergeConfigDefaults(bundledDefaults, remoteConfig);
 }
 /**
  * Patches the config file using etags to prevent race conditions.
