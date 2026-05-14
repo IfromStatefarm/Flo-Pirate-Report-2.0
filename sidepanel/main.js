@@ -14,11 +14,44 @@ let crawlQueue = [];
 let configData = null;
 const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
 const ENFORCER_ALLOWED_EMAILS = ['social@flosports.tv', 'copyright@flosports.tv', 'copyrights@flosports.tv'];
+const ENFORCER_PLATFORM_MARKERS = Object.freeze({
+  youtubeHandle: '@flosocial4531',
+  youtubeStudioManagerId: 'vcbdhoyo0l5szyprzc85ia',
+  tiktokHandle: '@flosocial3'
+});
 
 function refreshGamificationStats() {
   chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
     renderGamificationStats(stats);
   });
+}
+
+function isApprovedEnforcerPlatformUrl(url) {
+  const normalizedUrl = String(url || '').toLowerCase();
+  if (!normalizedUrl) return false;
+
+  const isApprovedYouTube =
+    (normalizedUrl.includes('youtube.com') || normalizedUrl.includes('youtu.be') || normalizedUrl.includes('studio.youtube.com')) &&
+    (
+      normalizedUrl.includes(ENFORCER_PLATFORM_MARKERS.youtubeHandle) ||
+      normalizedUrl.includes(ENFORCER_PLATFORM_MARKERS.youtubeStudioManagerId)
+    );
+
+  const isApprovedTikTok =
+    normalizedUrl.includes('tiktok.com') &&
+    normalizedUrl.includes(ENFORCER_PLATFORM_MARKERS.tiktokHandle);
+
+  return isApprovedYouTube || isApprovedTikTok;
+}
+
+async function canUseEnforcerMode() {
+  const currentUserEmail = ((await getUserEmail()) || '').toLowerCase();
+  if (ENFORCER_ALLOWED_EMAILS.includes(currentUserEmail)) {
+    return true;
+  }
+
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  return tabs.some((tab) => isApprovedEnforcerPlatformUrl(tab.url));
 }
 
 function setupGoalCelebrationOverlay() {
@@ -637,8 +670,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     alert("Access Denied: Scout mode requires a @flosports.tv email address.");
                     return;
                 }
-                if (!isScout && !ENFORCER_ALLOWED_EMAILS.includes((currentUserEmail || '').toLowerCase())) {
-                    alert("Access Denied: Enforcer mode is restricted to social@flosports.tv, copyright@flosports.tv, or copyrights@flosports.tv.");
+                if (!isScout && !(await canUseEnforcerMode())) {
+                    alert("Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSocial YouTube/TikTok account session.");
                     return;
                 }
                 // -------------------------------------------
@@ -907,9 +940,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
                 // --- BULK ENFORCER ACCESS FILTER ---
-                  const currentUserEmail = await getUserEmail();
-                  if (!ENFORCER_ALLOWED_EMAILS.includes((currentUserEmail || '').toLowerCase())) {
-                      alert("Access Denied: Bulk reporting (Enforcer mode) is restricted to social@flosports.tv, copyright@flosports.tv, or copyrights@flosports.tv.");
+                  if (!(await canUseEnforcerMode())) {
+                      alert("Access Denied: Bulk reporting (Enforcer mode) requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSocial YouTube/TikTok account session.");
                       return;
                   }
                   // ----------------------------------------
