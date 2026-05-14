@@ -13,6 +13,7 @@ let consecutiveFailures = 0;
 let crawlQueue = [];
 let configData = null;
 const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
+const ENFORCER_ALLOWED_EMAILS = ['social@flosports.tv', 'copyright@flosports.tv', 'copyrights@flosports.tv'];
 
 function refreshGamificationStats() {
   chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
@@ -636,8 +637,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     alert("Access Denied: Scout mode requires a @flosports.tv email address.");
                     return;
                 }
-                if (!isScout && currentUserEmail !== 'copyright@flosports.tv') {
-                    alert("Access Denied: Enforcer mode is strictly restricted to copyright@flosports.tv.");
+                if (!isScout && !ENFORCER_ALLOWED_EMAILS.includes((currentUserEmail || '').toLowerCase())) {
+                    alert("Access Denied: Enforcer mode is restricted to social@flosports.tv, copyright@flosports.tv, or copyrights@flosports.tv.");
                     return;
                 }
                 // -------------------------------------------
@@ -907,8 +908,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
                 // --- BULK ENFORCER ACCESS FILTER ---
                   const currentUserEmail = await getUserEmail();
-                  if (currentUserEmail !== 'copyright@flosports.tv') {
-                      alert("Access Denied: Bulk reporting (Enforcer mode) is restricted to copyright@flosports.tv.");
+                  if (!ENFORCER_ALLOWED_EMAILS.includes((currentUserEmail || '').toLowerCase())) {
+                      alert("Access Denied: Bulk reporting (Enforcer mode) is restricted to social@flosports.tv, copyright@flosports.tv, or copyrights@flosports.tv.");
                       return;
                   }
                   // ----------------------------------------
