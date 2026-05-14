@@ -35,6 +35,22 @@ const ENFORCER_PLATFORM_MARKERS = Object.freeze({
     '@flodragracing',
     '@flosports'
   ],
+  youtubeChannelIds: [
+    'uci1khgc-guvaoej1qpy7sba',
+    'ucjemiyjzlelf1xmfuzemzq',
+    'ucjl8uhcmj3gfmtde5_miggg',
+    'uc3mj0nm-7groyzuqgo-lhmq',
+    'ucjfcsyefs4g-rjhxzoba9ng',
+    'ucbcjdshcwmyzvyofmqfot8q',
+    'ucanzxt5pmv8phtmsnavn7qg',
+    'ucx7mxflg3dxdjtzi5mjriow',
+    'ucngvn3lc9pnoovjsq9x-ldq',
+    'ucrroh-g-vdcl57u-agy3ymq',
+    'uc80xbt9erxjjdlvmter1toq',
+    'ucj8-bad2gi7cn4zuans8qjg',
+    'uc4qlqyxfiebf-xuxrhrbjfg',
+    'ucfjgrug4y7t3zf6fy38mauw'
+  ],
   youtubeStudioManagerIds: [
     'vcbdhoyo0l5szyprzc85ia',
     'an9wotyzuy413s3j75rs0a'
@@ -54,17 +70,125 @@ function isApprovedEnforcerPlatformUrl(url) {
   if (!normalizedUrl) return false;
 
   const hasApprovedHandle = ENFORCER_PLATFORM_MARKERS.accountHandles.some((handle) => normalizedUrl.includes(handle));
+  const hasApprovedChannelId = ENFORCER_PLATFORM_MARKERS.youtubeChannelIds.some((channelId) => normalizedUrl.includes(channelId));
   const hasApprovedStudioId = ENFORCER_PLATFORM_MARKERS.youtubeStudioManagerIds.some((managerId) => normalizedUrl.includes(managerId));
 
   const isApprovedYouTube =
     (normalizedUrl.includes('youtube.com') || normalizedUrl.includes('youtu.be') || normalizedUrl.includes('studio.youtube.com')) &&
-    (hasApprovedHandle || hasApprovedStudioId);
+    (hasApprovedHandle || hasApprovedChannelId || hasApprovedStudioId);
 
   const isApprovedTikTok =
     normalizedUrl.includes('tiktok.com') &&
     hasApprovedHandle;
 
   return isApprovedYouTube || isApprovedTikTok;
+}
+
+function isEnforcerPlatformTabUrl(url) {
+  const normalizedUrl = String(url || '').toLowerCase();
+  return normalizedUrl.includes('youtube.com') ||
+    normalizedUrl.includes('youtu.be') ||
+    normalizedUrl.includes('studio.youtube.com') ||
+    normalizedUrl.includes('tiktok.com');
+}
+
+async function tabHasApprovedEnforcerSession(tabId) {
+  try {
+    const [injected] = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: false },
+      func: (platformMarkers) => {
+        const normalize = (value) => String(value || '').trim().toLowerCase();
+        const approvedHandles = (platformMarkers.accountHandles || []).map(normalize).filter(Boolean);
+        const approvedChannelIds = (platformMarkers.youtubeChannelIds || []).map(normalize).filter(Boolean);
+        const approvedStudioIds = (platformMarkers.youtubeStudioManagerIds || []).map(normalize).filter(Boolean);
+        const currentUrl = normalize(window.location.href);
+        const isYouTube = currentUrl.includes('youtube.com') || currentUrl.includes('youtu.be') || currentUrl.includes('studio.youtube.com');
+        const isTikTok = currentUrl.includes('tiktok.com');
+
+        const candidateStrings = [];
+        const pushCandidate = (value) => {
+          if (value == null) return;
+          if (Array.isArray(value)) {
+            value.forEach(pushCandidate);
+            return;
+          }
+
+          if (typeof value === 'object') {
+            try {
+              candidateStrings.push(JSON.stringify(value));
+            } catch (error) {
+              // Ignore unserializable values from page globals.
+            }
+            return;
+          }
+
+          candidateStrings.push(String(value));
+        };
+
+        const scanSelectors = (selectors) => {
+          selectors.forEach((selector) => {
+            document.querySelectorAll(selector).forEach((el) => {
+              pushCandidate(el.href || el.getAttribute?.('href'));
+              pushCandidate(el.getAttribute?.('title'));
+              pushCandidate(el.getAttribute?.('aria-label'));
+              pushCandidate(el.getAttribute?.('alt'));
+              pushCandidate(el.dataset);
+              pushCandidate(el.textContent?.trim());
+            });
+          });
+        };
+
+        if (isYouTube) {
+          const ytcfgGet = typeof window.ytcfg?.get === 'function' ? (key) => window.ytcfg.get(key) : () => undefined;
+          const isLoggedIn = Boolean(ytcfgGet('LOGGED_IN') ?? window.ytcfg?.data_?.LOGGED_IN);
+          if (!isLoggedIn) return false;
+
+          pushCandidate(ytcfgGet('DELEGATED_SESSION_ID'));
+          pushCandidate(window.ytcfg?.data_?.DELEGATED_SESSION_ID);
+          scanSelectors([
+            'ytd-guide-renderer a[href]',
+            'ytd-mini-guide-renderer a[href]',
+            'ytd-popup-container a[href]',
+            'ytd-masthead a[href]',
+            'tp-yt-paper-dialog a[href]',
+            '#avatar-btn',
+            'button[aria-label*="account" i]',
+            'button[aria-label*="channel" i]'
+          ]);
+        }
+
+        if (isTikTok) {
+          scanSelectors([
+            'a[data-e2e="nav-profile"]',
+            '[data-e2e="nav-profile"] a[href]',
+            'header a[href^="/@"]',
+            'nav a[href^="/@"]',
+            '[data-e2e*="profile"] a[href^="/@"]'
+          ]);
+        }
+
+        const normalizedCandidates = candidateStrings
+          .map(normalize)
+          .filter(Boolean);
+
+        const hasApprovedHandle = normalizedCandidates.some((candidate) => approvedHandles.some((handle) => candidate.includes(handle)));
+        const hasApprovedYouTubeId = normalizedCandidates.some((candidate) =>
+          approvedChannelIds.some((channelId) => candidate.includes(channelId)) ||
+          approvedStudioIds.some((managerId) => candidate.includes(managerId))
+        );
+
+        if (isYouTube) return hasApprovedHandle || hasApprovedYouTubeId;
+        if (isTikTok) return hasApprovedHandle;
+        return false;
+      },
+      args: [ENFORCER_PLATFORM_MARKERS]
+    });
+
+    return !!injected?.result;
+  } catch (error) {
+    console.warn('Unable to inspect platform session for enforcer access.', error);
+    return false;
+  }
 }
 
 async function canUseEnforcerMode() {
@@ -74,7 +198,16 @@ async function canUseEnforcerMode() {
   }
 
   const tabs = await chrome.tabs.query({ currentWindow: true });
-  return tabs.some((tab) => isApprovedEnforcerPlatformUrl(tab.url));
+  const candidateTabs = tabs
+    .filter((tab) => isEnforcerPlatformTabUrl(tab.url))
+    .sort((left, right) => Number(Boolean(right.active)) - Number(Boolean(left.active)));
+
+  for (const tab of candidateTabs) {
+    if (isApprovedEnforcerPlatformUrl(tab.url)) return true;
+    if (tab.id && await tabHasApprovedEnforcerSession(tab.id)) return true;
+  }
+
+  return false;
 }
 
 function setupGoalCelebrationOverlay() {
