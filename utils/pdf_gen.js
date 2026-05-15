@@ -1,36 +1,39 @@
 // utils/pdf_gen.js
 import * as jsPDFModule from '../lib/jspdf.umd.min.js';
 
-export async function generatePDF(data) {
-  try {
-    // Exhaustive Constructor Resolution for UMD/ESM compatibility
+// --- HELPER: Resolve jsPDF Constructor ---
+function getJsPdfConstructor() {
     let jsPDF = null;
     
-    // 1. Check standard module exports
     if (jsPDFModule && typeof jsPDFModule.jsPDF === 'function') {
         jsPDF = jsPDFModule.jsPDF;
     } else if (jsPDFModule && typeof jsPDFModule.default === 'function') {
         jsPDF = jsPDFModule.default;
     } else if (jsPDFModule && jsPDFModule.default && typeof jsPDFModule.default.jsPDF === 'function') {
         jsPDF = jsPDFModule.default.jsPDF;
-    } 
-    // 2. Check global scopes (where UMD scripts attach in MV3 Service Workers)
-    else if (typeof globalThis !== 'undefined' && globalThis.jspdf && typeof globalThis.jspdf.jsPDF === 'function') {
+    } else if (typeof globalThis !== 'undefined' && globalThis.jspdf && typeof globalThis.jspdf.jsPDF === 'function') {
         jsPDF = globalThis.jspdf.jsPDF;
     } else if (typeof self !== 'undefined' && self.jspdf && typeof self.jspdf.jsPDF === 'function') {
         jsPDF = self.jspdf.jsPDF;
+    } else if (typeof window !== 'undefined' && window.jspdf && typeof window.jspdf.jsPDF === 'function') {
+        jsPDF = window.jspdf.jsPDF;
     } else if (typeof globalThis !== 'undefined' && typeof globalThis.jsPDF === 'function') {
         jsPDF = globalThis.jsPDF;
     } else if (typeof self !== 'undefined' && typeof self.jsPDF === 'function') {
         jsPDF = self.jsPDF;
     }
 
-    // Sanity check: Ensure it's a function (constructor)
     if (typeof jsPDF !== 'function') {
         console.error("jsPDF Import Debug - Module:", jsPDFModule, "Global:", typeof globalThis !== 'undefined' ? globalThis.jspdf : null); 
         throw new Error("jsPDF library not loaded correctly - Constructor not found");
     }
+    return jsPDF;
+}
 
+export async function generatePDF(data) {
+  try {
+    const jsPDF = getJsPdfConstructor();
+    
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -275,7 +278,7 @@ export async function generatePDF(data) {
     copyright@flosports.tv
     `;
     
-    return new Blob([textContent], { type: 'text/plain' });
+     return new Blob([textContent], { type: 'text/plain' });
   }
 }
 
@@ -290,18 +293,7 @@ export async function generateIntelligencePDF(stats) {
     const defaultStats = { kpi: true, leaderboard: true, timeline: true, platform: true, targets: true, team: true, events: true, appendix: true };
     const config = syncData.briefing_config || defaultStats;
 
-    let jsPDF = null;
-    if (typeof globalThis !== 'undefined' && globalThis.jspdf && typeof globalThis.jspdf.jsPDF === 'function') {
-        jsPDF = globalThis.jspdf.jsPDF;
-    } else if (typeof window !== 'undefined' && window.jspdf && typeof window.jspdf.jsPDF === 'function') {
-        jsPDF = window.jspdf.jsPDF;
-    } else if (jsPDFModule && typeof jsPDFModule.jsPDF === 'function') {
-        jsPDF = jsPDFModule.jsPDF;
-    } else if (jsPDFModule && typeof jsPDFModule.default === 'function') {
-        jsPDF = jsPDFModule.default;
-    } else {
-        throw new Error("jsPDF library not loaded correctly for Intelligence Report");
-    }
+    const jsPDF = getJsPdfConstructor();
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
