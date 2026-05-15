@@ -73,6 +73,7 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
     const scoutCounts = {};
     const enforcerCounts = {};
     const handleStats = {};
+    const platformPirates = {};
     const eventCounts = {};
     const eventViewStats = {};
     const platformStats = {};
@@ -114,19 +115,23 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
                 }, 0);
             }
             
-            if (rowViews === 0 && urlCount > 0) {
+             if (rowViews === 0 && urlCount > 0) {
                 rowViews = urlCount * 1500; 
             }
             
             totalEstimatedViews += rowViews;
+            
+            // Single declaration for date string
+            const dateStr = new Date(row[0]).toLocaleDateString("en-US", { year: 'numeric', month: 'numeric', day: 'numeric' });
 
             if (scout) {
                 if (!userStats[scout]) {
-                    userStats[scout] = { scouted: 0, enforced: 0, urls: 0, resolved: 0, total: 0 };
+                    userStats[scout] = { scouted: 0, enforced: 0, urls: 0, resolved: 0, total: 0, activeDays: new Set(), wDaysSum: 0, wCalcCount: 0, uwDaysSum: 0, uwCalcCount: 0 };
                 }
                 userStats[scout].total++;
                 userStats[scout].scouted += urlCount;
                 userStats[scout].urls += urlCount;
+                userStats[scout].activeDays.add(dateStr);
                 if (isResolved) {
                     userStats[scout].resolved++;
                 }
@@ -134,9 +139,10 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
             
             if (enforcer) {
                 if (!userStats[enforcer]) {
-                    userStats[enforcer] = { scouted: 0, enforced: 0, urls: 0, resolved: 0, total: 0 };
+                    userStats[enforcer] = { scouted: 0, enforced: 0, urls: 0, resolved: 0, total: 0, activeDays: new Set(), wDaysSum: 0, wCalcCount: 0, uwDaysSum: 0, uwCalcCount: 0 };
                 }
                 userStats[enforcer].enforced += urlCount;
+                userStats[enforcer].activeDays.add(dateStr);
                 if (scout !== enforcer) {
                     userStats[enforcer].total++;
                     userStats[enforcer].urls += urlCount;
@@ -188,6 +194,15 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
                     globalWeightedDaysSum += burndownDays;
                     globalResolvedCalcCount++;
                 }
+
+                if (scout) {
+                    if (isResolvedCalc) { userStats[scout].wDaysSum += burndownDays; userStats[scout].wCalcCount++; }
+                    else { userStats[scout].uwDaysSum += burndownDays; userStats[scout].uwCalcCount++; }
+                }
+                if (enforcer && scout !== enforcer) {
+                    if (isResolvedCalc) { userStats[enforcer].wDaysSum += burndownDays; userStats[enforcer].wCalcCount++; }
+                    else { userStats[enforcer].uwDaysSum += burndownDays; userStats[enforcer].uwCalcCount++; }
+                }
             }
 
             if (!handleStats[handle]) {
@@ -196,7 +211,7 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
             handleStats[handle].reports += 1;
             handleStats[handle].urls += urlCount;
             
-            if (platform && platform.toLowerCase() !== "unknown") {
+              if (platform && platform.toLowerCase() !== "unknown") {
                 const cleanPlatform = platform.toUpperCase();
                 handleStats[handle].platforms.add(cleanPlatform);
                 
@@ -205,6 +220,11 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
                 }
                 platformStats[cleanPlatform].reports += 1;
                 platformStats[cleanPlatform].urls += urlCount;
+
+                if (!platformPirates[cleanPlatform]) platformPirates[cleanPlatform] = {};
+                if (!platformPirates[cleanPlatform][handle]) platformPirates[cleanPlatform][handle] = { urls: 0, reports: 0 };
+                platformPirates[cleanPlatform][handle].urls += urlCount;
+                platformPirates[cleanPlatform][handle].reports += 1;
             }  
 
             const eventName = (row[2] || "Unknown Event").trim();
@@ -215,7 +235,6 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
             }
             eventViewStats[eventName] += rowViews;
 
-            const dateStr = new Date(row[0]).toLocaleDateString("en-US", { year: 'numeric', month: 'numeric', day: 'numeric' });
             if (!timelineData[dateStr]) {
                 timelineData[dateStr] = { count: 0, resolved: 0 };
             }
@@ -224,7 +243,7 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
                 timelineData[dateStr].resolved += 1;
             }
         }
-    }
+    } 
 
     const sortObj = (obj, key) => {
         return Object.keys(obj).map(k => {
@@ -242,19 +261,24 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
         }
     });
 
-    const teamStats = Object.keys(userStats).map(name => {
+   const teamStats = Object.keys(userStats).map(name => {
         const stats = userStats[name];
         const resRate = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) + '%' : '0%';
         const displayName = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         
+        const wBurndown = stats.wCalcCount > 0 ? (stats.wDaysSum / stats.wCalcCount).toFixed(1) : 'N/A';
+        const uwBurndown = stats.uwCalcCount > 0 ? (stats.uwDaysSum / stats.uwCalcCount).toFixed(1) : 'N/A';
+
         return { 
             name: displayName, 
             urls: stats.urls, 
             scouted: stats.scouted, 
             enforced: stats.enforced, 
+            resolvedNum: stats.resolved,
             resolvedRate: resRate, 
-            wBurndown: 'N/A', 
-            uwBurndown: 'N/A' 
+            wBurndown: wBurndown, 
+            uwBurndown: uwBurndown,
+            daysReported: stats.activeDays.size
         };
     }).sort((a, b) => b.urls - a.urls);
 
@@ -271,9 +295,18 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
             handle: k,
             reports: handleStats[k].reports,
             urls: handleStats[k].urls,
-            platforms: handleStats[k].platforms.size > 0 ? Array.from(handleStats[k].platforms).join(', ') : "Unknown"
+             platforms: handleStats[k].platforms.size > 0 ? Array.from(handleStats[k].platforms).join(', ') : "Unknown"
         };
-    }).sort((a, b) => b.urls - a.urls).slice(0, 5);
+    }).sort((a, b) => b.urls - a.urls);
+
+    const topPiratesByPlatform = {};
+    Object.keys(platformPirates).forEach(plat => {
+        topPiratesByPlatform[plat] = Object.keys(platformPirates[plat]).map(h => ({
+            handle: h,
+            urls: platformPirates[plat][h].urls,
+            reports: platformPirates[plat][h].reports
+        })).sort((a, b) => b.urls - a.urls);
+    });
 
     const eventViews = Object.keys(eventViewStats).map(k => {
         return {
@@ -286,20 +319,26 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
     const globalWeightedBurndown = globalResolvedCalcCount > 0 ? (globalWeightedDaysSum / globalResolvedCalcCount).toFixed(1) : 'N/A';
     const globalUnweightedBurndown = globalTotalCalcCount > 0 ? (globalUnweightedDaysSum / globalTotalCalcCount).toFixed(1) : 'N/A';
     const finalResolvedRate = totalReported > 0 ? Math.round((totalResolved / totalReported) * 100) + '%' : '0%';
+    const globalUnweightedResolved = totalResolved - globalResolvedCalcCount;
 
     return {
         totalReported: normalize2k(totalReported),
+        rawReportedNum: totalReported,
         totalResolved: normalize2k(totalResolved),
+        rawResolvedNum: totalResolved,
+        globalWeightedResolvedNum: globalResolvedCalcCount,
+        globalUnweightedResolvedNum: Math.max(0, globalUnweightedResolved),
         totalUrls: normalize2k(totalUrls),
         totalEstimatedViews: normalize2k(totalEstimatedViews),
         resolvedRate: finalResolvedRate,
         globalWeightedBurndown: globalWeightedBurndown,
         globalUnweightedBurndown: globalUnweightedBurndown,
         platformTotals: platformTotals,
-        topScouts: sortObj(scoutCounts).slice(0, 3),
-        topEnforcers: sortObj(enforcerCounts).slice(0, 3),
+        topScouts: sortObj(scoutCounts).slice(0, 5),
+        topEnforcers: sortObj(enforcerCounts).slice(0, 5),
         topPirates: topPirates,
-        topEvents: sortObj(eventCounts).slice(0, 3),
+        topPiratesByPlatform: topPiratesByPlatform,
+        topEvents: sortObj(eventCounts).slice(0, 10),
         eventViews: eventViews,
         timelineData: timelineData,
         teamStats: teamStats,

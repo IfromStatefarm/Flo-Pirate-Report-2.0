@@ -245,19 +245,76 @@
   </div>
   <!-- Briefing Settings Modal -->
   <div id="briefing-modal" class="easter-egg-overlay" style="align-items: center;">
-    <div style="background: white; padding: 30px; border-radius: 12px; width: 400px; color: #333; border: 2px solid var(--flo-red);">
+    <div style="background: white; padding: 30px; border-radius: 12px; width: 450px; color: #333; border: 2px solid var(--flo-red);">
       <h2 style="margin-top: 0; color: var(--flo-red);">Briefing Configuration</h2>
       <p class="input-desc">Select which modules to include in your reports. Future stats will automatically appear here.</p>
       
-      <div id="briefing-toggles" style="display: flex; flex-direction: column; gap: 10px; margin: 20px 0;">
-        <label><input type="checkbox" id="stat_kpi" checked> Enforcement Overview (KPIs)</label>
-        <label><input type="checkbox" id="stat_leaderboard" checked> Leaderboards & MVP</label>
-        <label><input type="checkbox" id="stat_timeline" checked> Reports Per Day (Timeline)</label>
-        <label><input type="checkbox" id="stat_platform" checked> Platform Breakdown</label>
-        <label><input type="checkbox" id="stat_targets" checked> High-Value Targets</label>
-        <label><input type="checkbox" id="stat_team" checked> Team Performance</label>
-        <label><input type="checkbox" id="stat_events" checked> Event View Analysis</label>
-        <label><input type="checkbox" id="stat_appendix" checked> Appendix (Raw Data)</label>
+      <div id="briefing-toggles" style="display: flex; flex-direction: column; gap: 10px; margin: 20px 0; max-height: 50vh; overflow-y: auto; padding-right: 10px;">
+        <strong style="color: var(--flo-red); margin-top: 5px;">Enforcement Overview (KPIs)</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_kpi_total_takedowns"> Total Takedowns</label>
+          <label><input type="checkbox" id="stat_kpi_takedowns_platform"> Takedowns by Platform</label>
+          <label><input type="checkbox" id="stat_kpi_total_urls"> Total URLs</label>
+          <label><input type="checkbox" id="stat_kpi_urls_platform"> Total URLs by Platform</label>
+          <label><input type="checkbox" id="stat_kpi_resolved_num_unweighted"> Resolved Rate (Number Unweighted)</label>
+          <label><input type="checkbox" id="stat_kpi_resolved_num_weighted"> Resolved Rate (Number Weighted)</label>
+          <label><input type="checkbox" id="stat_kpi_resolved_pct_unweighted"> Resolved Rate (% Unweighted)</label>
+          <label><input type="checkbox" id="stat_kpi_resolved_pct_weighted"> Resolved Rate (% Weighted)</label>
+          <label><input type="checkbox" id="stat_kpi_burndown_weighted"> Avg Burndown (Weighted)</label>
+          <label><input type="checkbox" id="stat_kpi_burndown_unweighted"> Avg Burndown (Unweighted)</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Leaderboards & MVP</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_leaderboard_mvp"> MVP</label>
+          <label><input type="checkbox" id="stat_leaderboard_top_3"> Top 3</label>
+          <label><input type="checkbox" id="stat_leaderboard_top_5"> Top 5</label>
+          <label><input type="checkbox" id="stat_leaderboard_last_3"> Last 3</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Report Timeline & Platforms</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_timeline_report"> Report Timeline</label>
+          <label><input type="checkbox" id="stat_platform_breakdown"> Platform Breakdown</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">High-Value Targets</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_targets_top_1"> Top Pirate</label>
+          <label><input type="checkbox" id="stat_targets_top_5"> Top 5 Pirates</label>
+          <label><input type="checkbox" id="stat_targets_top_platform_1"> Top Pirate for Each Platform</label>
+          <label><input type="checkbox" id="stat_targets_top_platform_3"> Top 3 Pirates Each Platform</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Team Performance Rankings</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_team_col_scout"> Scout</label>
+          <label><input type="checkbox" id="stat_team_col_enforced"> Enforced</label>
+          <label><input type="checkbox" id="stat_team_col_urls_resolved_num"> URLs Resolved (Number)</label>
+          <label><input type="checkbox" id="stat_team_col_urls_resolved_pct"> URLs Resolved (%)</label>
+          <label><input type="checkbox" id="stat_team_col_burndown_rate"> Burndown Rate</label>
+          <label><input type="checkbox" id="stat_team_col_days_reported"> Number of Days Reported Piracy</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Event View Analysis</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_events_top_5"> Top 5</label>
+          <label><input type="checkbox" id="stat_events_top_10"> Top 10</label>
+          <label><input type="checkbox" id="stat_events_top_5_pct"> Top 5%</label>
+          <label><input type="checkbox" id="stat_events_top_10_pct"> Top 10%</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Appendix: Complete Team Performance</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_appx_team_all"> All</label>
+          <label><input type="checkbox" id="stat_appx_team_half"> Half</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Appendix: Complete Event View Analysis</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_appx_events_all"> All</label>
+          <label><input type="checkbox" id="stat_appx_events_half"> Half</label>
+        </div>
       </div>
 
       <div style="display: flex; gap: 10px;">

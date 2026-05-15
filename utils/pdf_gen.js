@@ -290,7 +290,17 @@ export async function generateIntelligencePDF(stats) {
   try {
     // Fetch user briefing configuration
     const syncData = await chrome.storage.sync.get(['briefing_config']);
-    const defaultStats = { kpi: true, leaderboard: true, timeline: true, platform: true, targets: true, team: true, events: true, appendix: true };
+    const defaultStats = {
+        kpi_total_takedowns: true, kpi_takedowns_platform: true, kpi_total_urls: true, kpi_urls_platform: true,
+        kpi_resolved_num_unweighted: true, kpi_resolved_num_weighted: true, kpi_resolved_pct_unweighted: true, kpi_resolved_pct_weighted: true,
+        kpi_burndown_weighted: true, kpi_burndown_unweighted: true,
+        leaderboard_mvp: true, leaderboard_top_3: true, leaderboard_top_5: true, leaderboard_last_3: false,
+        timeline_report: true, platform_breakdown: true,
+        targets_top_1: true, targets_top_5: true, targets_top_platform_1: true, targets_top_platform_3: false,
+        team_col_scout: true, team_col_enforced: true, team_col_urls_resolved_num: true, team_col_urls_resolved_pct: true, team_col_burndown_rate: true, team_col_days_reported: true,
+        events_top_5: true, events_top_10: true, events_top_5_pct: false, events_top_10_pct: false,
+        appx_team_all: true, appx_team_half: false, appx_events_all: true, appx_events_half: false
+    };
     const config = syncData.briefing_config || defaultStats;
 
     const jsPDF = getJsPdfConstructor();
@@ -341,7 +351,19 @@ export async function generateIntelligencePDF(stats) {
     const tocEntries = [];
 
     // --- 2. KPI DASHBOARD (3-Column Grid) ---
-    if (config.kpi) {
+    const kpis = [];
+    if (config.kpi_total_takedowns) kpis.push({ label: "TOTAL TAKEDOWNS", value: stats.totalReported || "0", desc: "Confirmed Reports Filed" });
+    if (config.kpi_total_urls) kpis.push({ label: "TOTAL URLS", value: stats.totalUrls || "0", desc: "Pirated Links Processed" });
+    if (config.kpi_resolved_pct_unweighted || config.kpi_resolved_pct_weighted) kpis.push({ label: "RESOLVED RATE", value: stats.resolvedRate || "0%", desc: "Successful Report Takedown %" });
+    if (config.kpi_burndown_weighted || config.kpi_burndown_unweighted) {
+        kpis.push({ 
+            label: "AVG BURNDOWN", 
+            value: config.kpi_burndown_weighted ? `${stats.globalWeightedBurndown}d` : `${stats.globalUnweightedBurndown}d`, 
+            desc: config.kpi_burndown_unweighted ? `Unw: ${stats.globalUnweightedBurndown}d` : `Wgt: ${stats.globalWeightedBurndown}d` 
+        });
+    }
+
+    if (kpis.length > 0) {
         ensureSpace(40);
         tocEntries.push({ title: "Enforcement Overview", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
         doc.setTextColor(17, 24, 39);
@@ -351,13 +373,7 @@ export async function generateIntelligencePDF(stats) {
         y += 10;
 
         const gap = 5;
-        const boxWidth = (maxTextWidth - (gap * 3)) / 4;
-        const kpis = [
-          { label: "TOTAL TAKEDOWNS", value: stats.totalReported || "0", desc: "Confirmed Reports Filed" },
-          { label: "TOTAL URLS", value: stats.totalUrls || "0", desc: "Pirated Links Processed" },
-          { label: "RESOLVED RATE", value: stats.resolvedRate || "0%", desc: "Successful Report Takedown %" },
-          { label: "AVG BURNDOWN", value: `${stats.globalWeightedBurndown}d`, desc: `Unweighted: ${stats.globalUnweightedBurndown}d` }
-        ];
+        const boxWidth = (maxTextWidth - (gap * (kpis.length - 1))) / kpis.length;
 
         kpis.forEach((kpi, i) => {
           const boxX = margin + (i * (boxWidth + gap));
@@ -383,32 +399,41 @@ export async function generateIntelligencePDF(stats) {
     }
 
     // --- 3. LEADERBOARDS & MVP ---
-    if (config.leaderboard) {
+    if (config.leaderboard_mvp || config.leaderboard_top_3 || config.leaderboard_top_5) {
         ensureSpace(50);
         tocEntries.push({ title: "Leaderboards & MVP", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-        doc.setFillColor(254, 243, 199); 
-        doc.setDrawColor(251, 191, 36); 
-        doc.rect(margin, y, maxTextWidth, 16, 'FD');
+        
+        if (config.leaderboard_mvp) {
+            doc.setFillColor(254, 243, 199); 
+            doc.setDrawColor(251, 191, 36); 
+            doc.rect(margin, y, maxTextWidth, 16, 'FD');
 
-        doc.setTextColor(146, 64, 14);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        const mvpName = stats.mvp ? stats.mvp.name.toUpperCase() : "N/A";
-        const mvpTotal = stats.mvp ? stats.mvp.total : 0;
-        doc.text(`SQUAD MVP: ${mvpName} (${mvpTotal} Confirmed Actions)`, pageWidth / 2, y + 10, { align: "center" });
-        y += 28;
+            doc.setTextColor(146, 64, 14);
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            const mvpName = stats.mvp ? stats.mvp.name.toUpperCase() : "N/A";
+            const mvpTotal = stats.mvp ? stats.mvp.total : 0;
+            doc.text(`SQUAD MVP: ${mvpName} (${mvpTotal} Confirmed Actions)`, pageWidth / 2, y + 10, { align: "center" });
+            y += 28;
+        }
 
-        doc.setTextColor(17, 24, 39);
-        doc.setFontSize(12);
-        doc.text("ELITE SQUAD: SCOUTS", margin, y);
-        doc.text("ELITE SQUAD: ENFORCERS", pageWidth / 2 + 5, y);
-        y += 8;
+        // Determine list length based on checkboxes
+        let listLength = 0;
+        if (config.leaderboard_top_5) listLength = 5;
+        else if (config.leaderboard_top_3) listLength = 3;
 
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        for (let i = 0; i < 3; i++) {
-          const scout = stats.topScouts?.[i] || { name: "-", count: 0 };
-          const enforcer = stats.topEnforcers?.[i] || { name: "-", count: 0 };
+        if (listLength > 0) {
+            doc.setTextColor(17, 24, 39);
+            doc.setFontSize(12);
+            doc.text("ELITE SQUAD: SCOUTS", margin, y);
+            doc.text("ELITE SQUAD: ENFORCERS", pageWidth / 2 + 5, y);
+            y += 8;
+
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            for (let i = 0; i < listLength; i++) {
+              const scout = stats.topScouts?.[i] || { name: "-", count: 0 };
+              const enforcer = stats.topEnforcers?.[i] || { name: "-", count: 0 };
           
           const cap = (n) => n && n !== "-" ? n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : n;
           const sName = cap(scout.name);
@@ -425,10 +450,12 @@ export async function generateIntelligencePDF(stats) {
           y += 8;
         }
         y += 10;
+        }
     }
 
+
     // --- 4. VECTOR GRAPHICS: TIMELINE ---
-    if (config.timeline) {
+    if (config.timeline_report) {
         ensureSpace(70);
         tocEntries.push({ title: "Reports Per Day (Timeline)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
         doc.setFontSize(12);
@@ -537,12 +564,12 @@ export async function generateIntelligencePDF(stats) {
             doc.setTextColor(156, 163, 175);
             doc.setFont("helvetica", "normal");
             doc.text("Insufficient data to plot timeline.", pageWidth / 2, y + (gHeight / 2), { align: "center" });
-        }
+         }
         y += gHeight + 15;
     }
 
     // --- 4.5 PLATFORM BREAKDOWN ---
-    if (config.platform) {
+     if (config.platform_breakdown) {
         ensureSpace(30);
         doc.setTextColor(17, 24, 39);
         doc.setFontSize(12);
@@ -585,9 +612,9 @@ export async function generateIntelligencePDF(stats) {
     }
 
     // --- 5. TARGET LIST (TOP 5 PIRATES) ---
-    if (config.targets) {
+    if (config.targets_top_1 || config.targets_top_5) {
         ensureSpace(40);
-        tocEntries.push({ title: "High-Value Targets (Top 5 Pirates)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        tocEntries.push({ title: "High-Value Targets", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
         doc.setTextColor(17, 24, 39);
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
@@ -603,11 +630,13 @@ export async function generateIntelligencePDF(stats) {
         doc.text("URLS HIT", margin + 115, y + 6);
         doc.text("EST. VIEWS", margin + 150, y + 6);
         
-        y += 12;
+         y += 12;
+
+        let targetCount = config.targets_top_5 ? 5 : 1;
 
         doc.setFont("helvetica", "normal");
         if (stats.topPirates && stats.topPirates.length > 0) {
-            stats.topPirates.forEach((pirate, i) => {
+            stats.topPirates.slice(0, targetCount).forEach((pirate, i) => {
                 ensureSpace(10);
                 
                 let displayHandle = `@${pirate.handle}`;

@@ -19,12 +19,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('beta_opt_in').checked = !!items.beta_opt_in;
     document.getElementById('report_mode').value = items.report_mode || 'scout';
 
-    // Load Briefing Stats Config
-    const defaultStats = { kpi: true, leaderboard: true, timeline: true, platform: true, targets: true, team: true, events: true, appendix: true };
+    // Load Briefing Stats Config dynamically based on available checkboxes
+    const defaultStats = {
+        kpi_total_takedowns: true, kpi_takedowns_platform: true, kpi_total_urls: true, kpi_urls_platform: true,
+        kpi_resolved_num_unweighted: true, kpi_resolved_num_weighted: true, kpi_resolved_pct_unweighted: true, kpi_resolved_pct_weighted: true,
+        kpi_burndown_weighted: true, kpi_burndown_unweighted: true,
+        leaderboard_mvp: true, leaderboard_top_3: true, leaderboard_top_5: true, leaderboard_last_3: false,
+        timeline_report: true, platform_breakdown: true,
+        targets_top_1: true, targets_top_5: true, targets_top_platform_1: true, targets_top_platform_3: false,
+        team_col_scout: true, team_col_enforced: true, team_col_urls_resolved_num: true, team_col_urls_resolved_pct: true, team_col_burndown_rate: true, team_col_days_reported: true,
+        events_top_5: true, events_top_10: true, events_top_5_pct: false, events_top_10_pct: false,
+        appx_team_all: true, appx_team_half: false, appx_events_all: true, appx_events_half: false
+    };
     const briefingConfig = items.briefing_config || defaultStats;
-    ['kpi', 'leaderboard', 'timeline', 'platform', 'targets', 'team', 'events', 'appendix'].forEach(stat => {
-        const el = document.getElementById(`stat_${stat}`);
-        if (el) el.checked = briefingConfig[stat] !== false; // Default to true if undefined
+    
+    document.querySelectorAll('#briefing-toggles input[type="checkbox"]').forEach(el => {
+        const key = el.id.replace('stat_', '');
+        el.checked = briefingConfig[key] !== false; // Default to true if undefined
     });
   });
 
@@ -93,10 +104,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.getElementById('save_briefing_stats')?.addEventListener('click', () => {
       const newConfig = {};
-      ['kpi', 'leaderboard', 'timeline', 'platform', 'targets', 'team', 'events', 'appendix'].forEach(stat => {
-          const el = document.getElementById(`stat_${stat}`);
-          if (el) newConfig[stat] = el.checked;
+      
+      // Dynamically select all checkboxes within the briefing toggles container and save state
+      document.querySelectorAll('#briefing-toggles input[type="checkbox"]').forEach(el => {
+          const key = el.id.replace('stat_', ''); 
+          newConfig[key] = el.checked;
       });
+      
       chrome.storage.sync.set({ briefing_config: newConfig }, () => {
           briefingModal.style.display = 'none';
           setClippyState('smirk');
