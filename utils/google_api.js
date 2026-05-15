@@ -1,4 +1,5 @@
 import { getAuthToken } from './auth.js';
+import { aggregateIntelligenceData } from './intel_aggregator.js';
 
 const WHITELIST_TAB = 'Handles White List';
 const TARGET_TAB_NAME = 'Report Submissions and status'; // Explicitly target your tab
@@ -1068,13 +1069,12 @@ export async function fetchLeaderboardData(userEmail) {
 // 9. TACTICAL INTELLIGENCE REPORTING
 // ==========================================
 
-function normalize2k(val) {
+export function normalize2k(val) {
     if (typeof val !== 'number') return val;
     return val >= 1000 ? (val / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : val.toString();
 }
 
-// --- NEW: Event Consolidation Helpers ---
-function levenshtein(a, b) {
+export function levenshtein(a, b) {
     const matrix = [];
     for (let i = 0; i <= b.length; i++) matrix[i] = [i];
     for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
@@ -1087,7 +1087,7 @@ function levenshtein(a, b) {
     return matrix[b.length][a.length];
 }
 
-function getConsolidatedEventName(rawName, existingNames) {
+export function getConsolidatedEventName(rawName, existingNames) {
     if (rawName === "Unknown Event") return rawName;
     const cleanStr = (s) => s.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
     const extractYear = (s) => { const m = s.match(/\b(20\d{2})\b/); return m ? m[1] : null; };
@@ -1105,22 +1105,9 @@ function getConsolidatedEventName(rawName, existingNames) {
     }
     return rawName;
 }
-// ----------------------------------------
 
-export async function fetchIntelligenceData(startDateStr, endDateStr) {
-    const { reportSheetId } = await getOptions();
-    if (!reportSheetId) return null;
-
-    const token = await getAuthToken();
-    const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
-
-    const range = `'${sheetName}'!A:V`; 
-    const data = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`, { 
-        headers: { Authorization: `Bearer ${token}` } 
-    });
-    
-    const rows = data.values || [];
-    if (rows.length < 2) return null;
+export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
+    if (!rows || rows.length < 2) return null;
 
     // Date filtering (Start and End exact boundaries)
     const cutoffDate = new Date(startDateStr + 'T00:00:00');

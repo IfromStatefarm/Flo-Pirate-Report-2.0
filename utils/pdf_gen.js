@@ -670,10 +670,11 @@ export async function generateIntelligencePDF(stats) {
         doc.rect(margin, y, maxTextWidth, 8, 'F');
         doc.setFontSize(9);
         doc.text("TEAM MEMBER", margin + 2, y + 6);
-        doc.text("SCOUTED", margin + 85, y + 6);
-        doc.text("ENFORCED", margin + 110, y + 6);
-        doc.text("TOTAL URLS", margin + 135, y + 6);
-        doc.text("RESOLVED", margin + 165, y + 6);
+        doc.text("SCOUT", margin + 70, y + 6);
+        doc.text("ENFORCE", margin + 95, y + 6);
+        doc.text("URLS", margin + 120, y + 6);
+        doc.text("RESOLVE", margin + 140, y + 6);
+        doc.text("BURNDOWN", margin + 165, y + 6);
         y += 12;
 
         doc.setFont("helvetica", "normal");
@@ -682,13 +683,14 @@ export async function generateIntelligencePDF(stats) {
                 ensureSpace(10);
                 
                 let displayName = member.name || "Unknown";
-                if (displayName.length > 35) displayName = displayName.substring(0, 32) + "...";
+                if (displayName.length > 30) displayName = displayName.substring(0, 27) + "...";
 
                 doc.text(displayName, margin + 2, y);
-                doc.text(String(member.scouted || 0), margin + 85, y);
-                doc.text(String(member.enforced || 0), margin + 110, y);
-                doc.text(String(member.urls || 0), margin + 135, y);
-                doc.text(String(member.resolvedRate || "0%"), margin + 165, y);
+                doc.text(String(member.scouted || 0), margin + 70, y);
+                doc.text(String(member.enforced || 0), margin + 95, y);
+                doc.text(String(member.urls || 0), margin + 120, y);
+                doc.text(String(member.resolvedRate || "0%"), margin + 140, y);
+                doc.text(`${member.wBurndown}d / ${member.uwBurndown}d`, margin + 165, y);
 
                 doc.setDrawColor(243, 244, 246);
                 doc.line(margin, y + 2, pageWidth - margin, y + 2);
@@ -755,7 +757,7 @@ export async function generateIntelligencePDF(stats) {
         }
     }
 
-    // --- 9 & 10. APPENDIX ---
+     // --- 9 & 10. APPENDIX ---
     if (config.appendix) {
         doc.addPage();
         y = margin + 10;
@@ -772,10 +774,11 @@ export async function generateIntelligencePDF(stats) {
         doc.setTextColor(17, 24, 39);
         doc.setFontSize(9);
         doc.text("TEAM MEMBER", margin + 2, y + 6);
-        doc.text("SCOUTED", margin + 85, y + 6);
-        doc.text("ENFORCED", margin + 110, y + 6);
-        doc.text("TOTAL URLS", margin + 135, y + 6);
-        doc.text("RESOLVED", margin + 165, y + 6);
+        doc.text("SCOUT", margin + 70, y + 6);
+        doc.text("ENFORCE", margin + 95, y + 6);
+        doc.text("URLS", margin + 120, y + 6);
+        doc.text("RESOLVE", margin + 140, y + 6);
+        doc.text("BURNDOWN (W / UW)", margin + 165, y + 6);
         y += 12;
 
         doc.setFont("helvetica", "normal");
@@ -783,13 +786,14 @@ export async function generateIntelligencePDF(stats) {
             stats.teamStats.forEach((member) => {
                 ensureSpace(10);
                 let displayName = member.name || "Unknown";
-                if (displayName.length > 35) displayName = displayName.substring(0, 32) + "...";
+                if (displayName.length > 30) displayName = displayName.substring(0, 27) + "...";
 
                 doc.text(displayName, margin + 2, y);
-                doc.text(String(member.scouted || 0), margin + 85, y);
-                doc.text(String(member.enforced || 0), margin + 110, y);
-                doc.text(String(member.urls || 0), margin + 135, y);
-                doc.text(String(member.resolvedRate || "0%"), margin + 165, y);
+                doc.text(String(member.scouted || 0), margin + 70, y);
+                doc.text(String(member.enforced || 0), margin + 95, y);
+                doc.text(String(member.urls || 0), margin + 120, y);
+                doc.text(String(member.resolvedRate || "0%"), margin + 140, y);
+                doc.text(`${member.wBurndown}d / ${member.uwBurndown}d`, margin + 165, y);
 
                 doc.setDrawColor(243, 244, 246);
                 doc.line(margin, y + 2, pageWidth - margin, y + 2);
