@@ -285,6 +285,11 @@ export async function generatePDF(data) {
 
 export async function generateIntelligencePDF(stats) {
   try {
+    // Fetch user briefing configuration
+    const syncData = await chrome.storage.sync.get(['briefing_config']);
+    const defaultStats = { kpi: true, leaderboard: true, timeline: true, platform: true, targets: true, team: true, events: true, appendix: true };
+    const config = syncData.briefing_config || defaultStats;
+
     let jsPDF = null;
     if (typeof globalThis !== 'undefined' && globalThis.jspdf && typeof globalThis.jspdf.jsPDF === 'function') {
         jsPDF = globalThis.jspdf.jsPDF;
@@ -337,520 +342,502 @@ export async function generateIntelligencePDF(stats) {
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.text(`REPORTING PERIOD: ${stats.startDate} TO ${stats.endDate}`, pageWidth / 2, 30, { align: "center" });
-        doc.text(`REPORT GENERATED: ${new Date().toLocaleString()}`, pageWidth / 2, 36, { align: "center" });
+    doc.text(`REPORT GENERATED: ${new Date().toLocaleString()}`, pageWidth / 2, 36, { align: "center" });
         
-        let tocY = 60; // Save TOC position
-        y = 120; // Push content down to make room for TOC
-        const tocEntries = [];
+    let tocY = 60; // Save TOC position
+    y = 120; // Push content down to make room for TOC
+    const tocEntries = [];
 
-        // --- 2. KPI DASHBOARD (3-Column Grid) ---
+    // --- 2. KPI DASHBOARD (3-Column Grid) ---
+    if (config.kpi) {
         ensureSpace(40);
         tocEntries.push({ title: "Enforcement Overview", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
         doc.setTextColor(17, 24, 39);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("ENFORCEMENT OVERVIEW", margin, y);
-    y += 10;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text("ENFORCEMENT OVERVIEW", margin, y);
+        y += 10;
 
-    const gap = 5;
-    const boxWidth = (maxTextWidth - (gap * 3)) / 4;
-    // Calculate a mock Efficiency Score based on volume and resolve rate
-    const kpis = [
-      { label: "TOTAL TAKEDOWNS", value: stats.totalReported || "0", desc: "Confirmed Reports Filed" },
-      { label: "TOTAL URLS", value: stats.totalUrls || "0", desc: "Pirated Links Processed" },
-      { label: "RESOLVED RATE", value: stats.resolvedRate || "0%", desc: "Successful Report Takedown %" },
-      { label: "AVG BURNDOWN", value: `${stats.globalWeightedBurndown}d`, desc: `Unweighted: ${stats.globalUnweightedBurndown}d` }
-    ];
+        const gap = 5;
+        const boxWidth = (maxTextWidth - (gap * 3)) / 4;
+        const kpis = [
+          { label: "TOTAL TAKEDOWNS", value: stats.totalReported || "0", desc: "Confirmed Reports Filed" },
+          { label: "TOTAL URLS", value: stats.totalUrls || "0", desc: "Pirated Links Processed" },
+          { label: "RESOLVED RATE", value: stats.resolvedRate || "0%", desc: "Successful Report Takedown %" },
+          { label: "AVG BURNDOWN", value: `${stats.globalWeightedBurndown}d`, desc: `Unweighted: ${stats.globalUnweightedBurndown}d` }
+        ];
 
-    kpis.forEach((kpi, i) => {
-      const boxX = margin + (i * (boxWidth + gap));
-      doc.setFillColor(243, 244, 246); // Light Gray
-      doc.setDrawColor(209, 213, 219);
-      doc.rect(boxX, y, boxWidth, 26, 'FD');
+        kpis.forEach((kpi, i) => {
+          const boxX = margin + (i * (boxWidth + gap));
+          doc.setFillColor(243, 244, 246);
+          doc.setDrawColor(209, 213, 219);
+          doc.rect(boxX, y, boxWidth, 26, 'FD');
 
-      doc.setTextColor(107, 114, 128);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text(kpi.label, boxX + (boxWidth / 2), y + 6, { align: "center" });
+          doc.setTextColor(107, 114, 128);
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "bold");
+          doc.text(kpi.label, boxX + (boxWidth / 2), y + 6, { align: "center" });
 
-      doc.setTextColor(17, 24, 39);
-      doc.setFontSize(16);
-      doc.text(String(kpi.value), boxX + (boxWidth / 2), y + 15, { align: "center" });
+          doc.setTextColor(17, 24, 39);
+          doc.setFontSize(16);
+          doc.text(String(kpi.value), boxX + (boxWidth / 2), y + 15, { align: "center" });
 
-      doc.setTextColor(156, 163, 175);
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
-      doc.text(kpi.desc, boxX + (boxWidth / 2), y + 22, { align: "center" });
-    });
-    y += 35;
-
-     // --- 3. LEADERBOARDS & MVP ---
-    ensureSpace(50);
-    tocEntries.push({ title: "Leaderboards & MVP", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-    doc.setFillColor(254, 243, 199); // Gold/Amber background
-    doc.setDrawColor(251, 191, 36); // Gold border
-    doc.rect(margin, y, maxTextWidth, 16, 'FD');
-
-    doc.setTextColor(146, 64, 14);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    const mvpName = stats.mvp ? stats.mvp.name.toUpperCase() : "N/A";
-    const mvpTotal = stats.mvp ? stats.mvp.total : 0;
-    doc.text(`SQUAD MVP: ${mvpName} (${mvpTotal} Confirmed Actions)`, pageWidth / 2, y + 10, { align: "center" });
-    y += 28;
-
-    doc.setTextColor(17, 24, 39);
-    doc.setFontSize(12);
-    doc.text("ELITE SQUAD: SCOUTS", margin, y);
-    doc.text("ELITE SQUAD: ENFORCERS", pageWidth / 2 + 5, y);
-    y += 8;
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    for (let i = 0; i < 3; i++) {
-      const scout = stats.topScouts?.[i] || { name: "-", count: 0 };
-      const enforcer = stats.topEnforcers?.[i] || { name: "-", count: 0 };
-      
-      // Helper to capitalize first and last names
-      const cap = (n) => n && n !== "-" ? n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : n;
-      const sName = cap(scout.name);
-      const eName = cap(enforcer.name);
-
-      // Subtle Row Backgrounds for Leaderboard
-      if (i % 2 === 0) {
-          doc.setFillColor(249, 250, 251);
-          doc.rect(margin, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
-          doc.rect(pageWidth / 2 + 5, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
-      }
-      
-      doc.text(`${i + 1}. ${sName} (${scout.count} hits)`, margin + 2, y);
-      doc.text(`${i + 1}. ${eName} (${enforcer.count} hits)`, pageWidth / 2 + 7, y);
-      y += 8;
+          doc.setTextColor(156, 163, 175);
+          doc.setFontSize(7);
+          doc.setFont("helvetica", "normal");
+          doc.text(kpi.desc, boxX + (boxWidth / 2), y + 22, { align: "center" });
+        });
+        y += 35;
     }
-    y += 10;
 
-    // --- 4. VECTOR GRAPHICS: TIMELINE ---
-    ensureSpace(70);
-    tocEntries.push({ title: "Reports Per Day (Timeline)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("REPORTS PER DAY (TIMELINE)", margin, y);
-    y += 8;
+    // --- 3. LEADERBOARDS & MVP ---
+    if (config.leaderboard) {
+        ensureSpace(50);
+        tocEntries.push({ title: "Leaderboards & MVP", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        doc.setFillColor(254, 243, 199); 
+        doc.setDrawColor(251, 191, 36); 
+        doc.rect(margin, y, maxTextWidth, 16, 'FD');
 
-    const gHeight = 45;
-    doc.setFillColor(249, 250, 251);
-    doc.setDrawColor(229, 231, 235);
-    doc.rect(margin, y, maxTextWidth, gHeight, 'FD');
+        doc.setTextColor(146, 64, 14);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        const mvpName = stats.mvp ? stats.mvp.name.toUpperCase() : "N/A";
+        const mvpTotal = stats.mvp ? stats.mvp.total : 0;
+        doc.text(`SQUAD MVP: ${mvpName} (${mvpTotal} Confirmed Actions)`, pageWidth / 2, y + 10, { align: "center" });
+        y += 28;
 
-    if (stats.timelineData && Object.keys(stats.timelineData).length > 0) {
-        // Sort dates chronologically
-        const dates = Object.keys(stats.timelineData).sort((a, b) => new Date(a) - new Date(b));
-        
-        // Extract just the count value from the timelineData object for graph math
-        const counts = dates.map(d => {
-            const val = stats.timelineData[d];
-            return typeof val === 'object' ? val.count : val;
-        });
-        
-        const maxCount = Math.max(...counts, 10); // Floor max scale at 10
-        const stepX = maxTextWidth / Math.max(dates.length, 1);
-        
-        // Safely calculate month span
-        const firstDate = new Date(dates[0]);
-        const lastDate = new Date(dates[dates.length - 1]);
-        let monthsSpan = 0;
-        if (!isNaN(firstDate.getTime()) && !isNaN(lastDate.getTime())) {
-            monthsSpan = (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + (lastDate.getMonth() - firstDate.getMonth());
-        }
-        
-        let requiredInterval = 0;
-        if (monthsSpan > 6 && monthsSpan <= 12) requiredInterval = 1;
-        else if (monthsSpan > 12 && monthsSpan <= 36) requiredInterval = 2;
-        else if (monthsSpan > 36) requiredInterval = Math.floor(monthsSpan / 12);
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.text("ELITE SQUAD: SCOUTS", margin, y);
+        doc.text("ELITE SQUAD: ENFORCERS", pageWidth / 2 + 5, y);
+        y += 8;
 
-        const labelStep = Math.ceil(dates.length / 8);
-
-        // Y-Axis Scale & Gridlines
-        doc.setTextColor(156, 163, 175);
-        doc.setFontSize(7);
-        doc.setFont("helvetica", "normal");
-        
-        const topY = y + 10;
-        const midY = y + 10 + ((gHeight - 15) / 2);
-        const bottomY = y + gHeight - 5;
-
-        // Labels (Right-aligned just outside the chart box)
-        doc.text(String(maxCount), margin - 2, topY, { align: "right" });
-        doc.text(String(Math.round(maxCount / 2)), margin - 2, midY, { align: "right" });
-        doc.text("0", margin - 2, bottomY, { align: "right" });
-
-        // Subtle horizontal gridlines
-        doc.setDrawColor(229, 231, 235);
-        doc.setLineWidth(0.2);
-        doc.line(margin, topY, margin + maxTextWidth, topY);
-        doc.line(margin, midY, margin + maxTextWidth, midY);
-
-        doc.setDrawColor(206, 14, 45); // FloSports Red
-        doc.setFillColor(206, 14, 45);
-        doc.setLineWidth(1);
-
-        let prevX = null;
-        let prevY = null;
-        let lastPrintedMonthDate = new Date(0);
-        let lastLabelX = -999; // Anti-collision tracker
-
-        dates.forEach((dateStr, i) => {
-            const count = counts[i];
-            const ptX = margin + (i * stepX) + (stepX / 2);
-            // Invert Y axis (higher counts draw higher up)
-            const ptY = (y + gHeight) - ((count / maxCount) * (gHeight - 15)) - 5;
-
-            if (prevX !== null && prevY !== null) {
-                doc.line(prevX, prevY, ptX, ptY); // Connect the dots
-            }
-            doc.circle(ptX, ptY, 1.5, 'FD'); // Plot point
-
-            // X-Axis labels (print dynamically spaced to prevent overlap)
-            let shouldPrintLabel = false;
-            let displayLabel = dateStr;
-            const currDate = new Date(dateStr);
-
-            if (monthsSpan > 6 && !isNaN(currDate.getTime())) {
-                const monthDiff = (currDate.getFullYear() - lastPrintedMonthDate.getFullYear()) * 12 + (currDate.getMonth() - lastPrintedMonthDate.getMonth());
-                if (monthDiff >= requiredInterval || i === dates.length - 1) {
-                    shouldPrintLabel = true;
-                    lastPrintedMonthDate = currDate;
-                    displayLabel = currDate.toLocaleDateString("en-US", { month: 'short', year: '2-digit' });
-                }
-            } else if (i % labelStep === 0 || i === dates.length - 1) {
-                shouldPrintLabel = true;
-                if (!isNaN(currDate.getTime())) {
-                    displayLabel = currDate.toLocaleDateString("en-US", { month: 'numeric', day: 'numeric' });
-                }
-            }
-
-            if (shouldPrintLabel) {
-                // Prevent label collision/squishing (minimum 14mm spacing)
-                if (ptX - lastLabelX > 14 || i === 0) {
-                    doc.setTextColor(107, 114, 128);
-                    doc.setFontSize(8);
-                    doc.setFont("helvetica", "normal");
-                    doc.text(displayLabel, ptX, y + gHeight + 5, { align: "center" });
-                    lastLabelX = ptX;
-                }
-            }
-
-            prevX = ptX;
-            prevY = ptY;
-        });
-        doc.setLineWidth(0.2); // Reset
-    } else {
-        doc.setTextColor(156, 163, 175);
-        doc.setFont("helvetica", "normal");
-        doc.text("Insufficient data to plot timeline.", pageWidth / 2, y + (gHeight / 2), { align: "center" });
-    }
-    y += gHeight + 15;
-
-      // --- 4.5 PLATFORM BREAKDOWN (NEW) ---
-    ensureSpace(30);
-    doc.setTextColor(17, 24, 39);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("PLATFORM BREAKDOWN", margin, y);
-    y += 8;
-    
-    if (stats.platformTotals && stats.platformTotals.length > 0) {
-        let pX = margin;
-        let pY = y;
-        const tagHeight = 8;
-        
-        doc.setFontSize(9);
-        stats.platformTotals.forEach((p) => {
-            //  Safely fallback to 0 if the data is missing, and format with text
-            const text = `${p.name}: ${p.reports || 0} Reports / ${p.urls || 0} URLs`; 
-            
-            // Estimate width: ~2mm per char at 9pt + 8mm padding
-            const tagWidth = (text.length * 2) + 8;
-            
-            // If the next tag overflows the right margin, wrap to a new line
-            if (pX + tagWidth > pageWidth - margin) {
-                pX = margin;
-                pY += tagHeight + 4;
-            }
-            
-            // Draw a subtle gray background box with a border
-            doc.setFillColor(243, 244, 246);
-            doc.setDrawColor(209, 213, 219);
-            doc.rect(pX, pY, tagWidth, tagHeight, 'FD');
-            
-            // Draw the text centered vertically inside the box
-            doc.setTextColor(17, 24, 39);
-            doc.setFont("helvetica", "bold");
-            doc.text(text, pX + 4, pY + 5.5);
-            
-            // Advance X coordinate for the next tag
-            pX += tagWidth + 4;
-        });
-        y = pY + tagHeight + 15; // Push main cursor down
-    } else {
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.text("No platform data identified.", margin, y);
-        y += 15;
+        for (let i = 0; i < 3; i++) {
+          const scout = stats.topScouts?.[i] || { name: "-", count: 0 };
+          const enforcer = stats.topEnforcers?.[i] || { name: "-", count: 0 };
+          
+          const cap = (n) => n && n !== "-" ? n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : n;
+          const sName = cap(scout.name);
+          const eName = cap(enforcer.name);
+
+          if (i % 2 === 0) {
+              doc.setFillColor(249, 250, 251);
+              doc.rect(margin, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
+              doc.rect(pageWidth / 2 + 5, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
+          }
+          
+          doc.text(`${i + 1}. ${sName} (${scout.count} hits)`, margin + 2, y);
+          doc.text(`${i + 1}. ${eName} (${enforcer.count} hits)`, pageWidth / 2 + 7, y);
+          y += 8;
+        }
+        y += 10;
     }
 
+    // --- 4. VECTOR GRAPHICS: TIMELINE ---
+    if (config.timeline) {
+        ensureSpace(70);
+        tocEntries.push({ title: "Reports Per Day (Timeline)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("REPORTS PER DAY (TIMELINE)", margin, y);
+        y += 8;
+
+        const gHeight = 45;
+        doc.setFillColor(249, 250, 251);
+        doc.setDrawColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, gHeight, 'FD');
+
+        if (stats.timelineData && Object.keys(stats.timelineData).length > 0) {
+            const dates = Object.keys(stats.timelineData).sort((a, b) => new Date(a) - new Date(b));
+            const counts = dates.map(d => {
+                const val = stats.timelineData[d];
+                return typeof val === 'object' ? val.count : val;
+            });
+            
+            const maxCount = Math.max(...counts, 10); 
+            const stepX = maxTextWidth / Math.max(dates.length, 1);
+            
+            const firstDate = new Date(dates[0]);
+            const lastDate = new Date(dates[dates.length - 1]);
+            let monthsSpan = 0;
+            if (!isNaN(firstDate.getTime()) && !isNaN(lastDate.getTime())) {
+                monthsSpan = (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + (lastDate.getMonth() - firstDate.getMonth());
+            }
+            
+            let requiredInterval = 0;
+            if (monthsSpan > 6 && monthsSpan <= 12) requiredInterval = 1;
+            else if (monthsSpan > 12 && monthsSpan <= 36) requiredInterval = 2;
+            else if (monthsSpan > 36) requiredInterval = Math.floor(monthsSpan / 12);
+
+            const labelStep = Math.ceil(dates.length / 8);
+
+            doc.setTextColor(156, 163, 175);
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "normal");
+            
+            const topY = y + 10;
+            const midY = y + 10 + ((gHeight - 15) / 2);
+            const bottomY = y + gHeight - 5;
+
+            doc.text(String(maxCount), margin - 2, topY, { align: "right" });
+            doc.text(String(Math.round(maxCount / 2)), margin - 2, midY, { align: "right" });
+            doc.text("0", margin - 2, bottomY, { align: "right" });
+
+            doc.setDrawColor(229, 231, 235);
+            doc.setLineWidth(0.2);
+            doc.line(margin, topY, margin + maxTextWidth, topY);
+            doc.line(margin, midY, margin + maxTextWidth, midY);
+
+            doc.setDrawColor(206, 14, 45); 
+            doc.setFillColor(206, 14, 45);
+            doc.setLineWidth(1);
+
+            let prevX = null;
+            let prevY = null;
+            let lastPrintedMonthDate = new Date(0);
+            let lastLabelX = -999; 
+
+            dates.forEach((dateStr, i) => {
+                const count = counts[i];
+                const ptX = margin + (i * stepX) + (stepX / 2);
+                const ptY = (y + gHeight) - ((count / maxCount) * (gHeight - 15)) - 5;
+
+                if (prevX !== null && prevY !== null) {
+                    doc.line(prevX, prevY, ptX, ptY); 
+                }
+                doc.circle(ptX, ptY, 1.5, 'FD'); 
+
+                let shouldPrintLabel = false;
+                let displayLabel = dateStr;
+                const currDate = new Date(dateStr);
+
+                if (monthsSpan > 6 && !isNaN(currDate.getTime())) {
+                    const monthDiff = (currDate.getFullYear() - lastPrintedMonthDate.getFullYear()) * 12 + (currDate.getMonth() - lastPrintedMonthDate.getMonth());
+                    if (monthDiff >= requiredInterval || i === dates.length - 1) {
+                        shouldPrintLabel = true;
+                        lastPrintedMonthDate = currDate;
+                        displayLabel = currDate.toLocaleDateString("en-US", { month: 'short', year: '2-digit' });
+                    }
+                } else if (i % labelStep === 0 || i === dates.length - 1) {
+                    shouldPrintLabel = true;
+                    if (!isNaN(currDate.getTime())) {
+                        displayLabel = currDate.toLocaleDateString("en-US", { month: 'numeric', day: 'numeric' });
+                    }
+                }
+
+                if (shouldPrintLabel) {
+                    if (ptX - lastLabelX > 14 || i === 0) {
+                        doc.setTextColor(107, 114, 128);
+                        doc.setFontSize(8);
+                        doc.setFont("helvetica", "normal");
+                        doc.text(displayLabel, ptX, y + gHeight + 5, { align: "center" });
+                        lastLabelX = ptX;
+                    }
+                }
+
+                prevX = ptX;
+                prevY = ptY;
+            });
+            doc.setLineWidth(0.2); 
+        } else {
+            doc.setTextColor(156, 163, 175);
+            doc.setFont("helvetica", "normal");
+            doc.text("Insufficient data to plot timeline.", pageWidth / 2, y + (gHeight / 2), { align: "center" });
+        }
+        y += gHeight + 15;
+    }
+
+    // --- 4.5 PLATFORM BREAKDOWN ---
+    if (config.platform) {
+        ensureSpace(30);
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("PLATFORM BREAKDOWN", margin, y);
+        y += 8;
+        
+        if (stats.platformTotals && stats.platformTotals.length > 0) {
+            let pX = margin;
+            let pY = y;
+            const tagHeight = 8;
+            
+            doc.setFontSize(9);
+            stats.platformTotals.forEach((p) => {
+                const text = `${p.name}: ${p.reports || 0} Reports / ${p.urls || 0} URLs`; 
+                const tagWidth = (text.length * 2) + 8;
+                
+                if (pX + tagWidth > pageWidth - margin) {
+                    pX = margin;
+                    pY += tagHeight + 4;
+                }
+                
+                doc.setFillColor(243, 244, 246);
+                doc.setDrawColor(209, 213, 219);
+                doc.rect(pX, pY, tagWidth, tagHeight, 'FD');
+                
+                doc.setTextColor(17, 24, 39);
+                doc.setFont("helvetica", "bold");
+                doc.text(text, pX + 4, pY + 5.5);
+                
+                pX += tagWidth + 4;
+            });
+            y = pY + tagHeight + 15; 
+        } else {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.text("No platform data identified.", margin, y);
+            y += 15;
+        }
+    }
 
     // --- 5. TARGET LIST (TOP 5 PIRATES) ---
-    ensureSpace(40);
-    tocEntries.push({ title: "High-Value Targets (Top 5 Pirates)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-    doc.setTextColor(17, 24, 39);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("HIGH-VALUE TARGETS (TOP 5 PIRATES)", margin, y);
-    y += 8;
+    if (config.targets) {
+        ensureSpace(40);
+        tocEntries.push({ title: "High-Value Targets (Top 5 Pirates)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("HIGH-VALUE TARGETS (TOP 5 PIRATES)", margin, y);
+        y += 8;
 
-    doc.setFillColor(229, 231, 235);
-    doc.rect(margin, y, maxTextWidth, 8, 'F');
-    doc.setFontSize(9);
-    
-    doc.text("PIRATE HANDLE", margin + 2, y + 6);
-    doc.text("PLATFORM", margin + 70, y + 6);
-    doc.text("URLS HIT", margin + 115, y + 6);
-    doc.text("EST. VIEWS", margin + 150, y + 6);
-    
-    y += 12;
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setFontSize(9);
+        
+        doc.text("PIRATE HANDLE", margin + 2, y + 6);
+        doc.text("PLATFORM", margin + 70, y + 6);
+        doc.text("URLS HIT", margin + 115, y + 6);
+        doc.text("EST. VIEWS", margin + 150, y + 6);
+        
+        y += 12;
 
-    doc.setFont("helvetica", "normal");
-    if (stats.topPirates && stats.topPirates.length > 0) {
-        stats.topPirates.forEach((pirate, i) => {
-            ensureSpace(10);
-            
-            // Table Truncation for Handle
-            let displayHandle = `@${pirate.handle}`;
-            if (displayHandle.length > 32) {
-                displayHandle = displayHandle.substring(0, 29) + "...";
-            }
-            
-            // Platform String & Truncation (FIXED DECLARATION)
-            let displayPlatform = String(pirate.platforms || "Unknown");
-            if (displayPlatform.length > 20) {
-                displayPlatform = displayPlatform.substring(0, 17) + "...";
-            }
+        doc.setFont("helvetica", "normal");
+        if (stats.topPirates && stats.topPirates.length > 0) {
+            stats.topPirates.forEach((pirate, i) => {
+                ensureSpace(10);
+                
+                let displayHandle = `@${pirate.handle}`;
+                if (displayHandle.length > 32) {
+                    displayHandle = displayHandle.substring(0, 29) + "...";
+                }
+                
+                let displayPlatform = String(pirate.platforms || "Unknown");
+                if (displayPlatform.length > 20) {
+                    displayPlatform = displayPlatform.substring(0, 17) + "...";
+                }
 
-            // Construct channel URL based on the platform
-            let channelUrl = `https://www.google.com/search?q=${pirate.handle}`; // fallback
-            const platLower = displayPlatform.toLowerCase();
-            if (platLower.includes('tiktok')) channelUrl = `https://www.tiktok.com/@${pirate.handle}`;
-            else if (platLower.includes('youtube')) channelUrl = `https://www.youtube.com/@${pirate.handle}`;
-            else if (platLower.includes('instagram')) channelUrl = `https://www.instagram.com/${pirate.handle}`;
-            else if (platLower.includes('twitter') || platLower.includes('x')) channelUrl = `https://x.com/${pirate.handle}`;
+                let channelUrl = `https://www.google.com/search?q=${pirate.handle}`; 
+                const platLower = displayPlatform.toLowerCase();
+                if (platLower.includes('tiktok')) channelUrl = `https://www.tiktok.com/@${pirate.handle}`;
+                else if (platLower.includes('youtube')) channelUrl = `https://www.youtube.com/@${pirate.handle}`;
+                else if (platLower.includes('instagram')) channelUrl = `https://www.instagram.com/${pirate.handle}`;
+                else if (platLower.includes('twitter') || platLower.includes('x')) channelUrl = `https://x.com/${pirate.handle}`;
 
-            // Draw as a clickable blue link, then reset color
-            doc.setTextColor(0, 0, 255);
-            doc.textWithLink(displayHandle, margin + 2, y, { url: channelUrl });
-            doc.setTextColor(17, 24, 39);
-            
-            doc.text(displayPlatform, margin + 70, y);
-            doc.text(String(pirate.urls), margin + 115, y);
+                doc.setTextColor(0, 0, 255);
+                doc.textWithLink(displayHandle, margin + 2, y, { url: channelUrl });
+                doc.setTextColor(17, 24, 39);
+                
+                doc.text(displayPlatform, margin + 70, y);
+                doc.text(String(pirate.urls), margin + 115, y);
 
-            // Estimate Views: URLs * 1500, normalized to 'k'
-            const est = pirate.urls * 1500;
-            const estViews = est >= 1000 ? (est / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(est);
+                const est = pirate.urls * 1500;
+                const estViews = est >= 1000 ? (est / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(est);
 
-            doc.text(estViews, margin + 150, y);
+                doc.text(estViews, margin + 150, y);
 
-            // Add subtle row separators
-            doc.setDrawColor(243, 244, 246);
-            doc.line(margin, y + 2, pageWidth - margin, y + 2);
-            y += 8;
-        });
-    } else {
-        doc.text("No targets identified in this timeframe.", margin + 2, y);
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
+        } else {
+            doc.text("No targets identified in this timeframe.", margin + 2, y);
+        }
     }
 
     // --- 6. TEAM PERFORMANCE (RANKED) ---
-    ensureSpace(40);
-    tocEntries.push({ title: "Team Performance Rankings", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-    doc.setTextColor(17, 24, 39);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("TEAM PERFORMANCE RANKINGS", margin, y);
-    y += 8;
+    if (config.team) {
+        ensureSpace(40);
+        tocEntries.push({ title: "Team Performance Rankings", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("TEAM PERFORMANCE RANKINGS", margin, y);
+        y += 8;
 
-    doc.setFillColor(229, 231, 235);
-    doc.rect(margin, y, maxTextWidth, 8, 'F');
-    doc.setFontSize(9);
-    doc.text("TEAM MEMBER", margin + 2, y + 6);
-    doc.text("SCOUTED", margin + 85, y + 6);
-    doc.text("ENFORCED", margin + 110, y + 6);
-    doc.text("TOTAL URLS", margin + 135, y + 6);
-    doc.text("RESOLVED", margin + 165, y + 6);
-    y += 12;
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setFontSize(9);
+        doc.text("TEAM MEMBER", margin + 2, y + 6);
+        doc.text("SCOUTED", margin + 85, y + 6);
+        doc.text("ENFORCED", margin + 110, y + 6);
+        doc.text("TOTAL URLS", margin + 135, y + 6);
+        doc.text("RESOLVED", margin + 165, y + 6);
+        y += 12;
 
-    doc.setFont("helvetica", "normal");
-    if (stats.teamStats && stats.teamStats.length > 0) {
-        stats.teamStats.slice(0, 20).forEach((member) => {
-            ensureSpace(10);
-            
-            let displayName = member.name || "Unknown";
-            if (displayName.length > 35) displayName = displayName.substring(0, 32) + "...";
+        doc.setFont("helvetica", "normal");
+        if (stats.teamStats && stats.teamStats.length > 0) {
+            stats.teamStats.slice(0, 20).forEach((member) => {
+                ensureSpace(10);
+                
+                let displayName = member.name || "Unknown";
+                if (displayName.length > 35) displayName = displayName.substring(0, 32) + "...";
 
-            doc.text(displayName, margin + 2, y);
-            doc.text(String(member.scouted || 0), margin + 85, y);
-            doc.text(String(member.enforced || 0), margin + 110, y);
-            doc.text(String(member.urls || 0), margin + 135, y);
-            doc.text(String(member.resolvedRate || "0%"), margin + 165, y);
+                doc.text(displayName, margin + 2, y);
+                doc.text(String(member.scouted || 0), margin + 85, y);
+                doc.text(String(member.enforced || 0), margin + 110, y);
+                doc.text(String(member.urls || 0), margin + 135, y);
+                doc.text(String(member.resolvedRate || "0%"), margin + 165, y);
 
-            doc.setDrawColor(243, 244, 246);
-            doc.line(margin, y + 2, pageWidth - margin, y + 2);
-            y += 8;
-        });
-    } else {
-        doc.text("No team data identified in this timeframe.", margin + 2, y);
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
+        } else {
+            doc.text("No team data identified in this timeframe.", margin + 2, y);
+        }
     }
 
-   // --- 7. EVENT VIEW ANALYSIS ---
-    ensureSpace(40);
-    tocEntries.push({ title: "Event View Analysis", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-    doc.setTextColor(17, 24, 39);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("EVENT VIEW ANALYSIS", margin, y);
-    y += 8;
+    // --- 7. EVENT VIEW ANALYSIS ---
+    if (config.events) {
+        ensureSpace(40);
+        tocEntries.push({ title: "Event View Analysis", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("EVENT VIEW ANALYSIS", margin, y);
+        y += 8;
 
-    doc.setFillColor(229, 231, 235);
-    doc.rect(margin, y, maxTextWidth, 8, 'F');
-    doc.setFontSize(9);
-    doc.text("EVENT NAME", margin + 2, y + 6);
-    doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
-    y += 12;
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setFontSize(9);
+        doc.text("EVENT NAME", margin + 2, y + 6);
+        doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
+        y += 12;
 
-    doc.setFont("helvetica", "bold");
-    doc.text("ALL EVENTS COMBINED", margin + 2, y);
-    
-    // Sum up the raw views to avoid string parsing issues, normalize output with toLocaleString()
-    let calculatedTotalViews = 0;
-    if (stats.eventViews && stats.eventViews.length > 0) {
-        calculatedTotalViews = stats.eventViews.reduce((sum, ev) => sum + (Number(ev.views) || 0), 0);
-    } else if (stats.totalEstimatedViews) {
-        // Fallback safely if eventViews array isn't populated but total string is
-        let valStr = String(stats.totalEstimatedViews).toLowerCase();
-        if (valStr.includes('k')) calculatedTotalViews = parseFloat(valStr) * 1000;
-        else if (valStr.includes('m')) calculatedTotalViews = parseFloat(valStr) * 1000000;
-        else calculatedTotalViews = parseFloat(valStr.replace(/[^\d.]/g, '')) || 0;
+        doc.setFont("helvetica", "bold");
+        doc.text("ALL EVENTS COMBINED", margin + 2, y);
+        
+        let calculatedTotalViews = 0;
+        if (stats.eventViews && stats.eventViews.length > 0) {
+            calculatedTotalViews = stats.eventViews.reduce((sum, ev) => sum + (Number(ev.views) || 0), 0);
+        } else if (stats.totalEstimatedViews) {
+            let valStr = String(stats.totalEstimatedViews).toLowerCase();
+            if (valStr.includes('k')) calculatedTotalViews = parseFloat(valStr) * 1000;
+            else if (valStr.includes('m')) calculatedTotalViews = parseFloat(valStr) * 1000000;
+            else calculatedTotalViews = parseFloat(valStr.replace(/[^\d.]/g, '')) || 0;
+        }
+
+        const safeTotalViews = (isNaN(calculatedTotalViews) || calculatedTotalViews === 0) ? "100" : calculatedTotalViews.toLocaleString();
+        doc.text(safeTotalViews, margin + 150, y);
+        y += 8;
+        
+        doc.setFont("helvetica", "normal");
+        if (stats.eventViews && stats.eventViews.length > 0) {
+            stats.eventViews.slice(0, 20).forEach((ev) => {
+                ensureSpace(10);
+                
+                let displayEventName = ev.name || "Unknown";
+                if (displayEventName.length > 65) displayEventName = displayEventName.substring(0, 62) + "...";
+
+                doc.text(displayEventName, margin + 2, y);
+                
+                const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
+                doc.text(safeEventViews, margin + 150, y);
+
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
+        } else {
+            doc.text("No event view data identified in this timeframe.", margin + 2, y);
+        }
     }
 
-    const safeTotalViews = (isNaN(calculatedTotalViews) || calculatedTotalViews === 0) ? "100" : calculatedTotalViews.toLocaleString();
-    doc.text(safeTotalViews, margin + 150, y);
-    y += 8;
-    
-    doc.setFont("helvetica", "normal");
-    if (stats.eventViews && stats.eventViews.length > 0) {
-        stats.eventViews.slice(0, 20).forEach((ev) => {
-            ensureSpace(10);
-            
-            let displayEventName = ev.name || "Unknown";
-            if (displayEventName.length > 65) displayEventName = displayEventName.substring(0, 62) + "...";
+    // --- 9 & 10. APPENDIX ---
+    if (config.appendix) {
+        doc.addPage();
+        y = margin + 10;
+        doc.setFillColor(30, 41, 59);
+        doc.rect(0, 0, pageWidth, 25, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("APPENDIX: COMPLETE TEAM PERFORMANCE", margin, 17);
+        y = 35;
 
-            doc.text(displayEventName, margin + 2, y);
-            
-            // Apply normalization to individual event views too
-            const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
-            doc.text(safeEventViews, margin + 150, y);
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(9);
+        doc.text("TEAM MEMBER", margin + 2, y + 6);
+        doc.text("SCOUTED", margin + 85, y + 6);
+        doc.text("ENFORCED", margin + 110, y + 6);
+        doc.text("TOTAL URLS", margin + 135, y + 6);
+        doc.text("RESOLVED", margin + 165, y + 6);
+        y += 12;
 
-            doc.setDrawColor(243, 244, 246);
-            doc.line(margin, y + 2, pageWidth - margin, y + 2);
-            y += 8;
-        });
-    } else {
-        doc.text("No event view data identified in this timeframe.", margin + 2, y);
+        doc.setFont("helvetica", "normal");
+        if (stats.teamStats && stats.teamStats.length > 0) {
+            stats.teamStats.forEach((member) => {
+                ensureSpace(10);
+                let displayName = member.name || "Unknown";
+                if (displayName.length > 35) displayName = displayName.substring(0, 32) + "...";
+
+                doc.text(displayName, margin + 2, y);
+                doc.text(String(member.scouted || 0), margin + 85, y);
+                doc.text(String(member.enforced || 0), margin + 110, y);
+                doc.text(String(member.urls || 0), margin + 135, y);
+                doc.text(String(member.resolvedRate || "0%"), margin + 165, y);
+
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
+        } else {
+            doc.text("No team data identified in this timeframe.", margin + 2, y);
+        }
+
+        ensureSpace(50);
+        y += 10;
+        doc.setFillColor(30, 41, 59);
+        doc.rect(0, y, pageWidth, 25, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("APPENDIX: COMPLETE EVENT VIEW ANALYSIS", margin, y + 17);
+        y += 35;
+
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(9);
+        doc.text("EVENT NAME", margin + 2, y + 6);
+        doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
+        y += 12;
+
+        doc.setFont("helvetica", "normal");
+        if (stats.eventViews && stats.eventViews.length > 0) {
+            stats.eventViews.forEach((ev) => {
+                ensureSpace(10);
+                let displayEventName = ev.name || "Unknown";
+                if (displayEventName.length > 65) displayEventName = displayEventName.substring(0, 62) + "...";
+
+                doc.text(displayEventName, margin + 2, y);
+                const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
+                doc.text(safeEventViews, margin + 150, y);
+
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
+        } else {
+            doc.text("No event view data identified in this timeframe.", margin + 2, y);
+        }
     }
 
-    // --- 9. APPENDIX: COMPLETE TEAM PERFORMANCE ---
-    doc.addPage();
-    y = margin + 10;
-    doc.setFillColor(30, 41, 59);
-    doc.rect(0, 0, pageWidth, 25, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("APPENDIX: COMPLETE TEAM PERFORMANCE", margin, 17);
-    y = 35;
-
-    doc.setFillColor(229, 231, 235);
-    doc.rect(margin, y, maxTextWidth, 8, 'F');
-    doc.setTextColor(17, 24, 39);
-    doc.setFontSize(9);
-    doc.text("TEAM MEMBER", margin + 2, y + 6);
-    doc.text("SCOUTED", margin + 85, y + 6);
-    doc.text("ENFORCED", margin + 110, y + 6);
-    doc.text("TOTAL URLS", margin + 135, y + 6);
-    doc.text("RESOLVED", margin + 165, y + 6);
-    y += 12;
-
-    doc.setFont("helvetica", "normal");
-    if (stats.teamStats && stats.teamStats.length > 0) {
-        stats.teamStats.forEach((member) => {
-            ensureSpace(10);
-            
-            let displayName = member.name || "Unknown";
-            if (displayName.length > 35) displayName = displayName.substring(0, 32) + "...";
-
-            doc.text(displayName, margin + 2, y);
-            doc.text(String(member.scouted || 0), margin + 85, y);
-            doc.text(String(member.enforced || 0), margin + 110, y);
-            doc.text(String(member.urls || 0), margin + 135, y);
-            doc.text(String(member.resolvedRate || "0%"), margin + 165, y);
-
-            doc.setDrawColor(243, 244, 246);
-            doc.line(margin, y + 2, pageWidth - margin, y + 2);
-            y += 8;
-        });
-    } else {
-        doc.text("No team data identified in this timeframe.", margin + 2, y);
-    }
-
-    // --- 10. APPENDIX: COMPLETE EVENT VIEW ANALYSIS ---
-    doc.addPage();
-    y = margin + 10;
-    doc.setFillColor(30, 41, 59);
-    doc.rect(0, 0, pageWidth, 25, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("APPENDIX: COMPLETE EVENT VIEW ANALYSIS", margin, 17);
-    y = 35;
-
-    doc.setFillColor(229, 231, 235);
-    doc.rect(margin, y, maxTextWidth, 8, 'F');
-    doc.setTextColor(17, 24, 39);
-    doc.setFontSize(9);
-    doc.text("EVENT NAME", margin + 2, y + 6);
-    doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
-    y += 12;
-
-    doc.setFont("helvetica", "normal");
-    if (stats.eventViews && stats.eventViews.length > 0) {
-        stats.eventViews.forEach((ev) => {
-            ensureSpace(10);
-            
-            let displayEventName = ev.name || "Unknown";
-            if (displayEventName.length > 65) displayEventName = displayEventName.substring(0, 62) + "...";
-
-            doc.text(displayEventName, margin + 2, y);
-            
-            const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
-            doc.text(safeEventViews, margin + 150, y);
-
-            doc.setDrawColor(243, 244, 246);
-            doc.line(margin, y + 2, pageWidth - margin, y + 2);
-            y += 8;
-        });
-    } else {
-        doc.text("No event view data identified in this timeframe.", margin + 2, y);
-    }
-
-     // --- DRAW TABLE OF CONTENTS (Page 1) ---
+    // --- DRAW TABLE OF CONTENTS (Page 1) ---
     doc.setPage(1);
     doc.setTextColor(17, 24, 39);
     doc.setFont("helvetica", "bold");
@@ -862,7 +849,7 @@ export async function generateIntelligencePDF(stats) {
     doc.setFontSize(10);
     
     tocEntries.forEach((entry, index) => {
-        doc.setTextColor(0, 0, 255); // Blue color to indicate hyperlink
+        doc.setTextColor(0, 0, 255); 
         doc.textWithLink(`${index + 1}. ${entry.title}`, margin, currentTocY, { pageNumber: entry.page });
         doc.textWithLink(`Page ${entry.page}`, pageWidth - margin, currentTocY, { align: "right", pageNumber: entry.page });
         currentTocY += 8;
@@ -874,7 +861,7 @@ export async function generateIntelligencePDF(stats) {
         doc.setPage(i);
         doc.setFont("helvetica", "normal");
         doc.setFontSize(9);
-        doc.setTextColor(156, 163, 175); // Light gray
+        doc.setTextColor(156, 163, 175); 
         doc.text(
             `Page ${i} of ${totalPages}`, 
             pageWidth / 2, 

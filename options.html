@@ -200,7 +200,11 @@
           <option value="all">Full Enforcer (DMCA Workflow Active)</option>
         </select>
       </div>
-    </div>
+      <div class="section">
+      <div class="section-title">📊 Intelligence Briefing Settings</div>
+      <div class="input-desc">Customize which modules are included in your tactical PDF reports.</div>
+      <button id="open_briefing_settings" class="btn-secondary" style="margin-top: 10px;">Configure Briefing Stats</button>
+      </div>
 
     <div class="section">
       <div class="section-title" style="color: var(--pioneer-gold);">🚀 The Lab (Community)</div>
@@ -238,6 +242,29 @@
   <div id="easter-egg" class="easter-egg-overlay">
     <img src="images/Flopirate hunter.gif" alt="Pirate Hunter Fleet">
     <div class="easter-egg-close">Click anywhere to close</div>
+  </div>
+  <!-- Briefing Settings Modal -->
+  <div id="briefing-modal" class="easter-egg-overlay" style="align-items: center;">
+    <div style="background: white; padding: 30px; border-radius: 12px; width: 400px; color: #333; border: 2px solid var(--flo-red);">
+      <h2 style="margin-top: 0; color: var(--flo-red);">Briefing Configuration</h2>
+      <p class="input-desc">Select which modules to include in your reports. Future stats will automatically appear here.</p>
+      
+      <div id="briefing-toggles" style="display: flex; flex-direction: column; gap: 10px; margin: 20px 0;">
+        <label><input type="checkbox" id="stat_kpi" checked> Enforcement Overview (KPIs)</label>
+        <label><input type="checkbox" id="stat_leaderboard" checked> Leaderboards & MVP</label>
+        <label><input type="checkbox" id="stat_timeline" checked> Reports Per Day (Timeline)</label>
+        <label><input type="checkbox" id="stat_platform" checked> Platform Breakdown</label>
+        <label><input type="checkbox" id="stat_targets" checked> High-Value Targets</label>
+        <label><input type="checkbox" id="stat_team" checked> Team Performance</label>
+        <label><input type="checkbox" id="stat_events" checked> Event View Analysis</label>
+        <label><input type="checkbox" id="stat_appendix" checked> Appendix (Raw Data)</label>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button id="save_briefing_stats" class="btn-secondary" style="flex: 1; background: var(--flo-red); color: white;">Save Settings</button>
+        <button id="cancel_briefing_stats" class="btn-secondary" style="flex: 1;">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <script src="options.js" type="module"></script>
