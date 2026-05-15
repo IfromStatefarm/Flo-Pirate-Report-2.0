@@ -68,7 +68,10 @@
         "*://www.twitch.tv/*",
         "*://discord.com/*",
         "*://timstreams.net/*",
-        "<all_urls>"
+        "*://rumble.com/*",
+        "*://*.rumble.com/*",
+        "*://vimeo.com/*",
+        "*://*.vimeo.com/*"
       ],
       "js": ["content_scraper.js", "clippy.js"],
       "run_at": "document_idle",
@@ -104,9 +107,11 @@
       "images/treasurechest.png",
       "images/waxseal.png",
       "images/eventconfig.jpg", 
-      "images/clippy.png",
+      "images/clippy.gif",
+        "images/clippy smrik.gif",
+        "images/clippy looking.gif",
+        "images/clippy starting postion.png",
        "jingle.mp3", 
-       "search_bot.js",
         "images/clippy.png"],
 
       "matches": [
@@ -118,6 +123,10 @@
         "*://x.com/*", 
         "*://*.twitch.tv/*", 
         "*://discord.com/*", 
+        "*://rumble.com/*",
+        "*://*.rumble.com/*",
+        "*://vimeo.com/*",
+        "*://*.vimeo.com/*",
         "*://ipr.tiktokforbusiness.com/*"
       ]
     }

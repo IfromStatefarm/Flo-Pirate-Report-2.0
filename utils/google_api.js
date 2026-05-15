@@ -54,6 +54,32 @@ const getOptions = async () => {
   };
 };
 
+function normalizeLeaderboardIdentity(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/@flosports\.tv/g, '')
+    .replace(/\./g, ' ');
+}
+
+const CHICAGO_MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: 'numeric'
+});
+
+function getChicagoYearMonth(value) {
+    const parsedDate = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+
+    const parts = CHICAGO_MONTH_FORMATTER.formatToParts(parsedDate);
+    const year = Number(parts.find(part => part.type === 'year')?.value);
+    const month = Number(parts.find(part => part.type === 'month')?.value);
+
+    if (!year || !month) return null;
+    return { year, month };
+}
+
 // --- HELPER: GET SPECIFIC TAB INFO ---
 async function getTargetSheetInfo(token, spreadsheetId) {
     const metaData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, {
@@ -104,6 +130,40 @@ function getColLetter(index) {
     index = Math.floor(index / 26) - 1;
   }
   return letter;
+}
+
+function isPlainObject(value) {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeConfigDefaults(defaultValue, remoteValue) {
+  if (remoteValue === undefined) return defaultValue;
+  if (defaultValue === undefined) return remoteValue;
+
+  if (Array.isArray(defaultValue) || Array.isArray(remoteValue)) {
+    return Array.isArray(remoteValue) ? remoteValue : defaultValue;
+  }
+
+  if (isPlainObject(defaultValue) && isPlainObject(remoteValue)) {
+    const merged = { ...defaultValue };
+    Object.keys(remoteValue).forEach((key) => {
+      merged[key] = mergeConfigDefaults(defaultValue[key], remoteValue[key]);
+    });
+    return merged;
+  }
+
+  return remoteValue;
+}
+
+async function loadBundledConfigDefaults() {
+  try {
+    const response = await fetch(chrome.runtime.getURL('events_config.json'));
+    if (!response.ok) return {};
+    return await response.json();
+  } catch (error) {
+    console.warn('Failed to load bundled config defaults.', error);
+    return {};
+  }
 }
 
 export async function logRogueToSheet(token, data, userNotes) {
@@ -404,6 +464,7 @@ export async function fetchConfig() {
   if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
 
   const token = await getAuthToken();
+  const bundledDefaults = await loadBundledConfigDefaults();
   
   const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
   const data = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
@@ -415,9 +476,10 @@ export async function fetchConfig() {
   }
 
   const fileId = data.files[0].id;
-  return await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+  const remoteConfig = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` }
   });
+  return mergeConfigDefaults(bundledDefaults, remoteConfig);
 }
 /**
  * Patches the config file using etags to prevent race conditions.
@@ -619,17 +681,21 @@ async function setColumnHLinks(token, rowIndex, urlString) {
   });
 }
 
-export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
+export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl, reportId = '') {
   const { reportSheetId } = await getOptions();
   const token = await getAuthToken();
   const { sheetId } = await getTargetSheetInfo(token, reportSheetId);
 
   // 2. Format the display strings
-  const line1 = `Channel: @${handle}`;
-  const line2 = `PDF Report`;
-  const fullText = `${line1}\n${line2}`;
+  const line1 = reportId ? `Report #: ${reportId}` : 'Report #: Pending';
+  const line2 = `Channel: @${handle}`;
+  const line3 = `PDF Report`;
+  const fullText = `${line1}\n${line2}\n${line3}`;
   
   const line1Len = line1.length;
+  const line2Start = line1Len + 1;
+  const line2Len = line2.length;
+  const line3Start = line2Start + line2Len + 1;
 
   // 3. Construct the BatchUpdate request
   // We use textFormatRuns to assign DIFFERENT links to DIFFERENT parts of the same cell
@@ -640,15 +706,15 @@ export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl) {
                   userEnteredValue: { stringValue: fullText },
                   textFormatRuns: [
                       { 
-                        startIndex: 0, 
+                        startIndex: line2Start,
                         format: { link: { uri: channelUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
                       },
                       { 
-                        startIndex: line1Len, 
+                        startIndex: line2Start + line2Len,
                         format: { link: null, foregroundColor: { red: 0, green: 0, blue: 0 }, underline: false } 
                       },
                       { 
-                        startIndex: line1Len + 1, 
+                        startIndex: line3Start,
                         format: { link: { uri: pdfUrl }, foregroundColor: { red: 0.066, green: 0.33, blue: 0.8 }, underline: true } 
                       }
                   ]
@@ -906,7 +972,7 @@ export async function bulkAddToCart(items) {
     return uniqueCart.length;
 }
 // ==========================================
-// 8. GAMIFICATION & LEADERBOARD (WEEKLY RESET)
+// 8. GAMIFICATION & LEADERBOARD (CURRENT MONTH)
 // ==========================================
 export async function fetchLeaderboardData(userEmail) {
     const { reportSheetId } = await getOptions();
@@ -921,10 +987,10 @@ export async function fetchLeaderboardData(userEmail) {
     const rows = data.values || [];
     if (rows.length < 2) return { scoutPoints: 0, enforcerPoints: 0, leaderboard: [], rank: "Rookie Spotter" };
 
-    // Get the first day of the current month Midnight Central Time
-    const ctDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-    ctDate.setDate(1);
-    ctDate.setHours(0, 0, 0, 0);
+    const currentChicagoMonth = getChicagoYearMonth(new Date());
+    if (!currentChicagoMonth) {
+        return { scoutPoints: 0, enforcerPoints: 0, leaderboard: [], rank: "Rookie Spotter" };
+    }
 
     const scoutScores = {};
     const enforcerScores = {};
@@ -933,31 +999,32 @@ export async function fetchLeaderboardData(userEmail) {
     for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
         if (!row[0]) continue;
-        
-        // Only count rows that occurred on or after the 1st of the month
-        if (new Date(row[0]) >= ctDate) {
-            let scout = (row[6] || "").trim().toLowerCase();     // Column G (Index 6)
-            let enforcer = (row[12] || "").trim().toLowerCase(); // Column M (Index 12)
-            
-            scout = scout.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
-            enforcer = enforcer.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
-            
-            const sPts = parseInt(row[19]) || 0; // Col T (Scout Points)
-            const ePts = parseInt(row[20]) || 0; // Col U (Enforcer Points)
 
-            if (scout) {
-                scoutScores[scout] = (scoutScores[scout] || 0) + sPts;
-                overallScores[scout] = (overallScores[scout] || 0) + sPts;
-            }
-            if (enforcer) {
-                enforcerScores[enforcer] = (enforcerScores[enforcer] || 0) + ePts;
-                overallScores[enforcer] = (overallScores[enforcer] || 0) + ePts;
-            }
+        // Only count rows whose report date falls inside the current Chicago calendar month.
+        const rowChicagoMonth = getChicagoYearMonth(row[0]);
+        if (!rowChicagoMonth) continue;
+        if (rowChicagoMonth.year !== currentChicagoMonth.year || rowChicagoMonth.month !== currentChicagoMonth.month) continue;
+
+        const scout = normalizeLeaderboardIdentity(row[6]);     // Column G (Index 6)
+        const enforcer = normalizeLeaderboardIdentity(row[12]); // Column M (Index 12)
+        
+        const sPts = parseInt(row[19]) || 0; // Col T (Scout Points)
+        const ePts = parseInt(row[20]) || 0; // Col U (Enforcer Points)
+
+        if (scout) {
+            scoutScores[scout] = (scoutScores[scout] || 0) + sPts;
+            overallScores[scout] = (overallScores[scout] || 0) + sPts;
+        }
+        if (enforcer) {
+            enforcerScores[enforcer] = (enforcerScores[enforcer] || 0) + ePts;
+            overallScores[enforcer] = (overallScores[enforcer] || 0) + ePts;
         }
     }
 
-    let emailLower = userEmail.toLowerCase();
-    emailLower = emailLower.replace(/@flosports\.tv/g, '').replace(/\./g, ' ');
+    const emailLower = normalizeLeaderboardIdentity(userEmail);
+    const localState = await chrome.storage.local.get(['last_reporter']);
+    const reporterName = normalizeLeaderboardIdentity(localState.last_reporter);
+    const identityMatchesMvp = [emailLower, reporterName].filter(Boolean);
     const myStats = { s: scoutScores[emailLower] || 0, e: enforcerScores[emailLower] || 0 };
     
     let scoutRank = "Level 1 Scout Reporter";
@@ -981,9 +1048,21 @@ export async function fetchLeaderboardData(userEmail) {
     const overallLeaderboard = sortDesc(overallScores);
     
     const mvp = overallLeaderboard.length > 0 ? overallLeaderboard[0] : null;
+    const isCurrentMvp = !!mvp && identityMatchesMvp.includes(mvp.name);
     const teamTotal = Object.values(enforcerScores).reduce((sum, pts) => sum + Math.floor(pts / 20), 0);
 
-    return { scoutPoints: myStats.s, enforcerPoints: myStats.e, topScouts, topEnforcers, overallLeaderboard, scoutRank, enforcerRank, mvp, teamTotal };
+    return {
+        scoutPoints: myStats.s,
+        enforcerPoints: myStats.e,
+        topScouts,
+        topEnforcers,
+        overallLeaderboard,
+        scoutRank,
+        enforcerRank,
+        mvp,
+        isCurrentMvp,
+        teamTotal
+    };
 }
 // ==========================================
 // 9. TACTICAL INTELLIGENCE REPORTING

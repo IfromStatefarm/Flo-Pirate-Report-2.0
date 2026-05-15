@@ -200,6 +200,294 @@
     .instructions ol { margin: 0; padding-left: 20px; font-size: 11px; color: #15803d; line-height: 1.5; }
     .instructions li { margin-bottom: 4px; }
 
+    /* Gamification Snapshot */
+    .gamification-card {
+        --gamification-theme: #ce0e2d;
+        display: none;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%);
+        border: 1px solid var(--gamification-theme);
+        border-radius: 10px;
+        margin-bottom: 12px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    }
+    .gamification-toggle {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px;
+    }
+    .gamification-toggle::-webkit-details-marker {
+        display: none;
+    }
+    .gamification-card > summary::marker {
+        content: "";
+    }
+    .gamification-toggle-copy {
+        min-width: 0;
+        flex: 1;
+    }
+    .gamification-eyebrow {
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #64748b;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+    .gamification-inline-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .gamification-inline-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        max-width: 100%;
+        padding: 6px 8px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        color: #475569;
+        font-size: 11px;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+    .gamification-inline-pill strong {
+        color: #111827;
+        font-weight: 800;
+    }
+    .gamification-inline-pill-value {
+        display: inline-block;
+        min-width: 0;
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: bottom;
+    }
+    .gamification-inline-pill[data-pill="goal"] {
+        background: rgba(206, 14, 45, 0.08);
+        border-color: rgba(206, 14, 45, 0.18);
+        color: var(--gamification-theme);
+    }
+    .gamification-chevron {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: rgba(255,255,255,0.94);
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 800;
+        transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    }
+    .gamification-card[open] .gamification-chevron {
+        transform: rotate(180deg);
+        border-color: rgba(206, 14, 45, 0.28);
+        color: var(--gamification-theme);
+    }
+    .gamification-body {
+        border-top: 1px solid #e5e7eb;
+        padding: 12px;
+    }
+    .gamification-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .gamification-track {
+        border-radius: 10px;
+        padding: 10px;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        min-width: 0;
+    }
+    .gamification-track[data-track="scout"] {
+        background: linear-gradient(180deg, rgba(255, 247, 237, 0.95) 0%, rgba(255,255,255,1) 100%);
+        border-color: #fed7aa;
+    }
+    .gamification-track[data-track="enforcer"] {
+        background: linear-gradient(180deg, rgba(236, 253, 245, 0.95) 0%, rgba(255,255,255,1) 100%);
+        border-color: #bbf7d0;
+    }
+    .gamification-track-label {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 6px;
+    }
+    .gamification-rank {
+        font-size: 13px;
+        font-weight: 800;
+        color: #111827;
+        line-height: 1.3;
+    }
+    .gamification-points {
+        margin-top: 6px;
+        font-size: 11px;
+        color: #475569;
+    }
+    .gamification-points strong {
+        font-size: 14px;
+        color: #111827;
+        margin-right: 4px;
+    }
+    .gamification-track-meta {
+        margin-top: 6px;
+        font-size: 11px;
+        color: #64748b;
+        line-height: 1.4;
+    }
+    .gamification-track .goal-celebration-btn {
+        margin-top: 8px;
+        padding: 8px 10px;
+        font-size: 10.5px;
+    }
+    .gamification-footer {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 10px;
+        margin-top: 10px;
+    }
+    .gamification-summary {
+        border-radius: 10px;
+        padding: 10px;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        min-width: 0;
+    }
+    .gamification-summary[data-summary="mvp"] {
+        background: linear-gradient(180deg, rgba(240, 253, 250, 0.96) 0%, rgba(255,255,255,1) 100%);
+        border-color: #99f6e4;
+    }
+    .gamification-summary[data-summary="goal"] {
+        background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255,255,255,1) 100%);
+        border-color: #bfdbfe;
+    }
+    .gamification-summary-label {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 6px;
+    }
+    .gamification-summary-value {
+        font-size: 14px;
+        font-weight: 800;
+        color: #111827;
+        line-height: 1.25;
+        word-break: break-word;
+    }
+    .gamification-summary-meta {
+        margin-top: 5px;
+        font-size: 11px;
+        color: #64748b;
+    }
+    .gamification-summary-meta + .gamification-summary-meta {
+        margin-top: 3px;
+    }
+    .gamification-progress {
+        margin-top: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        overflow: hidden;
+    }
+    .gamification-progress-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--gamification-theme) 0%, #f59e0b 100%);
+        transition: width 0.35s ease;
+    }
+    .goal-celebration-btn {
+        margin-top: 10px;
+        width: 100%;
+        border: none;
+        border-radius: 8px;
+        padding: 9px 12px;
+        background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        box-shadow: 0 6px 14px rgba(20, 184, 166, 0.25);
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .goal-celebration-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 18px rgba(20, 184, 166, 0.32);
+    }
+    .goal-celebration-btn:active {
+        transform: translateY(0);
+    }
+    .goal-video-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 9999;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        padding: 18px;
+        box-sizing: border-box;
+    }
+    .goal-video-shell {
+        width: min(100%, 440px);
+        max-height: calc(100vh - 72px);
+        background: #0f172a;
+        border: 2px solid #14b8a6;
+        border-radius: 14px;
+        padding: 12px;
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
+        display: flex;
+        flex-direction: column;
+    }
+    .goal-video-title {
+        color: #f8fafc;
+        font-size: 14px;
+        font-weight: 800;
+        margin-bottom: 10px;
+        text-align: center;
+    }
+    .goal-video-frame {
+        width: 100%;
+        height: min(68vh, 420px);
+        min-height: 320px;
+        border: none;
+        border-radius: 10px;
+        background: #000000;
+        flex: 1;
+    }
+    .goal-video-close {
+        color: #e2e8f0;
+        margin-top: 14px;
+        font-family: monospace;
+        font-size: 12px;
+        cursor: pointer;
+        text-align: center;
+    }
+    @media (max-width: 360px) {
+        .gamification-grid,
+        .gamification-footer {
+            grid-template-columns: 1fr;
+        }
+    }
+
     /* Smooth UI Toggles */
     @keyframes fadeInSlideUp {
         from { opacity: 0; transform: translateY(6px); }
@@ -279,12 +567,66 @@
 
   <div id="loading">Connecting to Secure Services...</div>
 
-  <div id="gamification-header" style="background:#fff; border:1px solid #ce0e2d; border-radius:6px; padding:10px; margin-bottom:12px; display:none;">
-    <div style="font-size:14px; font-weight:bold; color:#ce0e2d;">🏅 Scout: <span id="scout-rank">Spotter</span> | 👮 Enforcer: <span id="enforcer-rank">Agent</span></div>
-    <div style="font-size:12px; color:#333; margin-top:4px;">Scout: <strong id="scout-points">0</strong> pts | Enforcer: <strong id="enforcer-points">0</strong> pts</div>
-    <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 8px 0;">
-    <div style="font-size:12px; font-weight:bold; color:#10b981;">🌟 MVP of the Month: <span id="mvp-name" style="text-transform:capitalize">Loading...</span></div>
-    <div style="font-size:11px; color:#666; margin-top:4px;">Team Goal (1k Takedowns): <strong id="team-takedowns">0</strong>/1000</div>
+  <details id="gamification-header" class="gamification-card">
+    <summary class="gamification-toggle">
+      <div class="gamification-toggle-copy">
+        <div class="gamification-eyebrow">Squad Snapshot</div>
+        <div class="gamification-inline-list">
+          <span class="gamification-inline-pill"><strong>Scout:</strong> <span id="summary-scout-rank">Level 1</span></span>
+          <span class="gamification-inline-pill"><strong>Enforcer:</strong> <span id="summary-enforcer-rank">Level 1</span></span>
+          <span class="gamification-inline-pill"><strong>MVP:</strong> <span id="summary-mvp-name" class="gamification-inline-pill-value" style="text-transform: capitalize;">Loading...</span></span>
+          <span class="gamification-inline-pill" data-pill="goal"><strong>Goal:</strong> <span id="team-takedowns-inline">0</span>/1000</span>
+        </div>
+      </div>
+      <span class="gamification-chevron" aria-hidden="true">▾</span>
+    </summary>
+
+    <div class="gamification-body">
+      <div class="gamification-grid">
+        <div class="gamification-track" data-track="scout">
+          <div class="gamification-track-label">Scout Track</div>
+          <div id="scout-rank" class="gamification-rank">Level 1 Scout Reporter</div>
+          <div class="gamification-points"><strong id="scout-points">0</strong> pts</div>
+          <div id="scout-next-level" class="gamification-track-meta">501 pts to Level 2</div>
+          <button id="scout-level3-video-btn" class="goal-celebration-btn" type="button" hidden>▶ Play Scout Level 3 Clip</button>
+        </div>
+        <div class="gamification-track" data-track="enforcer">
+          <div class="gamification-track-label">Enforcer Track</div>
+          <div id="enforcer-rank" class="gamification-rank">Level 1 Enforcer</div>
+          <div class="gamification-points"><strong id="enforcer-points">0</strong> pts</div>
+          <div id="enforcer-next-level" class="gamification-track-meta">501 pts to Level 2</div>
+          <button id="enforcer-level3-video-btn" class="goal-celebration-btn" type="button" hidden>▶ Play Enforcer Level 3 Clip</button>
+        </div>
+      </div>
+
+      <div class="gamification-footer">
+        <div class="gamification-summary" data-summary="mvp">
+          <div class="gamification-summary-label">MVP of the Month</div>
+          <div id="mvp-name" class="gamification-summary-value" style="text-transform: capitalize;">Loading...</div>
+          <div class="gamification-summary-meta"><span id="mvp-points">0</span> total points</div>
+          <div id="mvp-gap" class="gamification-summary-meta">First report sets the pace.</div>
+          <button id="mvp-video-btn" class="goal-celebration-btn" type="button" hidden>▶ Play MVP Clip</button>
+        </div>
+        <div class="gamification-summary" data-summary="goal">
+        <div class="gamification-summary-label">Team Goal</div>
+        <div class="gamification-summary-value"><span id="team-takedowns">0</span> / 1000</div>
+        <div class="gamification-progress">
+          <div id="team-goal-progress" class="gamification-progress-fill"></div>
+        </div>
+        <div class="gamification-summary-meta">1k takedowns target</div>
+        <div id="team-goal-remaining" class="gamification-summary-meta">About 1000 reports to goal.</div>
+        <button id="team-goal-video-btn" class="goal-celebration-btn" type="button" hidden>▶ Play Victory Clip</button>
+      </div>
+      </div>
+    </div>
+  </details>
+
+  <div id="goal-video-overlay" class="goal-video-overlay">
+    <div class="goal-video-shell">
+      <div id="goal-video-title" class="goal-video-title">Team Goal Celebration</div>
+      <iframe id="goal-video-frame" class="goal-video-frame" allow="autoplay; fullscreen" allowfullscreen referrerpolicy="no-referrer"></iframe>
+    </div>
+    <div class="goal-video-close">Click anywhere to close</div>
   </div>
 
   <div class="container">

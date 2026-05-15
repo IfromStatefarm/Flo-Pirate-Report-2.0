@@ -5,6 +5,8 @@
      // Guard against IFrame/Ad injection (Only run in main window)
   if (window.self !== window.top) return;
   
+  const forceOverlayRun = window.__floForceOverlay === true;
+
   // Guard against re-injection
   if (window.hasFloScraperRun) return;
   window.hasFloScraperRun = true;
@@ -23,7 +25,7 @@
     'flosports', 'app.hibob.com', 'dashboard.airbase.io', 'app.ashbyhq.com', 'flosports.ziphq.com', 'flowrestling.org', 'flograppling', 'floracing', 'flograppling', 'flocycling',  
     'sites.google.com', 'flosports.latticehq.com', 'keep.google.com', 'github.com', 'flodogs.com','drive.google.com'
   ];
-  if (EXEMPT_WEBSITES.some(domain => window.location.hostname.toLowerCase().includes(domain))) return;
+  if (!forceOverlayRun && EXEMPT_WEBSITES.some(domain => window.location.hostname.toLowerCase().includes(domain))) return;
 
   let currentCount = 0;
 
@@ -740,6 +742,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   });
 
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action !== 'showPirateOverlay') return false;
+
+    showPirateOverlay(request)
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+
+    return true;
+  });
+
   // ==========================================
   // 3. OVERLAY UI LOGIC (Updated for Capture First)
   // ==========================================
@@ -1087,6 +1099,48 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
   }
 
+  function expandOverlayPanel() {
+    const overlay = document.getElementById('flo-overlay');
+    const mainContent = document.getElementById('flo-main-content');
+    const minBtn = document.getElementById('flo-min-btn');
+    const dragHandle = document.getElementById('flo-drag-handle');
+
+    if (!overlay || !mainContent || !minBtn || !dragHandle) return;
+
+    mainContent.style.display = 'block';
+    minBtn.innerHTML = '−';
+    dragHandle.innerText = 'PIRATE AI ✥';
+    overlay.style.display = 'block';
+    overlay.style.width = '220px';
+    overlay.style.padding = '15px';
+    overlay.style.borderRadius = '12px';
+    overlay.style.right = overlay.style.right || '20px';
+    overlay.style.left = overlay.style.left || 'auto';
+    sessionStorage.setItem('floPirateAiMinimized', 'false');
+  }
+
+  async function showPirateOverlay(options = {}) {
+    const { showNukeButton = false, expand = true } = options;
+
+    if (!document.getElementById('flo-overlay')) {
+      await initOverlay();
+    }
+
+    const overlay = document.getElementById('flo-overlay');
+    if (!overlay) return;
+
+    overlay.style.display = 'block';
+
+    if (showNukeButton) {
+      const nukeBtn = document.getElementById('flo-nuke');
+      if (nukeBtn) nukeBtn.style.display = 'block';
+    }
+
+    if (expand) {
+      expandOverlayPanel();
+    }
+  }
+
   function updateCount(n) {
     currentCount = n;
     const el = document.getElementById('flo-count');
@@ -1137,6 +1191,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           finishMacroTraining(); // 🛑 Auto-stop on Hard Reload/Crash
       } */
   
-      setTimeout(initOverlay, 1500);
+      if (forceOverlayRun) {
+          window.__floForceOverlay = false;
+          void showPirateOverlay({ showNukeButton: true, expand: true });
+      } else {
+          setTimeout(initOverlay, 1500);
+      }
   
   })();

@@ -18,6 +18,7 @@
     }
     
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const COPYRIGHT_OWNER_NAME = 'FloSports';
     let configLoaded = false;
     let isAutofilling = false; 
     let lastReportData = null; // Cache data for SPA navigation
@@ -365,10 +366,10 @@
     async function runStep2(data) {
         const platform = "tiktok";
         const defaults = {
-            company: "FloSports",
+            company: COPYRIGHT_OWNER_NAME,
             phone: "5122702356",
             address: "301 Congress ave #1500 Austin Tx 78701",
-            name: data.fullName
+            name: COPYRIGHT_OWNER_NAME
         };
         
         // Map logical fields to their respective sections in the config and fallback labels
@@ -393,7 +394,7 @@
 
     async function runStep3(data) {
         console.log("🔹 Step 3: Infringement Details & Sign");
-        const defaults = { name: data.fullName };
+        const defaults = { name: COPYRIGHT_OWNER_NAME };
 
         fillByLabel('signature', defaults.name);
 
@@ -1110,7 +1111,7 @@ function setupDrag(overlay) {
         
         await selectYtcpDropdown(conf.dropdowns?.affected_party?.label || "Relationship", conf.dropdowns?.affected_party?.value || "My company, organization, or client");
 
-        fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", data.fullName || "FloSports");
+        fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", COPYRIGHT_OWNER_NAME);
         fillYtcpInput(ownerInputs.phone || "Phone", defaults.phone || "5122702356"); // FloSports Default
         fillYtcpInput(ownerInputs.secondary_email || "Secondary email", defaults.secondary_email || data.email || "copyright@flosports.tv");
         fillYtcpInput(ownerInputs.authority || "Relationship", defaults.authority || "Authorized Representative");
@@ -1140,7 +1141,7 @@ function setupDrag(overlay) {
         }
 
         // Signature
-        fillYtcpInput(ownerInputs.signature || "Signature", data.fullName);
+        fillYtcpInput(ownerInputs.signature || "Signature", COPYRIGHT_OWNER_NAME);
 
         console.log("✅ YouTube Strategy Complete!");
     }
@@ -1196,7 +1197,7 @@ function setupDrag(overlay) {
         await selectYtcpDropdown(dd.affected_party?.label || "Relationship", dd.affected_party?.value || "My company, organization, or client");
 
         const ownerInputs = conf.inputs || {};
-        fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", data.fullName || "FloSports");
+        fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", COPYRIGHT_OWNER_NAME);
         fillYtcpInput(ownerInputs.phone || "Phone", defaults.phone || "5122702356");
         fillYtcpInput(ownerInputs.secondary_email || "Secondary email", defaults.secondary_email || data.email || "copyright@flosports.tv");
         fillYtcpInput(ownerInputs.authority || "Relationship", defaults.authority || "Authorized Representative");
@@ -1270,7 +1271,7 @@ function setupDrag(overlay) {
             }
         }
         
-        fillYtcpInput(ownerInputs.signature || "Signature", data.fullName);
+        fillYtcpInput(ownerInputs.signature || "Signature", COPYRIGHT_OWNER_NAME);
 
         console.log("✅ YouTube Step 3 Complete!");
     }

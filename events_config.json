@@ -19,5 +19,80 @@
     { "name": "FloCheer", "events": [] },
     { "name": "FloWrestling", "events": [] },
     { "name": "FloGrappling", "events": [] }
-  ]
+  ],
+  "platform_selectors": {
+    "youtube": {
+      "session": {
+        "authorized_handles": [
+          "@flosocial4531",
+          "@floelite",
+          "@flocollegevolleyball",
+          "@florugby",
+          "@flocollegebasketball",
+          "@floflomarching",
+          "@florodeo",
+          "@floracingwk4fk",
+          "@flogrppling",
+          "@floswimming",
+          "@milesplit",
+          "@flovoice",
+          "@floclimbing1847",
+          "@flobowling",
+          "@flodance",
+          "@flodragracing",
+          "@flosports"
+        ],
+        "authorized_channel_ids": [
+          "UCI1KHGC-GuvaOej1qPY7sBA",
+          "UCJeMIYjZLELFf1xMFUZEmzQ",
+          "UCjl8UhCmj3gFmtDe5_MiGgg",
+          "UC3Mj0nm-7grOYZuqgo-LhmQ",
+          "UCjfcsyEFS4g-rJHxzOba9ng",
+          "UCbcJDshcWmYzvYofmqFOT8Q",
+          "UCAnzXT5pmV8phtMsnavN7Qg",
+          "UCX7MXflg3DxDJTZi5mJRiOw",
+          "UCngVN3LC9pNOOvjSq9X-lDQ",
+          "UCrrOH-g-Vdcl57U-AgY3YMQ",
+          "UC80xBT9ErxjJDLvmTER1ToQ",
+          "UCj8-BAD2gi7Cn4ZuAns8QJg",
+          "UC4QLqyxFieBF-XUxrHRbjfg",
+          "UCfjGrUg4Y7T3Zf6fy38mAuw"
+        ],
+        "authorized_studio_manager_ids": [
+          "VCBDhoYo0l5sZyPRZC85IA",
+          "aN9WOtYZUy413s3J75rs0A"
+        ],
+        "channel_handle": [
+          "yt-formatted-string#channel-handle",
+          "ytd-active-account-header-renderer yt-formatted-string#channel-handle"
+        ],
+        "account_menu_trigger": [
+          "button#avatar-btn",
+          "#avatar-btn",
+          "button[aria-label*=\"account\" i]"
+        ],
+        "candidate_anchors": [
+          "ytd-guide-renderer a[href]",
+          "ytd-mini-guide-renderer a[href]",
+          "ytd-popup-container a[href]",
+          "ytd-masthead a[href]",
+          "tp-yt-paper-dialog a[href]"
+        ]
+      }
+    },
+    "tiktok": {
+      "session": {
+        "authorized_handles": [
+          "@flosocial3"
+        ],
+        "account_handle": [
+          "a[data-e2e=\"nav-profile\"]",
+          "[data-e2e=\"nav-profile\"] a[href]",
+          "header a[href^=\"/@\"]",
+          "nav a[href^=\"/@\"]",
+          "[data-e2e*=\"profile\"] a[href^=\"/@\"]"
+        ]
+      }
+    }
+  }
 }
