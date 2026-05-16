@@ -344,15 +344,14 @@ export function createReportingWorkflow({
             `Report #: ${reportId}\nGenerating Links...`,
             scoutedByEmails,
             enforcedByEmail,
-            '',
+            reportId,
             '',
             '',
             '',
             '',
             '',
             totalScoutScore,
-            enforcerScore,
-            reportId
+            enforcerScore
           ]
         });
 

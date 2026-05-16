@@ -1,4 +1,3 @@
-// utils/pdf_gen.js
 import * as jsPDFModule from '../lib/jspdf.umd.min.js';
 
 // --- HELPER: Resolve jsPDF Constructor ---
@@ -41,29 +40,24 @@ export async function generatePDF(data) {
     let y = 20;
 
     // --- PAGINATION HELPERS ---
-    
-    // Checks if we need a new page before drawing the next element
     const ensureSpace = (neededSpace) => {
         if (y + neededSpace > pageHeight - margin) {
             doc.addPage();
-            y = margin + 5; // Reset Y to the top of the new page
+            y = margin + 5; 
             return true;
         }
         return false;
     };
 
-    // Accurately calculates multiline text blocks to prevent overflow
     const drawWrappedText = (text, x, maxWidth, paddingBottom = 5) => {
         const lines = doc.splitTextToSize(text, maxWidth);
-        const lineHeight = doc.getFontSize() * 0.4; // Approx height per line in mm
+        const lineHeight = doc.getFontSize() * 0.4; 
         const textBlockHeight = lines.length * lineHeight;
-
         ensureSpace(textBlockHeight);
         doc.text(lines, x, y);
         y += textBlockHeight + paddingBottom;
     };
 
-    // Table Header Drawer (Can be called repeatedly if table breaks pages)
     const drawTableHeader = () => {
         doc.setFontSize(10);
         doc.setFillColor(240, 240, 240);
@@ -79,11 +73,9 @@ export async function generatePDF(data) {
     // --- TITLE ---
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.setTextColor(206, 14, 45); // FloSports Red
+    doc.setTextColor(206, 14, 45); 
     doc.text("FLO PIRACY REPORT", pageWidth / 2, y, { align: "center" });
     y += 15;
-
-    
 
     // --- HEADER INFO ---
     doc.setTextColor(0, 0, 0);
@@ -116,7 +108,7 @@ export async function generatePDF(data) {
     y += 12;
 
     // --- EVIDENCE TABLE ---
-    ensureSpace(20); // Make sure we have room for the table header
+    ensureSpace(20); 
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.text("INFRINGING URLS & EVIDENCE", margin, y);
@@ -126,10 +118,8 @@ export async function generatePDF(data) {
     
     let totalViews = 0;
 
-    // Items Loop
     if (data.items && Array.isArray(data.items)) {
         data.items.forEach((item, index) => {
-            // Parse views for total
             let viewCount = 0;
             if (item.views && item.views !== "N/A" && item.views !== "PENDING" && item.views !== "DELETED") {
                 const v = String(item.views).toLowerCase();
@@ -139,16 +129,10 @@ export async function generatePDF(data) {
             }
             totalViews += viewCount;
 
-            // Truncate URL for display
             let displayUrl = item.url.length > 55 ? item.url.substring(0, 52) + "..." : item.url;
 
-            // Check space for the row
-            if (ensureSpace(10)) {
-                // If page broke, redraw the table header on the new page
-                drawTableHeader();
-            }
+            if (ensureSpace(10)) drawTableHeader();
 
-            // Add Row
             doc.text(displayUrl, margin + 2, y);
             doc.text(String(item.views || "N/A"), margin + 110, y);
             
@@ -166,7 +150,7 @@ export async function generatePDF(data) {
         });
     }
 
-    ensureSpace(20); // Check room for the total line
+    ensureSpace(20); 
     y += 5;
     doc.setFont("helvetica", "bold");
     doc.text(`TOTAL VIEWS AFFECTED: ${totalViews.toLocaleString()}`, margin, y);
@@ -175,8 +159,7 @@ export async function generatePDF(data) {
     y += 15;
 
     // --- CEASE & DESIST LETTER ---
-    
-    ensureSpace(30); // Need substantial space to start the C&D letter header
+    ensureSpace(30); 
 
     const reportId = data.reportId || `FS-${Math.floor(Math.random()*10000)}`;
     const fullDate = new Date().toLocaleDateString("en-US", { year: 'numeric', month: 'long', day: 'numeric' });
@@ -248,7 +231,6 @@ export async function generatePDF(data) {
   } catch (error) {
     console.error("PDF Gen Failed, using Text fallback:", error);
     
-    // --- TEXT FALLBACK ---
     const textContent = `
     FLO PIRACY REPORT (FALLBACK TEXT VERSION)
     --------------------------------------------------
@@ -288,7 +270,6 @@ export async function generatePDF(data) {
 
 export async function generateIntelligencePDF(stats) {
   try {
-    // Fetch user briefing configuration
     const syncData = await chrome.storage.sync.get(['briefing_config']);
     const defaultStats = {
         kpi_total_takedowns: true, kpi_takedowns_platform: true, kpi_total_urls: true, kpi_urls_platform: true,
@@ -301,8 +282,8 @@ export async function generateIntelligencePDF(stats) {
         events_top_5: true, events_top_10: true, events_top_5_pct: false, events_top_10_pct: false,
         appx_team_all: true, appx_team_half: false, appx_events_all: true, appx_events_half: false
     };
-    const config = syncData.briefing_config || defaultStats;
-
+    
+    const config = { ...defaultStats, ...(syncData.briefing_config || {}) };
     const jsPDF = getJsPdfConstructor();
 
     const doc = new jsPDF();
@@ -312,7 +293,7 @@ export async function generateIntelligencePDF(stats) {
     const maxTextWidth = pageWidth - (margin * 2);
     let y = 0;
 
-    // --- PAGINATION HELPERS ---
+    // --- REUSABLE PDF HELPERS (Closures) ---
     const ensureSpace = (neededSpace) => {
         if (y + neededSpace > pageHeight - margin) {
             doc.addPage();
@@ -322,20 +303,268 @@ export async function generateIntelligencePDF(stats) {
         return false;
     };
 
-    const drawWrappedText = (text, x, maxWidth, align = "left") => {
-        const lines = doc.splitTextToSize(text, maxWidth);
-        const lineHeight = doc.getFontSize() * 0.4;
-        const textBlockHeight = lines.length * lineHeight;
-        ensureSpace(textBlockHeight);
-        doc.text(lines, x, y, { align });
-        y += textBlockHeight + 2;
+    const getTeamCols = () => {
+        const teamCols = [];
+        teamCols.push({ header: "MEMBER", width: 45, val: (m) => m.name || "Unknown" });
+        if (config.team_col_scout) teamCols.push({ header: "SCOUT", width: 18, val: (m) => String(m.scouted || 0) });
+        if (config.team_col_enforced) teamCols.push({ header: "ENFORCE", width: 22, val: (m) => String(m.enforced || 0) });
+        if (config.team_col_urls_resolved_num) teamCols.push({ header: "RES(#)", width: 18, val: (m) => String(m.resolvedNum || 0) });
+        if (config.team_col_urls_resolved_pct) teamCols.push({ header: "RES(%)", width: 18, val: (m) => String(m.resolvedRate || "0%") });
+        if (config.team_col_burndown_rate) teamCols.push({ header: "BURN(W/UW)", width: 30, val: (m) => `${m.wBurndown}d / ${m.uwBurndown}d` });
+        if (config.team_col_days_reported) teamCols.push({ header: "DAYS", width: 15, val: (m) => String(m.daysReported || 0) });
+        return teamCols;
     };
 
+    const drawTeamTable = (limit, title, includeToc = false) => {
+        if (includeToc) tocEntries.push({ title: title, page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        ensureSpace(35);
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text(title, margin, y);
+        y += 8;
+
+        const teamCols = getTeamCols();
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setFontSize(9);
+        let cX = margin + 2;
+        teamCols.forEach(col => { doc.text(col.header, cX, y + 6); cX += col.width; });
+        y += 12;
+
+        doc.setFont("helvetica", "normal");
+        const list = stats.teamStats || [];
+        if (list.length > 0) {
+            list.slice(0, limit).forEach((member, i) => {
+                ensureSpace(10);
+                // Striping: alternating light gray / white
+                if (i % 2 !== 0) {
+                    doc.setFillColor(249, 250, 251); 
+                    doc.rect(margin, y - 6, maxTextWidth, 8, 'F');
+                }
+                
+                let rowX = margin + 2;
+                teamCols.forEach(col => {
+                    let val = String(col.val(member));
+                    // Aggressively prevent spilling
+                    if (col.header === "MEMBER" && val.length > 20) val = val.substring(0, 17) + "...";
+                    doc.setTextColor(17, 24, 39); // Enforce black text
+                    doc.text(val, rowX, y);
+                    rowX += col.width;
+                });
+                
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
+        } else {
+            doc.text("No team data identified.", margin + 2, y);
+            y += 10;
+        }
+        y += 5;
+    };
+
+    const drawEventsTable = (limit, title, includeToc = false) => {
+        if (includeToc) tocEntries.push({ title: title, page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+        ensureSpace(35);
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text(title, margin, y);
+        y += 8;
+
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setFontSize(9);
+        doc.text("EVENT NAME", margin + 2, y + 6);
+        doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
+        y += 12;
+
+        doc.setFont("helvetica", "normal");
+        const list = stats.eventViews || [];
+        if (list.length > 0) {
+            list.slice(0, limit).forEach((ev, i) => {
+                ensureSpace(10);
+                // Striping: alternating light gray / white
+                if (i % 2 !== 0) {
+                    doc.setFillColor(249, 250, 251); 
+                    doc.rect(margin, y - 6, maxTextWidth, 8, 'F');
+                }
+                
+                let displayEventName = String(ev.name || "Unknown");
+                // Aggressive truncation for large scraped URLs representing names
+                if (displayEventName.length > 55) displayEventName = displayEventName.substring(0, 52) + "...";
+                
+                doc.setTextColor(17, 24, 39); // Enforce black text
+                doc.text(displayEventName, margin + 2, y);
+                
+                const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
+                doc.text(safeEventViews, margin + 150, y);
+                
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
+        } else {
+            doc.text("No event view data identified.", margin + 2, y);
+            y += 10;
+        }
+        y += 5;
+    };
+
+    const drawTargetsTable = (limit, title) => {
+        ensureSpace(35);
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text(title, margin, y);
+        y += 8;
+
+        doc.setFillColor(229, 231, 235);
+        doc.rect(margin, y, maxTextWidth, 8, 'F');
+        doc.setFontSize(9);
+        doc.text("PIRATE HANDLE", margin + 2, y + 6);
+        doc.text("PLATFORMS", margin + 70, y + 6);
+        doc.text("URLS", margin + 115, y + 6);
+        doc.text("REPORTS", margin + 150, y + 6);
+        y += 12;
+
+        doc.setFont("helvetica", "normal");
+        const list = stats.topPirates || [];
+        if (list.length > 0) {
+            list.slice(0, limit).forEach((pirate, i) => {
+                ensureSpace(10);
+                // Striping
+                if (i % 2 !== 0) {
+                    doc.setFillColor(249, 250, 251); 
+                    doc.rect(margin, y - 6, maxTextWidth, 8, 'F');
+                }
+                
+                // Aggressive truncation limits to prevent horizontal column overlap
+                let displayHandle = `@${pirate.handle}`;
+                if (displayHandle.length > 30) displayHandle = displayHandle.substring(0, 27) + "...";
+                let displayPlatform = String(pirate.platforms || "Unknown");
+                if (displayPlatform.length > 18) displayPlatform = displayPlatform.substring(0, 15) + "...";
+                
+                doc.setTextColor(17, 24, 39);
+                doc.text(displayHandle, margin + 2, y);
+                doc.text(displayPlatform, margin + 70, y);
+                doc.text(String(pirate.urls), margin + 115, y);
+                doc.text(String(pirate.reports), margin + 150, y);
+                
+                doc.setDrawColor(243, 244, 246);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+            });
+        } else {
+            doc.text("No targets identified.", margin + 2, y);
+        }
+        y += 10;
+    };
+
+    const drawPlatTargetsTable = (limit, title) => {
+        ensureSpace(35);
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.text(title, margin, y);
+        y += 8;
+
+        if (stats.topPiratesByPlatform) {
+            Object.keys(stats.topPiratesByPlatform).forEach(plat => {
+                 ensureSpace(20);
+                 doc.setFillColor(229, 231, 235);
+                 doc.rect(margin, y, maxTextWidth, 6, 'F');
+                 doc.setFontSize(9);
+                 doc.setFont("helvetica", "bold");
+                 doc.text(plat.toUpperCase(), margin + 2, y + 4.5);
+                 y += 10;
+
+                 doc.setFont("helvetica", "normal");
+                 const list = stats.topPiratesByPlatform[plat] || [];
+                 if (list.length === 0) {
+                     doc.text("None found.", margin + 2, y);
+                     y += 6;
+                 } else {
+                     list.slice(0, limit).forEach((pirate, i) => {
+                         ensureSpace(8);
+                         if (i % 2 !== 0) {
+                             doc.setFillColor(249, 250, 251); 
+                             doc.rect(margin, y - 5, maxTextWidth, 7, 'F');
+                         }
+                         
+                         let displayHandle = `@${pirate.handle}`;
+                         if (displayHandle.length > 45) displayHandle = displayHandle.substring(0, 42) + "...";
+                         
+                         doc.setTextColor(17, 24, 39);
+                         doc.text(displayHandle, margin + 2, y);
+                         doc.text(`${pirate.urls} URLs`, margin + 115, y);
+                         doc.text(`${pirate.reports} Reports`, margin + 150, y);
+                         y += 6;
+                     });
+                 }
+                 y += 4;
+            });
+        } else {
+            doc.text("No platform targets identified.", margin + 2, y);
+            y += 10;
+        }
+        y += 5;
+    };
+
+    const drawSquadList = (limit, title, bottom = false) => {
+        ensureSpace(35);
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text(`ELITE SQUAD (${title}): SCOUTS`, margin, y);
+        doc.text(`ELITE SQUAD (${title}): ENFORCERS`, pageWidth / 2 + 5, y);
+        y += 8;
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        
+        const sLen = (stats.topScouts || []).length;
+        const eLen = (stats.topEnforcers || []).length;
+
+        for (let i = 0; i < limit; i++) {
+            let scout, enforcer;
+            if (bottom) {
+                scout = stats.topScouts?.[sLen - 1 - i] || { name: "-", count: 0 };
+                enforcer = stats.topEnforcers?.[eLen - 1 - i] || { name: "-", count: 0 };
+            } else {
+                scout = stats.topScouts?.[i] || { name: "-", count: 0 };
+                enforcer = stats.topEnforcers?.[i] || { name: "-", count: 0 };
+            }
+
+            const cap = (n) => n && n !== "-" ? n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : n;
+            
+            if (i % 2 !== 0) {
+                doc.setFillColor(249, 250, 251);
+                doc.rect(margin, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
+                doc.rect(pageWidth / 2 + 5, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
+            }
+            
+            doc.setTextColor(17, 24, 39);
+            
+            let displayScoutName = cap(scout.name);
+            if (displayScoutName.length > 20) displayScoutName = displayScoutName.substring(0, 17) + "...";
+            let displayEnforcerName = cap(enforcer.name);
+            if (displayEnforcerName.length > 20) displayEnforcerName = displayEnforcerName.substring(0, 17) + "...";
+            
+            doc.text(`${i + 1}. ${displayScoutName} (${scout.count} hits)`, margin + 2, y);
+            doc.text(`${i + 1}. ${displayEnforcerName} (${enforcer.count} hits)`, pageWidth / 2 + 7, y);
+            y += 8;
+        }
+        y += 10;
+    };
+
+
     // --- 1. DARK THEME HEADER ---
-    doc.setFillColor(30, 41, 59); // FloSports Dark Gray/Black
+    doc.setFillColor(30, 41, 59);
     doc.rect(0, 0, pageWidth, 45, 'F');
 
-    doc.setTextColor(206, 14, 45); // FloSports Red
+    doc.setTextColor(206, 14, 45);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
     doc.text("EXECUTIVE INTELLIGENCE BRIEFING", pageWidth / 2, 22, { align: "center" });
@@ -346,22 +575,27 @@ export async function generateIntelligencePDF(stats) {
     doc.text(`REPORTING PERIOD: ${stats.startDate} TO ${stats.endDate}`, pageWidth / 2, 30, { align: "center" });
     doc.text(`REPORT GENERATED: ${new Date().toLocaleString()}`, pageWidth / 2, 36, { align: "center" });
         
-    let tocY = 60; // Save TOC position
-    y = 120; // Push content down to make room for TOC
     const tocEntries = [];
+    
+    // Page 1 is now exclusively dedicated to the TOC to prevent any overlap
+    // Jump to Page 2 to begin the actual Enforcement Content safely
+    doc.addPage();
+    y = margin + 10;
 
-    // --- 2. KPI DASHBOARD (3-Column Grid) ---
+    // --- 2. ENFORCEMENT OVERVIEW (Dynamic Grid) ---
     const kpis = [];
-    if (config.kpi_total_takedowns) kpis.push({ label: "TOTAL TAKEDOWNS", value: stats.totalReported || "0", desc: "Confirmed Reports Filed" });
-    if (config.kpi_total_urls) kpis.push({ label: "TOTAL URLS", value: stats.totalUrls || "0", desc: "Pirated Links Processed" });
-    if (config.kpi_resolved_pct_unweighted || config.kpi_resolved_pct_weighted) kpis.push({ label: "RESOLVED RATE", value: stats.resolvedRate || "0%", desc: "Successful Report Takedown %" });
-    if (config.kpi_burndown_weighted || config.kpi_burndown_unweighted) {
-        kpis.push({ 
-            label: "AVG BURNDOWN", 
-            value: config.kpi_burndown_weighted ? `${stats.globalWeightedBurndown}d` : `${stats.globalUnweightedBurndown}d`, 
-            desc: config.kpi_burndown_unweighted ? `Unw: ${stats.globalUnweightedBurndown}d` : `Wgt: ${stats.globalWeightedBurndown}d` 
-        });
-    }
+    const topPlat = stats.platformTotals[0] || { name: 'N/A', reports: 0, urls: 0 };
+
+    if (config.kpi_total_takedowns) kpis.push({ label: "TOTAL TAKEDOWNS", value: stats.rawReportedNum, desc: "Confirmed Reports Filed" });
+    if (config.kpi_takedowns_platform) kpis.push({ label: "TOP PLATFORM (TKDWN)", value: `${topPlat.reports}`, desc: `${topPlat.name} Leads Takedowns` });
+    if (config.kpi_total_urls) kpis.push({ label: "TOTAL URLS", value: stats.totalUrls, desc: "Pirated Links Processed" });
+    if (config.kpi_urls_platform) kpis.push({ label: "TOP PLATFORM (URLS)", value: `${topPlat.urls}`, desc: `${topPlat.name} Leads URLs` });
+    if (config.kpi_resolved_num_unweighted) kpis.push({ label: "RESOLVED (UW)", value: stats.globalUnweightedResolvedNum, desc: "Unweighted Count" });
+    if (config.kpi_resolved_num_weighted) kpis.push({ label: "RESOLVED (WGT)", value: stats.globalWeightedResolvedNum, desc: "Weighted Count" });
+    if (config.kpi_resolved_pct_unweighted) kpis.push({ label: "RESOLVED % (UW)", value: (stats.rawReportedNum ? Math.round((stats.globalUnweightedResolvedNum / stats.rawReportedNum)*100) : 0) + '%', desc: "Unweighted Rate" });
+    if (config.kpi_resolved_pct_weighted) kpis.push({ label: "RESOLVED % (WGT)", value: (stats.rawReportedNum ? Math.round((stats.globalWeightedResolvedNum / stats.rawReportedNum)*100) : 0) + '%', desc: "Weighted Rate" });
+    if (config.kpi_burndown_weighted) kpis.push({ label: "BURNDOWN (WGT)", value: stats.globalWeightedBurndown + 'd', desc: "Weighted Average" });
+    if (config.kpi_burndown_unweighted) kpis.push({ label: "BURNDOWN (UW)", value: stats.globalUnweightedBurndown + 'd', desc: "Unweighted Average" });
 
     if (kpis.length > 0) {
         ensureSpace(40);
@@ -373,37 +607,48 @@ export async function generateIntelligencePDF(stats) {
         y += 10;
 
         const gap = 5;
-        const boxWidth = (maxTextWidth - (gap * (kpis.length - 1))) / kpis.length;
+        const cols = 3;
+        const boxWidth = (maxTextWidth - (gap * (cols - 1))) / cols;
+        let kpiCount = 0;
 
-        kpis.forEach((kpi, i) => {
-          const boxX = margin + (i * (boxWidth + gap));
-          doc.setFillColor(243, 244, 246);
-          doc.setDrawColor(209, 213, 219);
-          doc.rect(boxX, y, boxWidth, 26, 'FD');
+        kpis.forEach((kpi) => {
+            if (kpiCount > 0 && kpiCount % cols === 0) {
+                y += 30;
+                ensureSpace(35);
+            }
+            const colIndex = kpiCount % cols;
+            const boxX = margin + (colIndex * (boxWidth + gap));
+            
+            doc.setFillColor(243, 244, 246);
+            doc.setDrawColor(209, 213, 219);
+            doc.rect(boxX, y, boxWidth, 26, 'FD');
 
-          doc.setTextColor(107, 114, 128);
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "bold");
-          doc.text(kpi.label, boxX + (boxWidth / 2), y + 6, { align: "center" });
+            doc.setTextColor(107, 114, 128);
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "bold");
+            doc.text(kpi.label, boxX + (boxWidth / 2), y + 6, { align: "center" });
 
-          doc.setTextColor(17, 24, 39);
-          doc.setFontSize(16);
-          doc.text(String(kpi.value), boxX + (boxWidth / 2), y + 15, { align: "center" });
+            doc.setTextColor(17, 24, 39);
+            doc.setFontSize(14);
+            doc.text(String(kpi.value), boxX + (boxWidth / 2), y + 15, { align: "center" });
 
-          doc.setTextColor(156, 163, 175);
-          doc.setFontSize(7);
-          doc.setFont("helvetica", "normal");
-          doc.text(kpi.desc, boxX + (boxWidth / 2), y + 22, { align: "center" });
+            doc.setTextColor(156, 163, 175);
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "normal");
+            doc.text(kpi.desc, boxX + (boxWidth / 2), y + 22, { align: "center" });
+
+            kpiCount++;
         });
         y += 35;
     }
 
     // --- 3. LEADERBOARDS & MVP ---
-    if (config.leaderboard_mvp || config.leaderboard_top_3 || config.leaderboard_top_5) {
-        ensureSpace(50);
+    if (config.leaderboard_mvp || config.leaderboard_top_3 || config.leaderboard_top_5 || config.leaderboard_last_3) {
+        ensureSpace(30);
         tocEntries.push({ title: "Leaderboards & MVP", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
         
         if (config.leaderboard_mvp) {
+            ensureSpace(25);
             doc.setFillColor(254, 243, 199); 
             doc.setDrawColor(251, 191, 36); 
             doc.rect(margin, y, maxTextWidth, 16, 'FD');
@@ -417,42 +662,10 @@ export async function generateIntelligencePDF(stats) {
             y += 28;
         }
 
-        // Determine list length based on checkboxes
-        let listLength = 0;
-        if (config.leaderboard_top_5) listLength = 5;
-        else if (config.leaderboard_top_3) listLength = 3;
-
-        if (listLength > 0) {
-            doc.setTextColor(17, 24, 39);
-            doc.setFontSize(12);
-            doc.text("ELITE SQUAD: SCOUTS", margin, y);
-            doc.text("ELITE SQUAD: ENFORCERS", pageWidth / 2 + 5, y);
-            y += 8;
-
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            for (let i = 0; i < listLength; i++) {
-              const scout = stats.topScouts?.[i] || { name: "-", count: 0 };
-              const enforcer = stats.topEnforcers?.[i] || { name: "-", count: 0 };
-          
-          const cap = (n) => n && n !== "-" ? n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : n;
-          const sName = cap(scout.name);
-          const eName = cap(enforcer.name);
-
-          if (i % 2 === 0) {
-              doc.setFillColor(249, 250, 251);
-              doc.rect(margin, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
-              doc.rect(pageWidth / 2 + 5, y - 5, (maxTextWidth / 2) - 5, 8, 'F');
-          }
-          
-          doc.text(`${i + 1}. ${sName} (${scout.count} hits)`, margin + 2, y);
-          doc.text(`${i + 1}. ${eName} (${enforcer.count} hits)`, pageWidth / 2 + 7, y);
-          y += 8;
-        }
-        y += 10;
-        }
+        if (config.leaderboard_top_3) drawSquadList(3, "TOP 3", false);
+        if (config.leaderboard_top_5) drawSquadList(5, "TOP 5", false);
+        if (config.leaderboard_last_3) drawSquadList(3, "BOTTOM 3", true);
     }
-
 
     // --- 4. VECTOR GRAPHICS: TIMELINE ---
     if (config.timeline_report) {
@@ -611,254 +824,57 @@ export async function generateIntelligencePDF(stats) {
         }
     }
 
-    // --- 5. TARGET LIST (TOP 5 PIRATES) ---
-    if (config.targets_top_1 || config.targets_top_5) {
-        ensureSpace(40);
+    // --- 5. HIGH-VALUE TARGETS ---
+    if (config.targets_top_1 || config.targets_top_5 || config.targets_top_platform_1 || config.targets_top_platform_3) {
         tocEntries.push({ title: "High-Value Targets", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-        doc.setTextColor(17, 24, 39);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text("HIGH-VALUE TARGETS (TOP 5 PIRATES)", margin, y);
-        y += 8;
-
-        doc.setFillColor(229, 231, 235);
-        doc.rect(margin, y, maxTextWidth, 8, 'F');
-        doc.setFontSize(9);
         
-        doc.text("PIRATE HANDLE", margin + 2, y + 6);
-        doc.text("PLATFORM", margin + 70, y + 6);
-        doc.text("URLS HIT", margin + 115, y + 6);
-        doc.text("EST. VIEWS", margin + 150, y + 6);
-        
-         y += 12;
-
-        let targetCount = config.targets_top_5 ? 5 : 1;
-
-        doc.setFont("helvetica", "normal");
-        if (stats.topPirates && stats.topPirates.length > 0) {
-            stats.topPirates.slice(0, targetCount).forEach((pirate, i) => {
-                ensureSpace(10);
-                
-                let displayHandle = `@${pirate.handle}`;
-                if (displayHandle.length > 32) {
-                    displayHandle = displayHandle.substring(0, 29) + "...";
-                }
-                
-                let displayPlatform = String(pirate.platforms || "Unknown");
-                if (displayPlatform.length > 20) {
-                    displayPlatform = displayPlatform.substring(0, 17) + "...";
-                }
-
-                let channelUrl = `https://www.google.com/search?q=${pirate.handle}`; 
-                const platLower = displayPlatform.toLowerCase();
-                if (platLower.includes('tiktok')) channelUrl = `https://www.tiktok.com/@${pirate.handle}`;
-                else if (platLower.includes('youtube')) channelUrl = `https://www.youtube.com/@${pirate.handle}`;
-                else if (platLower.includes('instagram')) channelUrl = `https://www.instagram.com/${pirate.handle}`;
-                else if (platLower.includes('twitter') || platLower.includes('x')) channelUrl = `https://x.com/${pirate.handle}`;
-
-                doc.setTextColor(0, 0, 255);
-                doc.textWithLink(displayHandle, margin + 2, y, { url: channelUrl });
-                doc.setTextColor(17, 24, 39);
-                
-                doc.text(displayPlatform, margin + 70, y);
-                doc.text(String(pirate.urls), margin + 115, y);
-
-                const est = pirate.urls * 1500;
-                const estViews = est >= 1000 ? (est / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(est);
-
-                doc.text(estViews, margin + 150, y);
-
-                doc.setDrawColor(243, 244, 246);
-                doc.line(margin, y + 2, pageWidth - margin, y + 2);
-                y += 8;
-            });
-        } else {
-            doc.text("No targets identified in this timeframe.", margin + 2, y);
-        }
+        if (config.targets_top_1) drawTargetsTable(1, "HIGH-VALUE TARGETS (TOP PIRATE)");
+        if (config.targets_top_5) drawTargetsTable(5, "HIGH-VALUE TARGETS (TOP 5 PIRATES)");
+        if (config.targets_top_platform_1) drawPlatTargetsTable(1, "TARGETS BY PLATFORM (TOP 1)");
+        if (config.targets_top_platform_3) drawPlatTargetsTable(3, "TARGETS BY PLATFORM (TOP 3)");
     }
 
     // --- 6. TEAM PERFORMANCE (RANKED) ---
-    if (config.team) {
-        ensureSpace(40);
-        tocEntries.push({ title: "Team Performance Rankings", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-        doc.setTextColor(17, 24, 39);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text("TEAM PERFORMANCE RANKINGS", margin, y);
-        y += 8;
+    const showTeamTable = config.team_col_scout || config.team_col_enforced || config.team_col_urls_resolved_num || config.team_col_urls_resolved_pct || config.team_col_burndown_rate || config.team_col_days_reported;
 
-        doc.setFillColor(229, 231, 235);
-        doc.rect(margin, y, maxTextWidth, 8, 'F');
-        doc.setFontSize(9);
-        doc.text("TEAM MEMBER", margin + 2, y + 6);
-        doc.text("SCOUT", margin + 70, y + 6);
-        doc.text("ENFORCE", margin + 95, y + 6);
-        doc.text("URLS", margin + 120, y + 6);
-        doc.text("RESOLVE", margin + 140, y + 6);
-        doc.text("BURNDOWN", margin + 165, y + 6);
-        y += 12;
-
-        doc.setFont("helvetica", "normal");
-        if (stats.teamStats && stats.teamStats.length > 0) {
-            stats.teamStats.slice(0, 20).forEach((member) => {
-                ensureSpace(10);
-                
-                let displayName = member.name || "Unknown";
-                if (displayName.length > 30) displayName = displayName.substring(0, 27) + "...";
-
-                doc.text(displayName, margin + 2, y);
-                doc.text(String(member.scouted || 0), margin + 70, y);
-                doc.text(String(member.enforced || 0), margin + 95, y);
-                doc.text(String(member.urls || 0), margin + 120, y);
-                doc.text(String(member.resolvedRate || "0%"), margin + 140, y);
-                doc.text(`${member.wBurndown}d / ${member.uwBurndown}d`, margin + 165, y);
-
-                doc.setDrawColor(243, 244, 246);
-                doc.line(margin, y + 2, pageWidth - margin, y + 2);
-                y += 8;
-            });
-        } else {
-            doc.text("No team data identified in this timeframe.", margin + 2, y);
-        }
+    if (showTeamTable) {
+        drawTeamTable(20, "TEAM PERFORMANCE RANKINGS (TOP 20)", true);
     }
 
     // --- 7. EVENT VIEW ANALYSIS ---
-    if (config.events) {
-        ensureSpace(40);
-        tocEntries.push({ title: "Event View Analysis", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
-        doc.setTextColor(17, 24, 39);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text("EVENT VIEW ANALYSIS", margin, y);
-        y += 8;
-
-        doc.setFillColor(229, 231, 235);
-        doc.rect(margin, y, maxTextWidth, 8, 'F');
-        doc.setFontSize(9);
-        doc.text("EVENT NAME", margin + 2, y + 6);
-        doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
-        y += 12;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("ALL EVENTS COMBINED", margin + 2, y);
+    if (config.events_top_5 || config.events_top_10 || config.events_top_5_pct || config.events_top_10_pct) {
         
-        let calculatedTotalViews = 0;
-        if (stats.eventViews && stats.eventViews.length > 0) {
-            calculatedTotalViews = stats.eventViews.reduce((sum, ev) => sum + (Number(ev.views) || 0), 0);
-        } else if (stats.totalEstimatedViews) {
-            let valStr = String(stats.totalEstimatedViews).toLowerCase();
-            if (valStr.includes('k')) calculatedTotalViews = parseFloat(valStr) * 1000;
-            else if (valStr.includes('m')) calculatedTotalViews = parseFloat(valStr) * 1000000;
-            else calculatedTotalViews = parseFloat(valStr.replace(/[^\d.]/g, '')) || 0;
-        }
-
-        const safeTotalViews = (isNaN(calculatedTotalViews) || calculatedTotalViews === 0) ? "100" : calculatedTotalViews.toLocaleString();
-        doc.text(safeTotalViews, margin + 150, y);
-        y += 8;
+        if (config.events_top_5) drawEventsTable(5, "EVENT VIEW ANALYSIS (TOP 5)", true);
+        if (config.events_top_10) drawEventsTable(10, "EVENT VIEW ANALYSIS (TOP 10)", true);
         
-        doc.setFont("helvetica", "normal");
-        if (stats.eventViews && stats.eventViews.length > 0) {
-            stats.eventViews.slice(0, 20).forEach((ev) => {
-                ensureSpace(10);
-                
-                let displayEventName = ev.name || "Unknown";
-                if (displayEventName.length > 65) displayEventName = displayEventName.substring(0, 62) + "...";
-
-                doc.text(displayEventName, margin + 2, y);
-                
-                const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
-                doc.text(safeEventViews, margin + 150, y);
-
-                doc.setDrawColor(243, 244, 246);
-                doc.line(margin, y + 2, pageWidth - margin, y + 2);
-                y += 8;
-            });
-        } else {
-            doc.text("No event view data identified in this timeframe.", margin + 2, y);
-        }
+        const totalEvents = stats.eventViews ? stats.eventViews.length : 0;
+        if (config.events_top_5_pct) drawEventsTable(Math.max(1, Math.ceil(totalEvents * 0.05)), "EVENT VIEW ANALYSIS (TOP 5%)", true);
+        if (config.events_top_10_pct) drawEventsTable(Math.max(1, Math.ceil(totalEvents * 0.10)), "EVENT VIEW ANALYSIS (TOP 10%)", true);
     }
 
      // --- 9 & 10. APPENDIX ---
-    if (config.appendix) {
+    if (config.appx_team_all || config.appx_team_half || config.appx_events_all || config.appx_events_half) {
         doc.addPage();
         y = margin + 10;
-        doc.setFillColor(30, 41, 59);
-        doc.rect(0, 0, pageWidth, 25, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
-        doc.text("APPENDIX: COMPLETE TEAM PERFORMANCE", margin, 17);
-        y = 35;
-
-        doc.setFillColor(229, 231, 235);
-        doc.rect(margin, y, maxTextWidth, 8, 'F');
-        doc.setTextColor(17, 24, 39);
-        doc.setFontSize(9);
-        doc.text("TEAM MEMBER", margin + 2, y + 6);
-        doc.text("SCOUT", margin + 70, y + 6);
-        doc.text("ENFORCE", margin + 95, y + 6);
-        doc.text("URLS", margin + 120, y + 6);
-        doc.text("RESOLVE", margin + 140, y + 6);
-        doc.text("BURNDOWN (W / UW)", margin + 165, y + 6);
-        y += 12;
-
-        doc.setFont("helvetica", "normal");
-        if (stats.teamStats && stats.teamStats.length > 0) {
-            stats.teamStats.forEach((member) => {
-                ensureSpace(10);
-                let displayName = member.name || "Unknown";
-                if (displayName.length > 30) displayName = displayName.substring(0, 27) + "...";
-
-                doc.text(displayName, margin + 2, y);
-                doc.text(String(member.scouted || 0), margin + 70, y);
-                doc.text(String(member.enforced || 0), margin + 95, y);
-                doc.text(String(member.urls || 0), margin + 120, y);
-                doc.text(String(member.resolvedRate || "0%"), margin + 140, y);
-                doc.text(`${member.wBurndown}d / ${member.uwBurndown}d`, margin + 165, y);
-
-                doc.setDrawColor(243, 244, 246);
-                doc.line(margin, y + 2, pageWidth - margin, y + 2);
-                y += 8;
-            });
-        } else {
-            doc.text("No team data identified in this timeframe.", margin + 2, y);
+        
+        if (config.appx_team_all) {
+            tocEntries.push({ title: "Appendix: Complete Team (All)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+            drawTeamTable(stats.teamStats ? stats.teamStats.length : 0, "APPENDIX: COMPLETE TEAM PERFORMANCE (ALL)", false);
+        }
+        
+        if (config.appx_team_half) {
+            tocEntries.push({ title: "Appendix: Complete Team (Half)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+            drawTeamTable(stats.teamStats ? Math.ceil(stats.teamStats.length / 2) : 0, "APPENDIX: COMPLETE TEAM PERFORMANCE (HALF)", false);
         }
 
-        ensureSpace(50);
-        y += 10;
-        doc.setFillColor(30, 41, 59);
-        doc.rect(0, y, pageWidth, 25, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
-        doc.text("APPENDIX: COMPLETE EVENT VIEW ANALYSIS", margin, y + 17);
-        y += 35;
+        if (config.appx_events_all) {
+            tocEntries.push({ title: "Appendix: Event Views (All)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+            drawEventsTable(stats.eventViews ? stats.eventViews.length : 0, "APPENDIX: EVENT VIEW ANALYSIS (ALL)", false);
+        }
 
-        doc.setFillColor(229, 231, 235);
-        doc.rect(margin, y, maxTextWidth, 8, 'F');
-        doc.setTextColor(17, 24, 39);
-        doc.setFontSize(9);
-        doc.text("EVENT NAME", margin + 2, y + 6);
-        doc.text("ESTIMATED VIEWS", margin + 150, y + 6);
-        y += 12;
-
-        doc.setFont("helvetica", "normal");
-        if (stats.eventViews && stats.eventViews.length > 0) {
-            stats.eventViews.forEach((ev) => {
-                ensureSpace(10);
-                let displayEventName = ev.name || "Unknown";
-                if (displayEventName.length > 65) displayEventName = displayEventName.substring(0, 62) + "...";
-
-                doc.text(displayEventName, margin + 2, y);
-                const safeEventViews = (isNaN(ev.views) || ev.views === 0) ? "100" : Number(ev.views).toLocaleString();
-                doc.text(safeEventViews, margin + 150, y);
-
-                doc.setDrawColor(243, 244, 246);
-                doc.line(margin, y + 2, pageWidth - margin, y + 2);
-                y += 8;
-            });
-        } else {
-            doc.text("No event view data identified in this timeframe.", margin + 2, y);
+        if (config.appx_events_half) {
+            tocEntries.push({ title: "Appendix: Event Views (Half)", page: doc.internal.getCurrentPageInfo().pageNumber, y: y });
+            drawEventsTable(stats.eventViews ? Math.ceil(stats.eventViews.length / 2) : 0, "APPENDIX: EVENT VIEW ANALYSIS (HALF)", false);
         }
     }
 

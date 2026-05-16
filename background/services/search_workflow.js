@@ -144,10 +144,6 @@ export function createSearchWorkflow({
         'activeEventDetails'
       ]);
 
-      if (activeSearchTabId) {
-        chrome.tabs.remove(activeSearchTabId).catch(() => {});
-      }
-
       chrome.runtime
         .sendMessage({
           action: 'urlFound',

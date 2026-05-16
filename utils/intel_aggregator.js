@@ -98,7 +98,6 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
             const enforcer = normalizeName(row[12]);
             
             const urlString = row[7] || "";
-            // Replaced regex literal with RegExp to prevent parser comment interference
             const urlMatch = urlString.match(new RegExp('https?:\\\\/\\\\/', 'g'));
             const urlCount = urlMatch ? urlMatch.length : 1;
             totalUrls += urlCount;
@@ -115,13 +114,12 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
                 }, 0);
             }
             
-             if (rowViews === 0 && urlCount > 0) {
+            if (rowViews === 0 && urlCount > 0) {
                 rowViews = urlCount * 1500; 
             }
             
             totalEstimatedViews += rowViews;
             
-            // Single declaration for date string
             const dateStr = new Date(row[0]).toLocaleDateString("en-US", { year: 'numeric', month: 'numeric', day: 'numeric' });
 
             if (scout) {
@@ -211,7 +209,7 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
             handleStats[handle].reports += 1;
             handleStats[handle].urls += urlCount;
             
-              if (platform && platform.toLowerCase() !== "unknown") {
+            if (platform && platform.toLowerCase() !== "unknown") {
                 const cleanPlatform = platform.toUpperCase();
                 handleStats[handle].platforms.add(cleanPlatform);
                 
@@ -243,7 +241,7 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
                 timelineData[dateStr].resolved += 1;
             }
         }
-    } 
+    }
 
     const sortObj = (obj, key) => {
         return Object.keys(obj).map(k => {
@@ -261,7 +259,7 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
         }
     });
 
-   const teamStats = Object.keys(userStats).map(name => {
+    const teamStats = Object.keys(userStats).map(name => {
         const stats = userStats[name];
         const resRate = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) + '%' : '0%';
         const displayName = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -295,7 +293,7 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
             handle: k,
             reports: handleStats[k].reports,
             urls: handleStats[k].urls,
-             platforms: handleStats[k].platforms.size > 0 ? Array.from(handleStats[k].platforms).join(', ') : "Unknown"
+            platforms: handleStats[k].platforms.size > 0 ? Array.from(handleStats[k].platforms).join(', ') : "Unknown"
         };
     }).sort((a, b) => b.urls - a.urls);
 
@@ -334,11 +332,12 @@ export function aggregateIntelligenceData(rows, startDateStr, endDateStr) {
         globalWeightedBurndown: globalWeightedBurndown,
         globalUnweightedBurndown: globalUnweightedBurndown,
         platformTotals: platformTotals,
-        topScouts: sortObj(scoutCounts).slice(0, 5),
-        topEnforcers: sortObj(enforcerCounts).slice(0, 5),
+        // Send FULL arrays back so the PDF generator can extract "Bottom 3", "Top 10%", etc.
+        topScouts: sortObj(scoutCounts),
+        topEnforcers: sortObj(enforcerCounts),
         topPirates: topPirates,
         topPiratesByPlatform: topPiratesByPlatform,
-        topEvents: sortObj(eventCounts).slice(0, 10),
+        topEvents: sortObj(eventCounts),
         eventViews: eventViews,
         timelineData: timelineData,
         teamStats: teamStats,
