@@ -198,6 +198,19 @@ function isEnforcerPlatformTabUrl(url) {
     normalizedUrl.includes('tiktok.com');
 }
 
+function isEnforcerAllowlistExemptPlatform(platformKey) {
+  const normalizedPlatform = String(platformKey || '').toLowerCase();
+  return normalizedPlatform === 'tiktok' || normalizedPlatform === 'instagram';
+}
+
+function getManualReportingMessage(platformDetails) {
+  if (platformDetails?.key === 'rumble') {
+    return 'Rumble uses the on-page report menu instead of a separate complaint form. Start the Rumble queue from the side panel so Pirate AI can open each URL and submit the copyright report from that video page.';
+  }
+
+  return 'Auto-reporting is currently optimized for TikTok, X (Twitter), and YouTube. Please manually report other platforms.';
+}
+
 async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAccessConfig()) {
   try {
     const [injected] = await chrome.scripting.executeScript({
@@ -965,10 +978,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     alert("Access Denied: Scout mode requires a @flosports.tv email address.");
                     return;
                 }
-                if (!isScout && !(await canUseEnforcerMode())) {
-                    alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
-                    return;
-                }
                 // -------------------------------------------
 
                 startBtn.classList.remove('clippy-focus');
@@ -999,8 +1008,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           const platform = platformDetails.label;
           const reportUrl = platformDetails.reportUrl;
 
-          if (!reportUrl) {
-              alert("Auto-reporting is currently optimized for TikTok, X (Twitter), and YouTube. Please manually report other platforms.");
+          if (!isScout && !isEnforcerAllowlistExemptPlatform(platformDetails.key) && !(await canUseEnforcerMode())) {
+              alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
+              startBtn.disabled = false;
+              startBtn.innerText = defaultBtnText;
+              return;
+          }
+
+          if (!reportUrl && platformDetails.key !== 'rumble') {
+              alert(getManualReportingMessage(platformDetails));
               startBtn.disabled = false;
               startBtn.innerText = defaultBtnText; // PATCHED
               return;
@@ -1026,6 +1042,23 @@ document.addEventListener('DOMContentLoaded', async () => {
               const payload = { reporterName, vertical, eventName, mode: 'scout', uploadScreenshots: true };
               chrome.runtime.sendMessage({ action: 'processQueue', data: payload });
               setTimeout(() => { startBtn.innerText = defaultBtnText; startBtn.disabled = false; }, 3000); // PATCHED
+              return;
+          }
+
+          if (platformDetails.key === 'rumble') {
+              startBtn.innerText = `Opening ${platform}...`;
+              const payload = { reporterName, vertical, eventName, mode: 'enforcer', uploadScreenshots: true };
+              chrome.runtime.sendMessage({ action: 'startRumbleQueue', data: payload }, (response) => {
+                  if (response && response.success) {
+                      startBtn.innerText = defaultBtnText;
+                      startBtn.disabled = false;
+                      return;
+                  }
+
+                  alert(response?.error || "Failed to start the Rumble report queue.");
+                  startBtn.innerText = defaultBtnText;
+                  startBtn.disabled = false;
+              });
               return;
           }
 
@@ -1229,13 +1262,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       reportFromSheetBtn.addEventListener('click', async () => {
           const reporterName = reporterInput.value;
           const vertical = verticalSelect.value;
+          const platform = platformScanSelect ? platformScanSelect.value : 'tiktok';
           
           if (!reporterName || !vertical) {
               alert("Please fill in Reporter and Vertical.");
               return;
           }
                 // --- BULK ENFORCER ACCESS FILTER ---
-                  if (!(await canUseEnforcerMode())) {
+                  if (!isEnforcerAllowlistExemptPlatform(platform) && !(await canUseEnforcerMode())) {
                       alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
                       return;
                   }

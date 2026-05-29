@@ -93,6 +93,168 @@
           "[data-e2e*=\"profile\"] a[href^=\"/@\"]"
         ]
       }
+    },
+    "rumble": {
+      "autofill": {
+        "menu_button": [
+          "[data-js=\"video_action_sub_menu_button\"]",
+          ".media-by-actions-button-menu[data-js=\"video_action_sub_menu_button\"]"
+        ],
+        "report_button": [
+          "[data-type=\"report\"] [data-js=\"video_action_sub_menu_button\"]",
+          "[data-type=\"report\"] button[hx-get=\"/htmx/web-services/report-content\"]"
+        ],
+        "copyright_reason": [
+          "input[type=\"radio\"][name=\"reason\"][value=\"It violates copyright\"]"
+        ],
+        "submit_button": [
+          "button[hx-post=\"/htmx/web-services/report-content\"][hx-include=\"[name='reason']\"]",
+          "button[hx-post=\"/htmx/web-services/report-content\"]"
+        ],
+        "success_text": [
+          "thank you",
+          "report submitted"
+        ],
+        "success_indicators": [
+          ".bg-black[data-js=\"modal_content\"]",
+          "[data-js=\"modal_content\"]"
+        ]
+      },
+      "scraper": {
+        "handle": [
+          ".media-by-heading .ellipsis-1",
+          "a.media-by--a",
+          "a.channel-header--title",
+          ".channel-header--title"
+        ],
+        "candidate_channel_links": [
+          "a.media-by--a[href]",
+          ".media-by-heading a[href]",
+          "a.channel-header--title[href]",
+          "a[href^=\"/c/\"]",
+          "a[href^=\"/user/\"]",
+          "a[href^=\"/channel/\"]"
+        ],
+        "views": [
+          ".media-heading-info",
+          ".video-description [class*=\"view\"]",
+          ".video-meta [class*=\"view\"]"
+        ],
+        "live_indicators": [
+          ".video-status--live",
+          ".media-status.live",
+          "[class*=\"live\"]"
+        ]
+      }
+    },
+    "instagram": {
+      "scraper": {
+        "handle": [
+          "header a[href^=\"/\"]",
+          "main header a[href^=\"/\"]",
+          "a[role=\"link\"][href^=\"/\"]"
+        ],
+        "profile_links": [
+          "header a[href^=\"/\"]",
+          "main header a[href^=\"/\"]",
+          "a[role=\"link\"][href^=\"/\"]"
+        ],
+        "meta_description": [
+          "meta[property=\"og:description\"]",
+          "meta[name=\"description\"]"
+        ],
+        "json_scripts": [
+          "script[type=\"application/json\"]"
+        ],
+        "json_patterns": {
+          "handle": [
+            "\"owner\"\\s*:\\s*\\{[^{}]*?\"username\"\\s*:\\s*\"([^\"]+)\"",
+            "\"user\"\\s*:\\s*\\{[^{}]*?\"username\"\\s*:\\s*\"([^\"]+)\"",
+            "\"username\"\\s*:\\s*\"([^\"]+)\""
+          ],
+          "view_count": [
+            "\"video_view_count\"\\s*:\\s*(\\d+)",
+            "\"play_count\"\\s*:\\s*(\\d+)",
+            "\"view_count\"\\s*:\\s*(\\d+)"
+          ]
+        }
+      },
+      "autofill": {
+        "defaults": {
+          "contact_email": "social@flosports.tv",
+          "rights_owner_name": "FloSports",
+          "relationship": "I am reporting on behalf of my organization or client.",
+          "country": "United States",
+          "work_type": "Video",
+          "content_type_post": "Photo, video or post",
+          "content_type_story": "Story"
+        },
+        "templates": {
+          "infringement_explanation": "Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]). FloSports owns the exclusive copyright. Infringement is visually verifiable via our proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account."
+        },
+        "fields": {
+          "relationship_radio": [
+            "input[type=\"radio\"][name=\"copyright_owner\"][value=\"I am reporting on behalf of my organization or client.\"]"
+          ],
+          "full_name": [
+            "input[name=\"your_name\"]"
+          ],
+          "email": [
+            "input[name=\"email\"]"
+          ],
+          "confirm_email": [
+            "input[name=\"confirm_email\"]",
+            "input[name=\"confirm_email_address\"]",
+            "input[aria-label*=\"Confirm your email\"]"
+          ],
+          "rights_owner_name": [
+            "input[name=\"rights_owner_name\"]",
+            "input[name=\"name_of_the_rights_owner\"]",
+            "input[name=\"name_of_rights_owner\"]"
+          ],
+          "country_select": [
+            "select[name=\"where_are_you_asserting_rights\"]",
+            "select[aria-label*=\"Where are you asserting rights\"]"
+          ],
+          "work_type_select": [
+            "select[name=\"describe_copyrighted_work_me\"]",
+            "select[aria-label*=\"Which of these best describes the copyrighted work\"]"
+          ],
+          "source_url": [
+            "textarea[name=\"copyrighted_work_url\"]",
+            "textarea[name=\"link_to_original\"]"
+          ],
+          "copyrighted_work_description": [
+            "textarea[name=\"copyrighted_work_description\"]",
+            "textarea[name=\"describe_copyrighted_work\"]"
+          ],
+          "content_type_post": [
+            "input[type=\"checkbox\"][value=\"Photo, video or post\"]"
+          ],
+          "content_type_story": [
+            "input[type=\"checkbox\"][value=\"Story\"]"
+          ],
+          "content_urls": [
+            "textarea[name=\"content_urls\"]",
+            "textarea[name^=\"content_urls\"]"
+          ],
+          "additional_links_checkbox": [
+            "input[type=\"checkbox\"][name=\"additional_links\"]"
+          ],
+          "infringement_explanation": [
+            "textarea[name=\"infringement_explanation\"]",
+            "textarea[name=\"additional_information\"]"
+          ],
+          "signature": [
+            "input[name=\"electronic_signature\"]",
+            "input[name=\"signature\"]"
+          ],
+          "send_button": [
+            "button[type=\"submit\"]",
+            "input[type=\"submit\"]"
+          ]
+        }
+      }
     }
   }
 }

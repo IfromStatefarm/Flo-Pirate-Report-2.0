@@ -252,56 +252,56 @@
       <div id="briefing-toggles" style="display: flex; flex-direction: column; gap: 10px; margin: 20px 0; max-height: 50vh; overflow-y: auto; padding-right: 10px;">
         <strong style="color: var(--flo-red); margin-top: 5px;">Enforcement Overview (KPIs)</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
-          <label><input type="checkbox" id="stat_kpi_total_takedowns"> Total Takedowns</label>
+          <label title="Total rows processed in the selected date range."><input type="checkbox" id="stat_kpi_total_takedowns"> Total Takedowns <span style="color: #6b7280; font-size: 10px;">(Count of all rows)</span></label>
           <label><input type="checkbox" id="stat_kpi_takedowns_platform"> Takedowns by Platform</label>
           <label><input type="checkbox" id="stat_kpi_total_urls"> Total URLs</label>
           <label><input type="checkbox" id="stat_kpi_urls_platform"> Total URLs by Platform</label>
-          <label><input type="checkbox" id="stat_kpi_resolved_num_unweighted"> Resolved Rate (Number Unweighted)</label>
-          <label><input type="checkbox" id="stat_kpi_resolved_num_weighted"> Resolved Rate (Number Weighted)</label>
-          <label><input type="checkbox" id="stat_kpi_resolved_pct_unweighted"> Resolved Rate (% Unweighted)</label>
-          <label><input type="checkbox" id="stat_kpi_resolved_pct_weighted"> Resolved Rate (% Weighted)</label>
-          <label><input type="checkbox" id="stat_kpi_burndown_weighted"> Avg Burndown (Weighted)</label>
-          <label><input type="checkbox" id="stat_kpi_burndown_unweighted"> Avg Burndown (Unweighted)</label>
+          <label title="Counts resolved reports based solely on the 'Status' column being set to 'Resolved'."><input type="checkbox" id="stat_kpi_resolved_num_unweighted"> Resolved Rate (Number Unweighted) <span style="color: #6b7280; font-size: 10px;">(All marked Resolved)</span></label>
+          <label title="Counts resolved reports ONLY if they also have a valid timestamp in the 'Resolve Date' column (Col V)."><input type="checkbox" id="stat_kpi_resolved_num_weighted"> Resolved Rate (Number Weighted) <span style="color: #6b7280; font-size: 10px;">(Requires Date in Col V)</span></label>
+          <label title="Percentage of total reports marked as 'Resolved'."><input type="checkbox" id="stat_kpi_resolved_pct_unweighted"> Resolved Rate (% Unweighted)</label>
+          <label title="Percentage of total reports that have a valid 'Resolve Date' logged."><input type="checkbox" id="stat_kpi_resolved_pct_weighted"> Resolved Rate (% Weighted)</label>
+          <label title="Calculates average days to resolve ONLY for reports with an explicit Resolve Date (Col V)."><input type="checkbox" id="stat_kpi_burndown_weighted"> Avg Burndown (Weighted) <span style="color: #6b7280; font-size: 10px;">(Exact days from sheet)</span></label>
+          <label title="Calculates average across ALL reports. Unresolved items are heavily penalized, calculated as (Days Currently Open + 14 days)."><input type="checkbox" id="stat_kpi_burndown_unweighted"> Avg Burndown (Unweighted) <span style="color: #6b7280; font-size: 10px;">(Penalizes open reports)</span></label>
         </div>
 
         <strong style="color: var(--flo-red); margin-top: 10px;">Leaderboards & MVP</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
-          <label><input type="checkbox" id="stat_leaderboard_mvp"> MVP</label>
-          <label><input type="checkbox" id="stat_leaderboard_top_3"> Top 3</label>
-          <label><input type="checkbox" id="stat_leaderboard_top_5"> Top 5</label>
-          <label><input type="checkbox" id="stat_leaderboard_last_3"> Last 3</label>
+          <label title="User with the highest combined Scout & Enforcer appearances."><input type="checkbox" id="stat_leaderboard_mvp"> MVP <span style="color: #6b7280; font-size: 10px;">(Highest combined appearances)</span></label>
+          <label title="Ranked by total appearances in Col G/M."><input type="checkbox" id="stat_leaderboard_top_3"> Top 3</label>
+          <label title="Ranked by total appearances in Col G/M."><input type="checkbox" id="stat_leaderboard_top_5"> Top 5</label>
+          <label title="Ranked by lowest total appearances in Col G/M."><input type="checkbox" id="stat_leaderboard_last_3"> Last 3</label>
         </div>
 
         <strong style="color: var(--flo-red); margin-top: 10px;">Report Timeline & Platforms</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
-          <label><input type="checkbox" id="stat_timeline_report"> Report Timeline</label>
-          <label><input type="checkbox" id="stat_platform_breakdown"> Platform Breakdown</label>
+          <label title="Daily volume of reports based on the date in Col A."><input type="checkbox" id="stat_timeline_report"> Report Timeline <span style="color: #6b7280; font-size: 10px;">(Daily volume)</span></label>
+          <label title="Reports and URLs grouped by platform (Col D)."><input type="checkbox" id="stat_platform_breakdown"> Platform Breakdown</label>
         </div>
 
-        <strong style="color: var(--flo-red); margin-top: 10px;">High-Value Targets</strong>
+       <strong style="color: var(--flo-red); margin-top: 10px;">High-Value Targets</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
-          <label><input type="checkbox" id="stat_targets_top_1"> Top Pirate</label>
-          <label><input type="checkbox" id="stat_targets_top_5"> Top 5 Pirates</label>
-          <label><input type="checkbox" id="stat_targets_top_platform_1"> Top Pirate for Each Platform</label>
-          <label><input type="checkbox" id="stat_targets_top_platform_3"> Top 3 Pirates Each Platform</label>
+          <label title="Grouped by target Handle (Col K), ranked by total URLs."><input type="checkbox" id="stat_targets_top_1"> Top Pirate <span style="color: #6b7280; font-size: 10px;">(Ranked by URLs)</span></label>
+          <label title="Top 5 pirates grouped by target Handle (Col K), ranked by URLs."><input type="checkbox" id="stat_targets_top_5"> Top 5 Pirates</label>
+          <label title="Top pirate grouped by Handle, filtered per platform."><input type="checkbox" id="stat_targets_top_platform_1"> Top Pirate for Each Platform</label>
+          <label title="Top 3 pirates grouped by Handle, filtered per platform."><input type="checkbox" id="stat_targets_top_platform_3"> Top 3 Pirates Each Platform</label>
         </div>
 
-        <strong style="color: var(--flo-red); margin-top: 10px;">Team Performance Rankings</strong>
+       <strong style="color: var(--flo-red); margin-top: 10px;">Team Performance Rankings</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
-          <label><input type="checkbox" id="stat_team_col_scout"> Scout</label>
-          <label><input type="checkbox" id="stat_team_col_enforced"> Enforced</label>
-          <label><input type="checkbox" id="stat_team_col_urls_resolved_num"> URLs Resolved (Number)</label>
-          <label><input type="checkbox" id="stat_team_col_urls_resolved_pct"> URLs Resolved (%)</label>
-          <label><input type="checkbox" id="stat_team_col_burndown_rate"> Burndown Rate</label>
-          <label><input type="checkbox" id="stat_team_col_days_reported"> Number of Days Reported Piracy</label>
+          <label title="Total URLs scouted by the user (Col G)."><input type="checkbox" id="stat_team_col_scout"> Scout <span style="color: #6b7280; font-size: 10px;">(Total URLs scouted)</span></label>
+          <label title="Total URLs enforced by the user (Col M)."><input type="checkbox" id="stat_team_col_enforced"> Enforced <span style="color: #6b7280; font-size: 10px;">(Total URLs enforced)</span></label>
+          <label title="Total number of the user's URLs marked 'Resolved'."><input type="checkbox" id="stat_team_col_urls_resolved_num"> URLs Resolved (Number)</label>
+          <label title="Percentage of the user's URLs marked 'Resolved'."><input type="checkbox" id="stat_team_col_urls_resolved_pct"> URLs Resolved (%)</label>
+          <label title="The user's average days to resolve an issue."><input type="checkbox" id="stat_team_col_burndown_rate"> Burndown Rate <span style="color: #6b7280; font-size: 10px;">(Avg days to resolve)</span></label>
+          <label title="Count of unique days the user filed a report."><input type="checkbox" id="stat_team_col_days_reported"> Number of Days Reported Piracy</label>
         </div>
 
-        <strong style="color: var(--flo-red); margin-top: 10px;">Event View Analysis</strong>
+       <strong style="color: var(--flo-red); margin-top: 10px;">Event View Analysis</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
-          <label><input type="checkbox" id="stat_events_top_5"> Top 5</label>
-          <label><input type="checkbox" id="stat_events_top_10"> Top 10</label>
-          <label><input type="checkbox" id="stat_events_top_5_pct"> Top 5%</label>
-          <label><input type="checkbox" id="stat_events_top_10_pct"> Top 10%</label>
+          <label title="Grouped by Event Name (Col C), ranked by total estimated views (Col F)."><input type="checkbox" id="stat_events_top_5"> Top 5 <span style="color: #6b7280; font-size: 10px;">(Ranked by Views)</span></label>
+          <label title="Grouped by Event Name (Col C), ranked by total estimated views (Col F)."><input type="checkbox" id="stat_events_top_10"> Top 10</label>
+          <label title="Top 5% of events based on total estimated views."><input type="checkbox" id="stat_events_top_5_pct"> Top 5%</label>
+          <label title="Top 10% of events based on total estimated views."><input type="checkbox" id="stat_events_top_10_pct"> Top 10%</label>
         </div>
 
         <strong style="color: var(--flo-red); margin-top: 10px;">Appendix: Complete Team Performance</strong>

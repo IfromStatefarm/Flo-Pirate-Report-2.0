@@ -17,6 +17,11 @@ function parseViewCount(value) {
   return parseFloat(normalized.replace(/[^\d.]/g, '')) || 0;
 }
 
+const PLATFORM_BATCH_LIMITS = Object.freeze({
+  youtube: 10,
+  instagram: 30
+});
+
 export function createReportingWorkflow({
   appendToSheet,
   checkIfAuthorized,
@@ -161,10 +166,11 @@ export function createReportingWorkflow({
       const enforcedByEmail = (await getUserEmail()) || 'Unknown';
 
       let remainingCart = [];
-      const isYouTube = cart.length > 0 && detectPlatformDetails(cart[0].url).key === 'youtube';
-      if (isYouTube && cart.length > 10) {
-        remainingCart = cart.slice(10);
-        cart = cart.slice(0, 10);
+      const primaryPlatformKey = cart.length > 0 ? detectPlatformDetails(cart[0].url).key : '';
+      const batchLimit = PLATFORM_BATCH_LIMITS[primaryPlatformKey];
+      if (batchLimit && cart.length > batchLimit) {
+        remainingCart = cart.slice(batchLimit);
+        cart = cart.slice(0, batchLimit);
       }
 
       const updatedCart = [];

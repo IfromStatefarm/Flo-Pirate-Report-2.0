@@ -23,7 +23,7 @@ const PLATFORM_DEFINITIONS = Object.freeze([
   {
     key: 'instagram',
     label: 'Instagram',
-    reportUrl: null,
+    reportUrl: 'https://help.instagram.com/contact/552695131608132',
     matches: (url) => url.includes('instagram'),
     buildChannelUrl: (handle) => `https://www.instagram.com/${handle}`
   },
@@ -40,6 +40,21 @@ const PLATFORM_DEFINITIONS = Object.freeze([
     reportUrl: null,
     matches: (url) => url.includes('twitch'),
     buildChannelUrl: (handle) => `https://www.twitch.tv/${handle}`
+  },
+  {
+    key: 'rumble',
+    label: 'Rumble',
+    reportUrl: null,
+    matches: (url) => url.includes('rumble.com'),
+    buildChannelUrl: (handle) => {
+      const normalizedHandle = String(handle || '').trim().replace(/^@/, '').replace(/^\/+/, '');
+      if (!normalizedHandle) return '';
+      if (/^https?:\/\//i.test(normalizedHandle)) return normalizedHandle;
+      if (/^(c|user|channel)\//i.test(normalizedHandle)) {
+        return `https://rumble.com/${normalizedHandle}`;
+      }
+      return `https://rumble.com/c/${normalizedHandle}`;
+    }
   }
 ]);
 
@@ -103,9 +118,20 @@ export function extractHandleFromUrl(url) {
   }
 
   try {
-    const pathname = new URL(rawUrl).pathname;
-    const firstSegment = pathname.split('/').filter(Boolean)[0];
-    return firstSegment || 'Unknown';
+    const parsedUrl = new URL(rawUrl);
+    const pathnameSegments = parsedUrl.pathname.split('/').filter(Boolean);
+    const firstSegment = pathnameSegments[0];
+
+    if (parsedUrl.hostname.toLowerCase().includes('rumble.com')) {
+      if (['c', 'user', 'channel'].includes((firstSegment || '').toLowerCase()) && pathnameSegments[1]) {
+        return pathnameSegments[1].replace(/\.html$/i, '') || 'Unknown';
+      }
+      if (firstSegment?.startsWith('@')) {
+        return firstSegment.slice(1) || 'Unknown';
+      }
+    }
+
+    return firstSegment ? firstSegment.replace(/\.html$/i, '') : 'Unknown';
   } catch (error) {
     return 'Unknown';
   }

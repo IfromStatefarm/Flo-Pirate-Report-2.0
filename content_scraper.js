@@ -44,7 +44,35 @@
       views_shorts: 'span[role="text"][aria-label*="views"]'
     },
     instagram: {
-      handle: 'header a'
+      handle: [
+        'header a[href^="/"]',
+        'main header a[href^="/"]',
+        'a[role="link"][href^="/"]'
+      ],
+      profile_links: [
+        'header a[href^="/"]',
+        'main header a[href^="/"]',
+        'a[role="link"][href^="/"]'
+      ],
+      meta_description: [
+        'meta[property="og:description"]',
+        'meta[name="description"]'
+      ],
+      json_scripts: [
+        'script[type="application/json"]'
+      ],
+      json_patterns: {
+        handle: [
+          '"owner"\\s*:\\s*\\{[^{}]*?"username"\\s*:\\s*"([^"]+)"',
+          '"user"\\s*:\\s*\\{[^{}]*?"username"\\s*:\\s*"([^"]+)"',
+          '"username"\\s*:\\s*"([^"]+)"'
+        ],
+        view_count: [
+          '"video_view_count"\\s*:\\s*(\\d+)',
+          '"play_count"\\s*:\\s*(\\d+)',
+          '"view_count"\\s*:\\s*(\\d+)'
+        ]
+      }
     },
     twitter: {
       handle: '[data-testid="tweet"] [data-testid="User-Name"] a',
@@ -54,7 +82,30 @@
       handle: 'h2 a[role="link"], strong span'
     },
     rumble: {
-      handle: '.media-by-heading .ellipsis-1, a.media-by--a'
+      handle: [
+        '.media-by-heading .ellipsis-1',
+        'a.media-by--a',
+        'a.channel-header--title',
+        '.channel-header--title'
+      ],
+      candidate_channel_links: [
+        'a.media-by--a[href]',
+        '.media-by-heading a[href]',
+        'a.channel-header--title[href]',
+        'a[href^="/c/"]',
+        'a[href^="/user/"]',
+        'a[href^="/channel/"]'
+      ],
+      views: [
+        '.media-heading-info',
+        '.video-description [class*="view"]',
+        '.video-meta [class*="view"]'
+      ],
+      live_indicators: [
+        '.video-status--live',
+        '.media-status.live',
+        '[class*="live"]'
+      ]
     },
     discord: {
      handle: 'div[class*="username"]'
@@ -72,6 +123,7 @@
         if (remote.youtube && remote.youtube.scraper) SCRAPER_CONFIG.youtube = { ...SCRAPER_CONFIG.youtube, ...remote.youtube.scraper };
         if (remote.instagram && remote.instagram.scraper) SCRAPER_CONFIG.instagram = { ...SCRAPER_CONFIG.instagram, ...remote.instagram.scraper };
         if (remote.twitter && remote.twitter.scraper) SCRAPER_CONFIG.twitter = { ...SCRAPER_CONFIG.twitter, ...remote.twitter.scraper };
+        if (remote.rumble && remote.rumble.scraper) SCRAPER_CONFIG.rumble = { ...SCRAPER_CONFIG.rumble, ...remote.rumble.scraper };
       }
     } catch (e) {
       // Suppress heavy logging
@@ -110,6 +162,290 @@
           // console.warn("Selector error:", e);
           return null; 
       }
+  }
+
+  function getElementsFromSelectorList(selectors) {
+      const elements = [];
+      const seen = new Set();
+
+      for (const selector of toSelectorList(selectors)) {
+          try {
+              let found = [];
+              if (selector.startsWith('//') || selector.startsWith('(')) {
+                  const snapshot = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                  for (let i = 0; i < snapshot.snapshotLength; i += 1) {
+                      found.push(snapshot.snapshotItem(i));
+                  }
+              } else {
+                  found = Array.from(document.querySelectorAll(selector));
+              }
+
+              found.forEach((element) => {
+                  if (element && !seen.has(element)) {
+                      seen.add(element);
+                      elements.push(element);
+                  }
+              });
+          } catch (e) {
+              // Ignore malformed selectors and continue.
+          }
+      }
+
+      return elements;
+  }
+
+  function toSelectorList(value) {
+      if (Array.isArray(value)) return value.filter(Boolean);
+      return value ? [value] : [];
+  }
+
+  function getTextFromSelectorList(selectors) {
+      for (const selector of toSelectorList(selectors)) {
+          const element = findElement(selector);
+          if (!element) continue;
+          const text = (
+              element.innerText ||
+              element.textContent ||
+              element.getAttribute?.('title') ||
+              element.getAttribute?.('aria-label') ||
+              ''
+          ).trim();
+          if (text) return text;
+      }
+      return '';
+  }
+
+  function getHrefFromSelectorList(selectors) {
+      for (const selector of toSelectorList(selectors)) {
+          const element = findElement(selector);
+          if (!element) continue;
+          const anchor = element.matches?.('a[href]')
+              ? element
+              : element.closest?.('a[href]') || element.querySelector?.('a[href]');
+          const href = anchor?.href || element.getAttribute?.('href') || '';
+          if (href) return href;
+      }
+      return '';
+  }
+
+  function getAttributeFromSelectorList(selectors, attributeName) {
+      for (const element of getElementsFromSelectorList(selectors)) {
+          const value = element?.getAttribute?.(attributeName) || '';
+          if (value) return value.trim();
+      }
+      return '';
+  }
+
+  function normalizeScrapedHandle(value) {
+      return String(value || '')
+          .trim()
+          .replace(/^@/, '')
+          .replace(/^\/+|\/+$/g, '')
+          .replace(/\s+/g, ' ');
+  }
+
+  function extractFirstPatternMatch(text, patterns) {
+      for (const pattern of toSelectorList(patterns)) {
+          try {
+              const match = String(text || '').match(new RegExp(pattern, 'i'));
+              if (match?.[1]) return match[1].trim();
+          } catch (error) {
+              // Ignore malformed regex patterns from config.
+          }
+      }
+      return '';
+  }
+
+  function extractInstagramHandleFromHref(href) {
+      if (!href) return '';
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          const pathParts = parsed.pathname.split('/').filter(Boolean);
+          if (pathParts.length === 0) return '';
+
+          const reservedSegments = new Set([
+              'accounts',
+              'api',
+              'challenge',
+              'developer',
+              'direct',
+              'explore',
+              'legal',
+              'p',
+              'reel',
+              'reels',
+              'stories',
+              'tv'
+          ]);
+
+          if (pathParts[0] === 'stories' && pathParts[1]) {
+              return normalizeScrapedHandle(pathParts[1]);
+          }
+
+          if (reservedSegments.has(pathParts[0].toLowerCase())) return '';
+          return normalizeScrapedHandle(pathParts[0]);
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function getInstagramHandleFromProfileLinks(selectors) {
+      for (const element of getElementsFromSelectorList(selectors)) {
+          const href = element?.href || element?.getAttribute?.('href') || '';
+          const handle = extractInstagramHandleFromHref(href);
+          if (handle) return handle;
+      }
+      return '';
+  }
+
+  function getInstagramEmbeddedData(instagramConfig) {
+      const rawTexts = getElementsFromSelectorList(
+          instagramConfig.json_scripts || ['script[type="application/json"]']
+      )
+          .map((element) => element?.textContent || '')
+          .filter((text) => /username|video_view_count|play_count|xdt_shortcode_media/i.test(text));
+
+      const prioritizedTexts = rawTexts.filter((text) => /xdt_shortcode_media|video_view_count|play_count/i.test(text));
+      const candidateTexts = prioritizedTexts.length > 0 ? prioritizedTexts : rawTexts;
+
+      if (candidateTexts.length === 0) {
+          return { handle: '', views: '' };
+      }
+
+      const joinedText = candidateTexts.join('\n');
+      const handlePatterns = instagramConfig.json_patterns?.handle || [
+          '"owner"\\s*:\\s*\\{[^{}]*?"username"\\s*:\\s*"([^"]+)"',
+          '"user"\\s*:\\s*\\{[^{}]*?"username"\\s*:\\s*"([^"]+)"',
+          '"username"\\s*:\\s*"([^"]+)"'
+      ];
+      const viewPatterns = instagramConfig.json_patterns?.view_count || [
+          '"video_view_count"\\s*:\\s*(\\d+)',
+          '"play_count"\\s*:\\s*(\\d+)',
+          '"view_count"\\s*:\\s*(\\d+)'
+      ];
+
+      return {
+          handle: normalizeScrapedHandle(extractFirstPatternMatch(joinedText, handlePatterns)),
+          views: extractReadableViewCount(extractFirstPatternMatch(joinedText, viewPatterns))
+      };
+  }
+
+  function getInstagramViewCountFromSemanticDom() {
+      const iconRoots = Array.from(document.querySelectorAll('svg[aria-label="View count"]'));
+      const titleRoots = Array.from(document.querySelectorAll('svg title'))
+          .filter((element) => String(element.textContent || '').trim().toLowerCase() === 'view count');
+      const allRoots = [...iconRoots, ...titleRoots];
+
+      for (const root of allRoots) {
+          const containers = [
+              root.closest('button'),
+              root.closest('section'),
+              root.closest('article'),
+              root.parentElement,
+              root.parentElement?.parentElement
+          ].filter(Boolean);
+
+          for (const container of containers) {
+              const textCandidates = [
+                  container.innerText,
+                  container.textContent
+              ].filter(Boolean);
+
+              for (const text of textCandidates) {
+                  const count = extractReadableViewCount(text);
+                  if (count) return count;
+              }
+          }
+      }
+
+      return '';
+  }
+
+  function extractRumbleHandleFromHref(href) {
+      if (!href) return '';
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          const segments = parsed.pathname.split('/').filter(Boolean);
+          const firstSegment = segments[0] || '';
+
+          if (['c', 'user', 'channel'].includes(firstSegment.toLowerCase()) && segments[1]) {
+              return normalizeScrapedHandle(decodeURIComponent(segments[1]).replace(/\.html$/i, ''));
+          }
+
+          if (firstSegment.startsWith('@')) {
+              return normalizeScrapedHandle(decodeURIComponent(firstSegment.slice(1)));
+          }
+      } catch (error) {
+          return '';
+      }
+
+      return '';
+  }
+
+  function getRumbleStructuredData() {
+      const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+
+      for (const script of scripts) {
+          try {
+              const parsed = JSON.parse(script.textContent || 'null');
+              const queue = Array.isArray(parsed) ? [...parsed] : [parsed];
+
+              while (queue.length > 0) {
+                  const node = queue.shift();
+                  if (!node || typeof node !== 'object') continue;
+
+                  if (Array.isArray(node)) {
+                      queue.push(...node);
+                      continue;
+                  }
+
+                  if (Array.isArray(node['@graph'])) {
+                      queue.push(...node['@graph']);
+                  }
+
+                  const type = Array.isArray(node['@type'])
+                      ? node['@type'].join(' ')
+                      : String(node['@type'] || '');
+
+                  if (!/VideoObject|BroadcastEvent|LiveBlogPosting/i.test(type) && !node.embedUrl && !node.thumbnailUrl) {
+                      continue;
+                  }
+
+                  const author = node.author || node.creator || node.publisher || {};
+                  const interactionStatistic = Array.isArray(node.interactionStatistic)
+                      ? node.interactionStatistic[0]
+                      : node.interactionStatistic || {};
+
+                  return {
+                      authorName: author.name || author.alternateName || '',
+                      authorUrl: author.url || '',
+                      viewCount: interactionStatistic.userInteractionCount || node.viewCount || ''
+                  };
+              }
+          } catch (error) {
+              // Ignore malformed structured data blocks.
+          }
+      }
+
+      return { authorName: '', authorUrl: '', viewCount: '' };
+  }
+
+  function extractReadableViewCount(value) {
+      const text = String(value || '').trim();
+      if (!text) return '';
+
+      const descriptiveMatch = text.match(/([\d.,]+(?:\s*[KMB])?)(?=\s*(?:views?|watching|viewers?)\b)/i);
+      if (descriptiveMatch) {
+          return descriptiveMatch[1].replace(/\s+/g, '');
+      }
+
+      const compactOnlyMatch = text.match(/^([\d.,]+(?:\s*[KMB])?)$/i);
+      if (compactOnlyMatch) {
+          return compactOnlyMatch[1].replace(/\s+/g, '');
+      }
+
+      if (/^\d+$/.test(text)) return text;
+      return '';
   }
 
   // ==========================================
@@ -253,14 +589,41 @@
 
     // --- INSTAGRAM ---
     else if (host.includes('instagram.com')) {
-      if (!url.includes('/p/') && !url.includes('/reel/')) return null;
-      const headerHandle = document.querySelector(SCRAPER_CONFIG.instagram.handle)?.innerText;
+      const isPostLikeUrl = url.includes('/p/') || url.includes('/reel/') || url.includes('/tv/');
+      const isStoryUrl = url.includes('/stories/');
+      if (!isPostLikeUrl && !isStoryUrl) return null;
+
+      const instagramConfig = SCRAPER_CONFIG.instagram || {};
+      const embeddedData = getInstagramEmbeddedData(instagramConfig);
+      const headerHandle = normalizeScrapedHandle(getTextFromSelectorList(instagramConfig.handle));
+      const profileHrefHandle = getInstagramHandleFromProfileLinks(instagramConfig.profile_links);
+      const metaDescription = getAttributeFromSelectorList(instagramConfig.meta_description, 'content');
+      const metaViews = extractReadableViewCount(metaDescription);
+      const semanticViews = getInstagramViewCountFromSemanticDom();
+
+      let handle = embeddedData.handle || profileHrefHandle || headerHandle || "InstagramUser";
+
+      if ((!headerHandle || headerHandle === "InstagramUser") && isStoryUrl) {
+          try {
+              const pathParts = new URL(url).pathname.split('/').filter(Boolean);
+              if (pathParts[0] === 'stories' && pathParts[1]) {
+                  handle = pathParts[1];
+              }
+          } catch (error) {
+              // Ignore parse failure and fall back to the DOM handle.
+          }
+      }
+
+      if (!isStoryUrl) {
+          views = embeddedData.views || metaViews || semanticViews || "N/A";
+      }
       
       return { 
         platform: "Instagram", 
         url, 
-        handle: headerHandle || "InstagramUser", 
-        views: "N/A", 
+        handle: normalizeScrapedHandle(handle) || "InstagramUser",
+        views,
+        contentType: url.includes('/reel/') ? 'reel' : (url.includes('/tv/') ? 'video' : (isStoryUrl ? 'story' : 'post')),
         timestamp 
       };
     }
@@ -308,6 +671,53 @@
         handle: "FacebookUser", 
         views: "N/A", 
         timestamp 
+      };
+    }
+
+    // --- RUMBLE ---
+    else if (host.includes('rumble.com')) {
+      const pathname = window.location.pathname || '';
+      const looksLikeVideoPage = /^\/v[a-z0-9]/i.test(pathname) || pathname.includes('/embed/');
+      const hasPlayableMedia = !!document.querySelector('video');
+
+      if (!looksLikeVideoPage && !hasPlayableMedia) return null;
+
+      const structuredData = getRumbleStructuredData();
+      const rumbleConfig = SCRAPER_CONFIG.rumble || {};
+
+      let handle = normalizeScrapedHandle(getTextFromSelectorList(rumbleConfig.handle));
+      if (!handle) {
+          handle = extractRumbleHandleFromHref(getHrefFromSelectorList(rumbleConfig.candidate_channel_links));
+      }
+      if (!handle) {
+          handle = extractRumbleHandleFromHref(structuredData.authorUrl);
+      }
+      if (!handle) {
+          handle = normalizeScrapedHandle(structuredData.authorName);
+      }
+      if (!handle) {
+          const metaAuthor = document.querySelector('meta[name="author"], meta[property="author"]');
+          handle = normalizeScrapedHandle(metaAuthor?.content || '');
+      }
+
+      const rawViews = getTextFromSelectorList(rumbleConfig.views);
+      views = extractReadableViewCount(rawViews) || extractReadableViewCount(structuredData.viewCount) || "N/A";
+
+      const liveContextText = [
+        document.title,
+        document.querySelector('meta[property="og:title"]')?.content || '',
+        document.querySelector('meta[name="description"]')?.content || ''
+      ].join(' ');
+      const isLive = toSelectorList(rumbleConfig.live_indicators).some((selector) => !!findElement(selector)) ||
+        /\blive\b/i.test(liveContextText);
+
+      return {
+        platform: "Rumble",
+        url,
+        handle: handle || "RumbleCreator",
+        views,
+        timestamp,
+        isLive
       };
     }
 
@@ -787,7 +1197,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       else if (parsedViews >= 10000) data.scoutScore = baseScore * 2; // 2x High-Impact
       else data.scoutScore = baseScore; // 1x Standard
       
-      if (data.url.includes('/live/') || document.querySelector('[aria-label="LIVE"]')) data.scoutScore *= 2; // Live Event Bonus
+      if (data.isLive || data.url.includes('/live/') || document.querySelector('[aria-label="LIVE"]')) data.scoutScore *= 2; // Live Event Bonus
       
       const originalText = "+ Add";
       btnAdd.innerText = "Capturing...";

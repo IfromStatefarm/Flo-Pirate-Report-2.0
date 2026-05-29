@@ -19,11 +19,15 @@
     
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const COPYRIGHT_OWNER_NAME = 'FloSports';
+    const INSTAGRAM_BATCH_LIMIT = 30;
+    const RUMBLE_REPORT_SESSION_KEY = 'rumble_report_session';
+    const TIKTOK_VERIFICATION_EMAIL = 'social@flosports.tv';
     let configLoaded = false;
     let isAutofilling = false; 
     let lastReportData = null; // Cache data for SPA navigation
     let cachedOverlay = null;  // Caches the overlay element to preserve its state
     let hasRunAutomatedFill = false; // Prevents Youtube/Twitter loops on SPA wake-up
+    let hasRunRumbleAutomation = false;
     let isTransitioning = false; // Prevents SPA wake-up from firing while we wait for a page transition
     
     async function loadConfig() {
@@ -46,12 +50,14 @@
         try {
             const host = window.location.hostname;
             const isTikTok = host.includes('tiktok.com') || host.includes('tiktokforbusiness.com');
+            const isRumble = host.includes('rumble.com');
 
-            const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
+            const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo', RUMBLE_REPORT_SESSION_KEY]);
             const cart = res.piracy_cart || [];
             const info = res.reporterInfo || {};
+            const rumbleSession = res[RUMBLE_REPORT_SESSION_KEY] || null;
         
-            const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : "Unknown");
+            const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : (isRumble ? "Rumble" : "Unknown"));
         
             const data = {
                 fullName: info.name || "",
@@ -60,7 +66,8 @@
                 platform: platform,
                 eventName: info.eventName || "",
                 vertical: info.vertical || "",
-                sourceUrl: info.sourceUrl || ""
+                sourceUrl: info.sourceUrl || "",
+                rumbleSession
             };
             
             lastReportData = data; // Save for SPA wake-up
@@ -71,7 +78,7 @@
             }
 
             // Only auto-open the full wizard if we actually have data in the cart
-            if (cart.length === 0 || !info.name) {
+            if ((cart.length === 0 || !info.name) && !(isRumble && rumbleSession?.active)) {
                 return;
             }
         
@@ -90,8 +97,14 @@
 
     try {
         const host = window.location.hostname;
+        const currentUrl = window.location.href.toLowerCase();
         if (host.includes('tiktok')) {
             createTikTokOverlay(data);
+        } else if (host.includes('help.instagram.com') || currentUrl.includes('help.instagram.com/contact/552695131608132')) {
+            createInstagramOverlay(data);
+        } else if (host.includes('rumble.com')) {
+            if (!isActiveRumbleSessionForCurrentPage(data?.rumbleSession)) return;
+            createRumbleOverlay(data);
         } else if (host.includes('youtube')) {
             createYouTubeOverlay(data);
         } else {
@@ -118,6 +131,218 @@
         const rect = elem.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     };
+
+    function normalizeRuntimeUrl(url) {
+        try {
+            const parsed = new URL(String(url || ''));
+            parsed.hash = '';
+            return parsed.toString();
+        } catch (error) {
+            return String(url || '').split('#')[0];
+        }
+    }
+
+    function isActiveRumbleSessionForCurrentPage(session) {
+        if (!session?.active || !Array.isArray(session.urls)) return false;
+        const currentUrl = normalizeRuntimeUrl(window.location.href);
+        return session.urls.map(normalizeRuntimeUrl).includes(currentUrl);
+    }
+
+    function findVisibleElement(selectors) {
+        const selectorList = Array.isArray(selectors) ? selectors : [selectors];
+        for (const selector of selectorList.filter(Boolean)) {
+            try {
+                const element = selector.startsWith('//')
+                    ? document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+                    : document.querySelector(selector);
+                if (element && isVisible(element)) return element;
+            } catch (error) {
+                // Ignore invalid selectors and continue through fallbacks.
+            }
+        }
+        return null;
+    }
+
+    async function waitForVisibleElement(selectors, timeout = 10000) {
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            const element = findVisibleElement(selectors);
+            if (element) return element;
+            await sleep(200);
+        }
+        return null;
+    }
+
+    function clickElement(element) {
+        if (!element) return false;
+        element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        element.click();
+        return true;
+    }
+
+    function normalizeText(value) {
+        return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function matchesAnyText(value, candidates) {
+        const normalizedValue = normalizeText(value);
+        const candidateList = Array.isArray(candidates) ? candidates : [candidates];
+        return candidateList.filter(Boolean).some((candidate) => normalizedValue.includes(normalizeText(candidate)));
+    }
+
+    function findControls(selectors) {
+        const selectorList = Array.isArray(selectors) ? selectors : [selectors];
+        return selectorList
+            .filter(Boolean)
+            .flatMap((selector) => {
+                try {
+                    return Array.from(document.querySelectorAll(selector)).filter(isVisible);
+                } catch (error) {
+                    return [];
+                }
+            });
+    }
+
+    function mergeSelectorFallbacks(primarySelectors, fallbackSelectors) {
+        const primaryList = Array.isArray(primarySelectors)
+            ? primarySelectors
+            : (primarySelectors ? [primarySelectors] : []);
+        const fallbackList = Array.isArray(fallbackSelectors)
+            ? fallbackSelectors
+            : (fallbackSelectors ? [fallbackSelectors] : []);
+        return Array.from(new Set([...primaryList.filter(Boolean), ...fallbackList.filter(Boolean)]));
+    }
+
+    function findControlByLabelText(labelTexts, acceptedSelector = 'input, textarea, select') {
+        const labels = Array.isArray(labelTexts) ? labelTexts : [labelTexts];
+        if (labels.filter(Boolean).length === 0) return null;
+
+        const labeledElements = Array.from(document.querySelectorAll('label, div, span, strong, p'));
+        for (const element of labeledElements) {
+            const text = element.innerText || element.textContent || '';
+            if (!matchesAnyText(text, labels)) continue;
+
+            if (element.tagName === 'LABEL') {
+                const forId = element.getAttribute('for');
+                if (forId) {
+                    const directControl = document.getElementById(forId);
+                    if (directControl?.matches?.(acceptedSelector) && isVisible(directControl)) return directControl;
+                }
+            }
+
+            const nestedControl = element.querySelector?.(acceptedSelector);
+            if (nestedControl && isVisible(nestedControl)) return nestedControl;
+
+            const container = element.closest('div, label, fieldset') || element.parentElement;
+            const nearbyControl = container?.querySelector?.(acceptedSelector);
+            if (nearbyControl && isVisible(nearbyControl)) return nearbyControl;
+
+            const xpath = 'following::*[self::input or self::textarea or self::select][1]';
+            const followingControl = document.evaluate(
+                xpath,
+                element,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+            ).singleNodeValue;
+            if (followingControl?.matches?.(acceptedSelector) && isVisible(followingControl)) return followingControl;
+        }
+
+        return null;
+    }
+
+    function findChoiceInputByText(text, type) {
+        const selector = `input[type="${type}"]`;
+        const matchingByValue = Array.from(document.querySelectorAll(selector)).find((input) =>
+            matchesAnyText(input.value || input.getAttribute('aria-label') || '', text)
+        );
+        if (matchingByValue && isVisible(matchingByValue)) return matchingByValue;
+
+        const matchingLabel = Array.from(document.querySelectorAll('label')).find((label) =>
+            matchesAnyText(label.innerText || label.textContent || '', text)
+        );
+        if (matchingLabel) {
+            const nestedInput = matchingLabel.querySelector(selector);
+            if (nestedInput) return nestedInput;
+
+            const forId = matchingLabel.getAttribute('for');
+            if (forId) {
+                const directInput = document.getElementById(forId);
+                if (directInput?.matches?.(selector)) return directInput;
+            }
+        }
+
+        return null;
+    }
+
+    function fillFieldWithFallback(selectors, labels, value) {
+        if (value == null || value === '') return false;
+
+        const directField = findVisibleElement(selectors);
+        if (directField) {
+            return typeValue(directField, value);
+        }
+
+        const labelField = findControlByLabelText(labels, 'input, textarea');
+        if (labelField) {
+            return typeValue(labelField, value);
+        }
+
+        return false;
+    }
+
+    function selectFieldOption(selectors, labels, optionText) {
+        if (!optionText) return false;
+
+        const directSelect = findVisibleElement(selectors);
+        const labelSelect = directSelect || findControlByLabelText(labels, 'select');
+        if (!labelSelect) return false;
+
+        const targetOption = Array.from(labelSelect.options || []).find((option) =>
+            matchesAnyText(option.textContent || option.innerText || '', optionText)
+        );
+        if (!targetOption) return false;
+
+        labelSelect.value = targetOption.value;
+        labelSelect.dispatchEvent(new Event('input', { bubbles: true }));
+        labelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    }
+
+    function checkChoiceField(selectors, labels, choiceText, type = 'checkbox') {
+        const directChoice = findVisibleElement(selectors);
+        if (directChoice) {
+            checkReactCheckbox(directChoice);
+            return true;
+        }
+
+        const labeledChoice = findChoiceInputByText(choiceText || labels, type);
+        if (labeledChoice) {
+            checkReactCheckbox(labeledChoice);
+            return true;
+        }
+
+        return false;
+    }
+
+    function detectInstagramContentTypes(urls) {
+        const list = Array.isArray(urls) ? urls : [];
+        const hasStory = list.some((url) => String(url || '').toLowerCase().includes('/stories/'));
+        const hasPostLike = list.some((url) => !String(url || '').toLowerCase().includes('/stories/'));
+        return { hasStory, hasPostLike };
+    }
+
+    function buildInstagramExplanation(data) {
+        const template = AUTOFILL_CONFIG.instagram?.autofill?.templates?.infringement_explanation ||
+            'Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]). FloSports owns the exclusive copyright. Infringement is visually verifiable via our proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account.';
+        const vertical = data?.vertical || 'FloSports';
+        const eventName = data?.eventName || 'the event';
+        return template
+            .replace(/\[Event Name\]/g, eventName)
+            .replace(/\[Vertical Name\]/g, vertical);
+    }
 
     const setNativeValue = (element, value) => {
         const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
@@ -310,6 +535,18 @@
         }
     }
 
+    async function resolveReporterFullName(data) {
+        const explicitName = data?.fullName || data?.name || lastReportData?.fullName || lastReportData?.name || '';
+        if (explicitName) return explicitName;
+
+        try {
+            const res = await chrome.storage.local.get(['reporterInfo']);
+            return res.reporterInfo?.name || '';
+        } catch (error) {
+            return '';
+        }
+    }
+
     async function runStep1(data) {
         console.log("🔹 Step 1: Init Form & Email Verification");
 
@@ -349,7 +586,7 @@
         }
 
         // 2. Execute Input Mapping
-        const email = data.email || "copyright@flosports.tv";
+        const email = TIKTOK_VERIFICATION_EMAIL;
         await executeConfigStep(platform, "Step 1", [
             { section: 'field_strategies', field: 'email', value: email, fallbackLabels: ['email'] }
         ]);
@@ -365,11 +602,12 @@
 
     async function runStep2(data) {
         const platform = "tiktok";
+        const reporterFullName = await resolveReporterFullName(data);
         const defaults = {
             company: COPYRIGHT_OWNER_NAME,
             phone: "5122702356",
             address: "301 Congress ave #1500 Austin Tx 78701",
-            name: COPYRIGHT_OWNER_NAME
+            name: reporterFullName
         };
         
         // Map logical fields to their respective sections in the config and fallback labels
@@ -394,7 +632,7 @@
 
     async function runStep3(data) {
         console.log("🔹 Step 3: Infringement Details & Sign");
-        const defaults = { name: COPYRIGHT_OWNER_NAME };
+        const defaults = { name: await resolveReporterFullName(data) };
 
         fillByLabel('signature', defaults.name);
 
@@ -499,6 +737,108 @@
         }
     }
 
+    async function runRumbleReportSequence(data, statusEl) {
+        const config = AUTOFILL_CONFIG.rumble?.autofill || {};
+        const updateStatus = (message, color = '#333') => {
+            if (!statusEl) return;
+            statusEl.innerText = message;
+            statusEl.style.color = color;
+        };
+
+        const menuButtonSelectors = config.menu_button || [
+            '[data-js="video_action_sub_menu_button"]'
+        ];
+        const reportButtonSelectors = config.report_button || [
+            '[data-type="report"] [data-js="video_action_sub_menu_button"]'
+        ];
+        const copyrightReasonSelectors = config.copyright_reason || [
+            'input[type="radio"][name="reason"][value="It violates copyright"]'
+        ];
+        const submitButtonSelectors = config.submit_button || [
+            'button[hx-post="/htmx/web-services/report-content"]'
+        ];
+        const successIndicatorSelectors = config.success_indicators || [];
+        const successTextMatchers = Array.isArray(config.success_text)
+            ? config.success_text
+            : (config.success_text ? [config.success_text] : ['thank you', 'report submitted']);
+
+        updateStatus('Opening report menu...');
+        const menuButton = await waitForVisibleElement(menuButtonSelectors, 15000);
+        if (!menuButton) {
+            throw new Error('Could not find the Rumble action menu button.');
+        }
+        clickElement(menuButton);
+        await sleep(500);
+
+        updateStatus('Selecting report...');
+        const reportButton = await waitForVisibleElement(reportButtonSelectors, 10000);
+        if (!reportButton) {
+            throw new Error('Could not find the Rumble report button.');
+        }
+        clickElement(reportButton);
+        await sleep(700);
+
+        updateStatus('Choosing copyright violation...');
+        const copyrightReason = await waitForVisibleElement(copyrightReasonSelectors, 10000);
+        if (!copyrightReason) {
+            throw new Error('Could not find the copyright violation option.');
+        }
+        checkReactCheckbox(copyrightReason);
+        await sleep(300);
+
+        updateStatus('Submitting report...');
+        const submitButton = await waitForVisibleElement(submitButtonSelectors, 10000);
+        if (!submitButton) {
+            throw new Error('Could not find the Rumble submit button.');
+        }
+        clickElement(submitButton);
+
+        const submitted = await (async () => {
+            const start = Date.now();
+            while (Date.now() - start < 8000) {
+                const reasonStillVisible = !!findVisibleElement(copyrightReasonSelectors);
+                const submitStillVisible = !!findVisibleElement(submitButtonSelectors);
+                const bodyText = document.body.innerText.toLowerCase();
+                const matchedSuccessText = successTextMatchers.some((text) =>
+                    bodyText.includes(String(text || '').toLowerCase())
+                );
+                const successIndicatorVisible = successIndicatorSelectors.length > 0 && !!findVisibleElement(successIndicatorSelectors);
+
+                if (!reasonStillVisible && !submitStillVisible) {
+                    return true;
+                }
+                if (matchedSuccessText || successIndicatorVisible) {
+                    return true;
+                }
+                await sleep(250);
+            }
+            return false;
+        })();
+
+        if (!submitted) {
+            throw new Error('The Rumble report modal did not confirm submission. Please review the page.');
+        }
+
+        updateStatus('Opening next queued URL...', '#0288d1');
+        const response = await chrome.runtime.sendMessage({
+            action: 'advanceRumbleQueue',
+            currentUrl: window.location.href
+        });
+
+        if (!response?.success) {
+            throw new Error(response?.error || 'Failed to advance the Rumble report queue.');
+        }
+
+        if (response.done) {
+            updateStatus('All Rumble reports submitted and logged.', 'green');
+            try {
+                new Audio(chrome.runtime.getURL('jingle.mp3')).play().catch(() => {});
+            } catch (error) {
+                // Audio is optional here.
+            }
+        }
+    }
+
     // ==========================================
     // 3. UI OVERLAYS & LAUNCHER TAB
     // ==========================================
@@ -533,6 +873,203 @@
             createTikTokOverlay(freshData);
         });
         document.body.appendChild(launcher);
+    }
+
+    function createInstagramOverlay(data) {
+        if (cachedOverlay && cachedOverlay.id === "flo-instagram-overlay") {
+            if (!document.getElementById("flo-instagram-overlay")) {
+                document.body.appendChild(cachedOverlay);
+            }
+            return;
+        }
+
+        const existing = document.getElementById("flo-instagram-overlay");
+        if (existing) existing.remove();
+
+        const overlay = document.createElement("div");
+        overlay.id = "flo-instagram-overlay";
+        overlay.style.cssText = `
+          position: fixed; top: 80px; right: 20px; width: 300px;
+          background: white; border: 3px solid #c13584; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
+        `;
+
+        overlay.innerHTML = `
+          <div id="flo-ig-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+            <h3 id="flo-ig-title" style="margin:0; color:#c13584; font-size:16px; pointer-events:none;">Instagram Wizard ✥</h3>
+            <div>
+                <button id="flo-ig-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
+                <button id="flo-ig-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">×</button>
+            </div>
+          </div>
+
+          <div id="flo-ig-main-content">
+              <div style="margin-bottom: 12px; font-size: 13px;">
+                <small>Use the 3 buttons to fill the Instagram copyright form in order, then review and click Send on the page before logging.</small>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <button id="flo-ig-btn-step1" style="background: #c13584; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Contact Info</button>
+                  <button id="flo-ig-btn-step2" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 2: Source & Type</button>
+                  <button id="flo-ig-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Report Links</button>
+              </div>
+
+              <div id="flo-ig-log-container" style="display:none; margin-top: 15px;">
+                  <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                      ⚠️ Click "Send" on the Instagram page first, then log below.
+                  </div>
+                  <button id="flo-ig-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+                  <div id="flo-ig-log-status" style="margin-top:8px; font-size:12px; text-align:center;"></div>
+              </div>
+          </div>
+        `;
+
+        cachedOverlay = overlay;
+        document.body.appendChild(overlay);
+        setupDrag(overlay);
+
+        let isMinimized = false;
+        const minBtn = document.getElementById('flo-ig-min-btn');
+        const closeBtn = document.getElementById('flo-ig-close-btn');
+        const mainContent = document.getElementById('flo-ig-main-content');
+        const title = document.getElementById('flo-ig-title');
+        const topBar = document.getElementById('flo-ig-top-bar');
+
+        minBtn.addEventListener('click', () => {
+            isMinimized = !isMinimized;
+            if (isMinimized) {
+                mainContent.style.display = 'none';
+                minBtn.innerHTML = '+';
+                title.innerText = 'IG ✥';
+                overlay.style.width = 'auto';
+                topBar.style.borderBottom = 'none';
+                topBar.style.marginBottom = '0';
+                topBar.style.paddingBottom = '0';
+                overlay.style.right = '0px';
+                overlay.style.borderTopRightRadius = '0';
+                overlay.style.borderBottomRightRadius = '0';
+            } else {
+                mainContent.style.display = 'block';
+                minBtn.innerHTML = '−';
+                title.innerText = 'Instagram Wizard ✥';
+                overlay.style.width = '300px';
+                topBar.style.borderBottom = '1px solid #eee';
+                topBar.style.marginBottom = '10px';
+                topBar.style.paddingBottom = '8px';
+                overlay.style.borderRadius = '8px';
+                const rect = overlay.getBoundingClientRect();
+                if (window.innerWidth - rect.right < 10) {
+                    overlay.style.right = '20px';
+                    overlay.style.left = 'auto';
+                }
+            }
+        });
+
+        closeBtn.addEventListener('click', () => overlay.remove());
+
+        const btn1 = document.getElementById('flo-ig-btn-step1');
+        const btn2 = document.getElementById('flo-ig-btn-step2');
+        const btn3 = document.getElementById('flo-ig-btn-step3');
+        const logContainer = document.getElementById('flo-ig-log-container');
+
+        btn1.addEventListener('click', async () => {
+            btn1.innerText = 'Running...';
+            await runIgStep1(data);
+            btn1.innerText = 'Step 1: Done';
+            btn1.style.background = '#ccc';
+            btn1.style.color = '#333';
+            btn2.style.background = '#c13584';
+            btn2.style.color = 'white';
+        });
+
+        btn2.addEventListener('click', async () => {
+            btn2.innerText = 'Running...';
+            await runIgStep2(data);
+            btn2.innerText = 'Step 2: Done';
+            btn2.style.background = '#ccc';
+            btn2.style.color = '#333';
+            btn3.style.background = '#c13584';
+            btn3.style.color = 'white';
+        });
+
+        btn3.addEventListener('click', async () => {
+            btn3.innerText = 'Running...';
+            await runIgStep3(data);
+            btn3.innerText = 'Step 3: Done';
+            btn3.style.background = '#ccc';
+            btn3.style.color = '#333';
+            logContainer.style.display = 'block';
+        });
+
+        document.getElementById('flo-ig-log-btn').addEventListener('click', () => {
+            const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
+            const status = document.getElementById('flo-ig-log-status');
+            status.innerText = 'Logging...';
+            chrome.runtime.sendMessage({ action: 'logToSheet', data: data }, (response) => {
+                if (response && response.success) {
+                    successAudio.play().catch(() => {});
+                    status.innerText = '✅ Logged! Closing...';
+                    status.style.color = 'green';
+                    setTimeout(() => {
+                        lastReportData = null;
+                        cachedOverlay = null;
+                        overlay.remove();
+                    }, 2000);
+                } else {
+                    status.innerText = '❌ Failed.';
+                    status.style.color = 'red';
+                }
+            });
+        });
+    }
+
+    function createRumbleOverlay(data) {
+        const existing = document.getElementById('flo-rumble-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'flo-rumble-overlay';
+        overlay.style.cssText = `
+          position: fixed; top: 80px; right: 20px; width: 300px;
+          background: white; border: 3px solid #2f855a; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
+        `;
+
+        const session = data?.rumbleSession || {};
+        const currentIndex = Number(session.currentIndex || 0) + 1;
+        const total = Array.isArray(session.urls) ? session.urls.length : (data?.urls?.length || 0);
+
+        overlay.innerHTML = `
+          <div id="flo-rumble-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:8px;">
+            <h3 style="margin:0; color:#2f855a; font-size:16px; pointer-events:none;">Rumble Reporter ✥</h3>
+            <button id="flo-rumble-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">×</button>
+          </div>
+          <div style="font-size:13px; margin-bottom:10px;">
+            <strong>Queue:</strong> ${currentIndex}/${total}<br>
+            <small>Submitting the built-in copyright report on this Rumble page.</small>
+          </div>
+          <div id="flo-rumble-status" style="font-size:13px; line-height:1.4;">Preparing report...</div>
+        `;
+
+        document.body.appendChild(overlay);
+        setupDrag(overlay);
+
+        const closeBtn = document.getElementById('flo-rumble-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => overlay.remove());
+        }
+
+        if (hasRunRumbleAutomation) return;
+        hasRunRumbleAutomation = true;
+
+        const statusEl = document.getElementById('flo-rumble-status');
+        runRumbleReportSequence(data, statusEl).catch((error) => {
+            if (statusEl) {
+                statusEl.innerText = `❌ ${error.message}`;
+                statusEl.style.color = '#ce0e2d';
+            }
+            hasRunRumbleAutomation = false;
+        });
     }
 
     function createTikTokOverlay(data) {
@@ -1211,12 +1748,143 @@ function setupDrag(overlay) {
         fillYtcpInput(ownerInputs.zip || "Zip code", defaults.zip || "78701");
     }
     
-    async function fillInstagram(data) {
+    async function runIgStep1(data) {
+        console.log("📝 Running Instagram Step 1: Contact information...");
         const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
-        if(conf.name) {
-            const el = document.querySelector(`[name="${conf.name}"]`);
-            if(el) el.value = data.fullName;
+        const fields = conf.fields || {};
+        const defaults = conf.defaults || {};
+        const reporterFullName = await resolveReporterFullName(data);
+        const contactEmail = defaults.contact_email || TIKTOK_VERIFICATION_EMAIL;
+
+        checkChoiceField(
+            fields.relationship_radio,
+            ['I am reporting on behalf of my organization or client'],
+            defaults.relationship || 'I am reporting on behalf of my organization or client.',
+            'radio'
+        );
+        await sleep(500);
+
+        fillFieldWithFallback(fields.full_name, ['Your full name'], reporterFullName);
+        fillFieldWithFallback(
+            fields.email,
+            ['Please provide a valid email address', 'Email address'],
+            contactEmail
+        );
+        fillFieldWithFallback(
+            fields.confirm_email,
+            ['Confirm your email address'],
+            contactEmail
+        );
+        fillFieldWithFallback(
+            fields.rights_owner_name,
+            ['Name of the rights owner', 'This may be your full name or the name of the organization'],
+            defaults.rights_owner_name || COPYRIGHT_OWNER_NAME
+        );
+        selectFieldOption(
+            fields.country_select,
+            ['Where are you asserting rights'],
+            defaults.country || 'United States'
+        );
+        selectFieldOption(
+            fields.work_type_select,
+            ['Which of these best describes the copyrighted work'],
+            defaults.work_type || 'Video'
+        );
+    }
+
+    async function runIgStep2(data) {
+        console.log("📝 Running Instagram Step 2: Copyrighted work details...");
+        const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
+        const fields = conf.fields || {};
+        const defaults = conf.defaults || {};
+        const { hasStory, hasPostLike } = detectInstagramContentTypes(data.urls || []);
+
+        fillFieldWithFallback(
+            fields.source_url,
+            ['Provide a link to the copyrighted work', 'You can provide one link (URL)'],
+            data.sourceUrl || ''
+        );
+        fillFieldWithFallback(
+            fields.copyrighted_work_description,
+            ['Describe your copyrighted work in the link you provided above'],
+            data.eventName || 'FloSports Event'
+        );
+
+        if (hasPostLike || !hasStory) {
+            checkChoiceField(
+                fields.content_type_post,
+                ['Photo, video or post'],
+                defaults.content_type_post || 'Photo, video or post',
+                'checkbox'
+            );
         }
+        if (hasStory) {
+            checkChoiceField(
+                fields.content_type_story,
+                ['Story'],
+                defaults.content_type_story || 'Story',
+                'checkbox'
+            );
+        }
+    }
+
+    async function runIgStep3(data) {
+        console.log("📝 Running Instagram Step 3: Report links & declaration...");
+        const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
+        const fields = conf.fields || {};
+        const reporterFullName = await resolveReporterFullName(data);
+        const urls = Array.isArray(data.urls) ? data.urls.filter(Boolean) : [];
+        const urlsToReport = urls.slice(0, INSTAGRAM_BATCH_LIMIT);
+        const contentUrlSelectors = mergeSelectorFallbacks(fields.content_urls, [
+            'textarea[name="content_urls"]',
+            'textarea[name^="content_urls"]'
+        ]);
+
+        if (urls.length > INSTAGRAM_BATCH_LIMIT) {
+            alert(`Instagram supports up to ${INSTAGRAM_BATCH_LIMIT} links per report. The first ${INSTAGRAM_BATCH_LIMIT} links have been loaded into this form. The remaining links will stay in the queue for the next report.`);
+        }
+
+        let urlFields = findControls(contentUrlSelectors);
+        if (urlsToReport.length > urlFields.length) {
+            checkChoiceField(
+                fields.additional_links_checkbox,
+                ['I have additional links to report'],
+                'I have additional links to report',
+                'checkbox'
+            );
+            await sleep(500);
+            urlFields = findControls(contentUrlSelectors);
+        }
+
+        urlsToReport.forEach((url, index) => {
+            if (urlFields[index]) {
+                typeValue(urlFields[index], url);
+            }
+        });
+
+        fillFieldWithFallback(
+            fields.infringement_explanation,
+            ['Describe how you believe this content infringes your intellectual property rights'],
+            buildInstagramExplanation(data)
+        );
+        fillFieldWithFallback(
+            fields.signature,
+            ['Electronic signature', 'Your electronic signature should match your full name'],
+            reporterFullName
+        );
+
+        const sendBtn = await waitForVisibleElement(fields.send_button || ['button[type="submit"]'], 1000);
+        if (sendBtn) {
+            sendBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            sendBtn.style.border = "4px solid #ce0e2d";
+            sendBtn.disabled = false;
+        }
+    }
+
+    async function fillInstagram(data) {
+        await runIgStep1(data);
+        await runIgStep2(data);
+        await runIgStep3(data);
     }
     async function runYtStep3(data) {
         console.log("📝 Running YouTube Step 3: Legal agreements...");

@@ -29,6 +29,7 @@ import { base64ToBlob } from './lib/blob_utils.js';
 import { createMacroWorkflow } from './services/macro_workflow.js';
 import { createReportingWorkflow } from './services/reporting_workflow.js';
 import { createRogueWorkflow } from './services/rogue_workflow.js';
+import { createRumbleWorkflow } from './services/rumble_workflow.js';
 import { createSearchWorkflow } from './services/search_workflow.js';
 
 const ALARM_NAME = 'theCloser';
@@ -78,6 +79,10 @@ const reportingWorkflow = createReportingWorkflow({
   setColumnKRichText,
   uploadToDrive,
   base64ToBlob
+});
+
+const rumbleWorkflow = createRumbleWorkflow({
+  handleBatchReport: reportingWorkflow.handleBatchReport
 });
 
 function maybeBroadcastManagedSourceUrl(url) {
@@ -272,6 +277,26 @@ function createActionHandlers() {
         chrome.runtime.sendMessage({ action: 'progressError', error: response.error }).catch(() => {});
       }
       return response;
+    },
+
+    async startRumbleQueue(request) {
+      return rumbleWorkflow.start(request.data);
+    },
+
+    async advanceRumbleQueue(request, sender) {
+      const response = await rumbleWorkflow.advance(request.currentUrl, sender?.tab?.id);
+      if (response.done) {
+        if (response.success) {
+          chrome.runtime.sendMessage({ action: 'progressComplete' }).catch(() => {});
+        } else {
+          chrome.runtime.sendMessage({ action: 'progressError', error: response.error || 'Rumble logging failed.' }).catch(() => {});
+        }
+      }
+      return response;
+    },
+
+    async cancelRumbleQueue() {
+      return rumbleWorkflow.cancel();
     },
 
     async getConfig() {

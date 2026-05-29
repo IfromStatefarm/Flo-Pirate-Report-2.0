@@ -83,6 +83,8 @@
         "*://ipr.tiktokforbusiness.com/*",
         "*://www.tiktok.com/legal/report/*",
         "*://www.youtube.com/copyright_complaint_form*",
+        "*://rumble.com/*",
+        "*://*.rumble.com/*",
         "*://help.instagram.com/*",
         "*://help.x.com/*",
         "*://www.facebook.com/help/contact/*"
