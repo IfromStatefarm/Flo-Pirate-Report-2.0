@@ -47,22 +47,183 @@
       handle: 'header a'
     },
     twitter: {
-      handle: '[data-testid="tweet"] [data-testid="User-Name"] a',
-      views: 'a[href*="analytics"] span, [data-testid="app-text-transition-container"] span'
+      handle_links: [
+        'article[data-testid="tweet"] [data-testid="User-Name"] a[href^="/"]',
+        '[data-testid="tweet"] [data-testid="User-Name"] a[href^="/"]',
+        '[data-testid="User-Name"] a[href^="/"]'
+      ],
+      handle: [
+        'article[data-testid="tweet"] [data-testid="User-Name"] a[href^="/"] span',
+        '[data-testid="tweet"] [data-testid="User-Name"] a[href^="/"] span',
+        '[data-testid="User-Name"] a[href^="/"] span'
+      ],
+      views: [
+        'article[data-testid="tweet"] a[href*="/analytics"] span',
+        '[data-testid="tweet"] a[href*="/analytics"] span',
+        'a[href*="/analytics"] span',
+        'a[aria-label*="View post analytics" i] span',
+        '[data-testid="app-text-transition-container"] span'
+      ],
+      views_analytics: [
+        'article[data-testid="tweet"] a[href*="/analytics"]',
+        '[data-testid="tweet"] a[href*="/analytics"]',
+        'a[href*="/analytics"]',
+        'a[aria-label*="View post analytics" i]'
+      ],
+      takedown_messages: [
+        '[data-testid="tweetText"] span',
+        '[data-testid="tweetText"]',
+        '[data-testid="videoPlayer"] span',
+        'article[data-testid="tweet"] span'
+      ],
+      takedown_patterns: [
+        'this media has been disabled',
+        'disabled in response to a report by the copyright owner',
+        'this post has been deleted',
+        'tweet has been deleted',
+        "this page doesn't exist",
+        'account suspended'
+      ],
+      active_media: [
+        '[data-testid="videoPlayer"] video',
+        '[data-testid="videoPlayer"]',
+        'video[aria-label="Embedded video"]',
+        'article[data-testid="tweet"] video',
+        'video'
+      ]
     },
-    facebook: {
-      handle: 'h2 a[role="link"], strong span'
+    facebook: {},
+    kick: {
+      handle_links: [
+        'a[href^="/"] img[alt]',
+        'a[href^="/"][data-testid]',
+        'a[href^="/"]'
+      ],
+      handle_name: [
+        'a[href^="/"] img[alt]',
+        'img#channel-avatar',
+        'img[alt]'
+      ],
+      live_badge: [
+        'button span[class*="bg-green-500"]',
+        'span[class*="bg-green-500"][class*="text-neutral-900"]',
+        'span.text-green-500',
+        '[data-testid="live-badge"]',
+        'button span'
+      ],
+      live_viewer_count: [
+        '[data-testid="viewer-count"]',
+        '[data-testid="viewer-count"] [style*="translateY"]'
+      ],
+      live_viewer_digit_columns: [
+        '[data-testid="viewer-count"] .flex.overflow-hidden > div[style*="height: 20px"]',
+        '[data-testid="viewer-count"] div[style*="height: 20px"][style*="width:"]'
+      ],
+      archived_views: [
+        'span[title]',
+        '.text-primary-base[title]'
+      ],
+      archived_view_labels: [
+        'views',
+        'watching'
+      ]
+    },
+    twitch: {
+      live_indicators: [
+        '[data-a-target="stream-live-indicator"]',
+        '[data-a-target="channel-status-text-indicator"]',
+        '[class*="tw-channel-status-text-indicator"]',
+        '[class*="ScChannelStatusTextIndicator"]',
+        '#live-channel-stream-information [class*="channel-status-text-indicator"]',
+        '[aria-label="LIVE"]'
+      ],
+      viewer_count: [
+        '[data-a-target="animated-channel-viewers-count"]',
+        '[data-a-target="channel-viewers-count"]',
+        '[class*="ScAnimatedNumber"]',
+        'strong[aria-hidden="true"] span'
+      ],
+      vod_indicators: [
+        '[data-a-target="video-info-game-boxart-link"]',
+        '[data-test-selector="metadata-layout__split-top"]',
+        '[class*="metadata-layout__split-top"]',
+        '[class*="timestamp-metadata__bar"]'
+      ],
+      vod_views: [
+        '[data-a-target="video-info-game-boxart-link"] ~ p',
+        '[data-test-selector="metadata-layout__split-top"] p',
+        '[class*="metadata-layout__split-top"] p'
+      ],
+      clip_indicators: [
+        'a[href*="/clip/"]',
+        'a[href*="clips.twitch.tv"]',
+        '[data-test-selector="metadata-layout__split-top"] a[href*="/clip/"]',
+        '[class*="metadata-layout__split-top"] a[href*="/clip/"]'
+      ],
+      clip_views: [
+        '[data-test-selector="metadata-layout__split-top"] p',
+        '[class*="metadata-layout__split-top"] p',
+        'p[class*="CoreText"]'
+      ],
+      handle_links: [
+        '[data-test-selector="metadata-layout__split-top"] a[href^="/"]',
+        '[class*="metadata-layout__split-top"] a[href^="/"]',
+        'a[href^="/"][class*="CoreLink"]',
+        'h1 a[href^="/"]',
+        'a[href^="/"][data-a-target*="channel" i]',
+        'a[href^="/"] h1'
+      ]
     },
     rumble: {
+<<<<<<< Updated upstream
       handle: '.media-by-heading .ellipsis-1, a.media-by--a'
+=======
+      handle: [
+        '.media-heading-name',
+        '.media-by-heading .ellipsis-1',
+        'a.media-by--a',
+        'a.channel-header--title',
+        '.channel-header--title'
+      ],
+      candidate_channel_links: [
+        'a.media-by--a[href]',
+        '.media-by-heading a[href]',
+        'a.channel-header--title[href]',
+        'a[href^="/c/"]',
+        'a[href^="/user/"]',
+        'a[href^="/channel/"]'
+      ],
+      views: [
+        '[data-js="media_description_info_views"]',
+        '.media-description-info-views',
+        '[data-js="media_description_section"] [class*="views"]',
+        '.media-heading-info',
+        '.video-description [class*="view"]',
+        '.video-meta [class*="view"]'
+      ],
+      live_viewer_count: [
+        '.live-video-view-count-status-count[title*="users watching now" i]',
+        '.live-video-view-count-status-count',
+        '[class*="live-video-view-count-status"] [title*="watching now" i]'
+      ],
+      live_indicators: [
+        '.live-video-view-count-status-count[title*="users watching now" i]',
+        '[class*="live-video-view-count-status"] [title*="watching now" i]',
+        '.video-status--live',
+        '.media-status.live'
+      ]
+>>>>>>> Stashed changes
     },
     discord: {
      handle: 'div[class*="username"]'
     }
   };
 
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  let configLoaded = false;
+
   // --- CONFIG LOADER ---
-  (async function loadConfig() {
+  const configLoadPromise = (async function loadConfig() {
     try {
       const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
       if (response && response.success && response.config && response.config.platform_selectors) {
@@ -72,6 +233,14 @@
         if (remote.youtube && remote.youtube.scraper) SCRAPER_CONFIG.youtube = { ...SCRAPER_CONFIG.youtube, ...remote.youtube.scraper };
         if (remote.instagram && remote.instagram.scraper) SCRAPER_CONFIG.instagram = { ...SCRAPER_CONFIG.instagram, ...remote.instagram.scraper };
         if (remote.twitter && remote.twitter.scraper) SCRAPER_CONFIG.twitter = { ...SCRAPER_CONFIG.twitter, ...remote.twitter.scraper };
+<<<<<<< Updated upstream
+=======
+        if (remote.facebook && remote.facebook.scraper) SCRAPER_CONFIG.facebook = { ...SCRAPER_CONFIG.facebook, ...remote.facebook.scraper };
+        if (remote.kick && remote.kick.scraper) SCRAPER_CONFIG.kick = { ...SCRAPER_CONFIG.kick, ...remote.kick.scraper };
+        if (remote.twitch && remote.twitch.scraper) SCRAPER_CONFIG.twitch = { ...SCRAPER_CONFIG.twitch, ...remote.twitch.scraper };
+        if (remote.rumble && remote.rumble.scraper) SCRAPER_CONFIG.rumble = { ...SCRAPER_CONFIG.rumble, ...remote.rumble.scraper };
+        configLoaded = true;
+>>>>>>> Stashed changes
       }
     } catch (e) {
       // Suppress heavy logging
@@ -112,19 +281,847 @@
       }
   }
 
+<<<<<<< Updated upstream
+=======
+  function getElementsFromSelectorList(selectors) {
+      const elements = [];
+      const seen = new Set();
+
+      for (const selector of toSelectorList(selectors)) {
+          try {
+              let found = [];
+              if (selector.startsWith('//') || selector.startsWith('(')) {
+                  const snapshot = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                  for (let i = 0; i < snapshot.snapshotLength; i += 1) {
+                      found.push(snapshot.snapshotItem(i));
+                  }
+              } else {
+                  found = Array.from(document.querySelectorAll(selector));
+              }
+
+              found.forEach((element) => {
+                  if (element && !seen.has(element)) {
+                      seen.add(element);
+                      elements.push(element);
+                  }
+              });
+          } catch (e) {
+              // Ignore malformed selectors and continue.
+          }
+      }
+
+      return elements;
+  }
+
+  function toSelectorList(value) {
+      if (Array.isArray(value)) return value.filter(Boolean);
+      return value ? [value] : [];
+  }
+
+  function getElementReadableText(element) {
+      return (
+          element?.innerText ||
+          element?.textContent ||
+          element?.getAttribute?.('title') ||
+          element?.getAttribute?.('aria-label') ||
+          ''
+      ).trim();
+  }
+
+  function getTextFromSelectorList(selectors) {
+      for (const selector of toSelectorList(selectors)) {
+          const element = findElement(selector);
+          if (!element) continue;
+          const text = getElementReadableText(element);
+          if (text) return text;
+      }
+      return '';
+  }
+
+  function getTextsFromSelectorList(selectors) {
+      return getElementsFromSelectorList(selectors)
+          .map((element) => getElementReadableText(element))
+          .filter(Boolean);
+  }
+
+  function normalizeComparableText(value) {
+      return String(value || '')
+          .toLowerCase()
+          .replace(/[\u2018\u2019`]/g, "'")
+          .replace(/\s+/g, ' ')
+          .trim();
+  }
+
+  function textIncludesAnyPattern(text, patterns) {
+      const normalizedText = normalizeComparableText(text);
+      if (!normalizedText) return false;
+
+      return toSelectorList(patterns).some((pattern) => {
+          const normalizedPattern = normalizeComparableText(pattern);
+          return normalizedPattern && normalizedText.includes(normalizedPattern);
+      });
+  }
+
+  function getMatchingTextFromSelectorList(selectors, patterns) {
+      for (const text of getTextsFromSelectorList(selectors)) {
+          if (textIncludesAnyPattern(text, patterns)) return text;
+      }
+      return '';
+  }
+
+  function getFirstElementFromSelectorList(selectors) {
+      for (const selector of toSelectorList(selectors)) {
+          const element = findElement(selector);
+          if (element) return element;
+      }
+      return null;
+  }
+
+  function getHrefFromSelectorList(selectors) {
+      for (const selector of toSelectorList(selectors)) {
+          const element = findElement(selector);
+          if (!element) continue;
+          const anchor = element.matches?.('a[href]')
+              ? element
+              : element.closest?.('a[href]') || element.querySelector?.('a[href]');
+          const href = anchor?.href || element.getAttribute?.('href') || '';
+          if (href) return href;
+      }
+      return '';
+  }
+
+  function getAttributeFromSelectorList(selectors, attributeName) {
+      for (const element of getElementsFromSelectorList(selectors)) {
+          const value = element?.getAttribute?.(attributeName) || '';
+          if (value) return value.trim();
+      }
+      return '';
+  }
+
+  function normalizeScrapedHandle(value) {
+      return String(value || '')
+          .trim()
+          .replace(/^@/, '')
+          .replace(/^\/+|\/+$/g, '')
+          .replace(/\s+/g, ' ');
+  }
+
+  function extractFirstPatternMatch(text, patterns) {
+      for (const pattern of toSelectorList(patterns)) {
+          try {
+              const match = String(text || '').match(new RegExp(pattern, 'i'));
+              if (match?.[1]) return match[1].trim();
+          } catch (error) {
+              // Ignore malformed regex patterns from config.
+          }
+      }
+      return '';
+  }
+
+  function extractInstagramHandleFromHref(href) {
+      if (!href) return '';
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          const pathParts = parsed.pathname.split('/').filter(Boolean);
+          if (pathParts.length === 0) return '';
+
+          const reservedSegments = new Set([
+              'accounts',
+              'api',
+              'challenge',
+              'developer',
+              'direct',
+              'explore',
+              'legal',
+              'p',
+              'reel',
+              'reels',
+              'stories',
+              'tv'
+          ]);
+
+          if (pathParts[0] === 'stories' && pathParts[1]) {
+              return normalizeScrapedHandle(pathParts[1]);
+          }
+
+          if (reservedSegments.has(pathParts[0].toLowerCase())) return '';
+          return normalizeScrapedHandle(pathParts[0]);
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function getInstagramHandleFromProfileLinks(selectors) {
+      for (const element of getElementsFromSelectorList(selectors)) {
+          const href = element?.href || element?.getAttribute?.('href') || '';
+          const handle = extractInstagramHandleFromHref(href);
+          if (handle) return handle;
+      }
+      return '';
+  }
+
+  function getInstagramEmbeddedData(instagramConfig) {
+      const rawTexts = getElementsFromSelectorList(
+          instagramConfig.json_scripts || ['script[type="application/json"]']
+      )
+          .map((element) => element?.textContent || '')
+          .filter((text) => /username|video_view_count|play_count|xdt_shortcode_media/i.test(text));
+
+      const prioritizedTexts = rawTexts.filter((text) => /xdt_shortcode_media|video_view_count|play_count/i.test(text));
+      const candidateTexts = prioritizedTexts.length > 0 ? prioritizedTexts : rawTexts;
+
+      if (candidateTexts.length === 0) {
+          return { handle: '', views: '' };
+      }
+
+      const joinedText = candidateTexts.join('\n');
+      const handlePatterns = instagramConfig.json_patterns?.handle || [
+          '"owner"\\s*:\\s*\\{[^{}]*?"username"\\s*:\\s*"([^"]+)"',
+          '"user"\\s*:\\s*\\{[^{}]*?"username"\\s*:\\s*"([^"]+)"',
+          '"username"\\s*:\\s*"([^"]+)"'
+      ];
+      const viewPatterns = instagramConfig.json_patterns?.view_count || [
+          '"video_view_count"\\s*:\\s*(\\d+)',
+          '"play_count"\\s*:\\s*(\\d+)',
+          '"view_count"\\s*:\\s*(\\d+)'
+      ];
+
+      return {
+          handle: normalizeScrapedHandle(extractFirstPatternMatch(joinedText, handlePatterns)),
+          views: extractReadableViewCount(extractFirstPatternMatch(joinedText, viewPatterns))
+      };
+  }
+
+  function getInstagramViewCountFromSemanticDom() {
+      const iconRoots = Array.from(document.querySelectorAll('svg[aria-label="View count"]'));
+      const titleRoots = Array.from(document.querySelectorAll('svg title'))
+          .filter((element) => String(element.textContent || '').trim().toLowerCase() === 'view count');
+      const allRoots = [...iconRoots, ...titleRoots];
+
+      for (const root of allRoots) {
+          const containers = [
+              root.closest('button'),
+              root.closest('section'),
+              root.closest('article'),
+              root.parentElement,
+              root.parentElement?.parentElement
+          ].filter(Boolean);
+
+          for (const container of containers) {
+              const textCandidates = [
+                  container.innerText,
+                  container.textContent
+              ].filter(Boolean);
+
+              for (const text of textCandidates) {
+                  const count = extractReadableViewCount(text);
+                  if (count) return count;
+              }
+          }
+      }
+
+      return '';
+  }
+
+  function extractRumbleHandleFromHref(href) {
+      if (!href) return '';
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          const segments = parsed.pathname.split('/').filter(Boolean);
+          const firstSegment = segments[0] || '';
+
+          if (['c', 'user', 'channel'].includes(firstSegment.toLowerCase()) && segments[1]) {
+              return normalizeScrapedHandle(decodeURIComponent(segments[1]).replace(/\.html$/i, ''));
+          }
+
+          if (firstSegment.startsWith('@')) {
+              return normalizeScrapedHandle(decodeURIComponent(firstSegment.slice(1)));
+          }
+      } catch (error) {
+          return '';
+      }
+
+      return '';
+  }
+
+  function getRumbleLiveViewerCount(rumbleConfig) {
+      for (const element of getElementsFromSelectorList(rumbleConfig.live_viewer_count)) {
+          const candidateText = [
+              element.getAttribute?.('title') || '',
+              element.getAttribute?.('aria-label') || '',
+              element.innerText || '',
+              element.textContent || ''
+          ].join(' ');
+          const count = extractReadableViewCount(candidateText);
+          if (count && /watching\s+now/i.test(candidateText)) return count;
+          if (count && element.className && String(element.className).includes('live-video-view-count-status-count')) return count;
+      }
+
+      return '';
+  }
+
+  function isRumbleLivePage(rumbleConfig) {
+      const liveViewerElements = getElementsFromSelectorList(rumbleConfig.live_viewer_count);
+      const hasWatchingNowViewerCount = liveViewerElements.some((element) => {
+          const candidateText = [
+              element.getAttribute?.('title') || '',
+              element.getAttribute?.('aria-label') || '',
+              element.innerText || '',
+              element.textContent || ''
+          ].join(' ');
+          return /users?\s+watching\s+now/i.test(candidateText);
+      });
+
+      if (hasWatchingNowViewerCount) return true;
+
+      return toSelectorList(rumbleConfig.live_indicators).some((selector) => {
+          const matches = getElementsFromSelectorList([selector]);
+          return matches.some((element) => {
+              const candidateText = [
+                  element.getAttribute?.('title') || '',
+                  element.getAttribute?.('aria-label') || '',
+                  element.innerText || '',
+                  element.textContent || '',
+                  element.className || ''
+              ].join(' ');
+              return /users?\s+watching\s+now|status--live|\blive\b/i.test(candidateText);
+          });
+      });
+  }
+
+  function extractKickHandleFromHref(href) {
+      if (!href) return '';
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          const parts = parsed.pathname.split('/').filter(Boolean);
+          const first = parts[0] || '';
+          const reserved = new Set([
+              'categories',
+              'search',
+              'subscriptions',
+              'video',
+              'clips',
+              'following'
+          ]);
+          if (!first || reserved.has(first.toLowerCase())) return '';
+          return normalizeScrapedHandle(first);
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function getKickHandle(kickConfig) {
+      for (const element of getElementsFromSelectorList(kickConfig.handle_links)) {
+          const anchor = element.closest?.('a[href]') || element.querySelector?.('a[href]') || (element.matches?.('a[href]') ? element : null);
+          const href = anchor?.href || anchor?.getAttribute?.('href') || element.getAttribute?.('href') || '';
+          const handleFromHref = extractKickHandleFromHref(href);
+          if (handleFromHref) return handleFromHref;
+      }
+
+      for (const element of getElementsFromSelectorList(kickConfig.handle_name)) {
+          const alt = element?.getAttribute?.('alt') || element?.getAttribute?.('title') || '';
+          if (alt) return normalizeScrapedHandle(alt);
+      }
+
+      return '';
+  }
+
+  function getKickViewerCountFromAnimatedDigits(kickConfig) {
+      const root = getFirstElementFromSelectorList(kickConfig.live_viewer_count);
+      if (!root) return '';
+
+      const directTextCount = extractReadableViewCount(root.getAttribute?.('aria-label') || root.getAttribute?.('title') || '');
+      if (directTextCount) return directTextCount;
+
+      const configuredDigitColumns = getElementsFromSelectorList(kickConfig.live_viewer_digit_columns);
+      const digitColumns = (configuredDigitColumns.length > 0 ? configuredDigitColumns : Array.from(root.querySelectorAll('div')))
+          .filter((element) => {
+              const styleText = element.getAttribute('style') || '';
+              if (!/height:\s*20px/i.test(styleText) || !/width:\s*[\d.]+px/i.test(styleText)) {
+                  return false;
+              }
+              const directDigitChildren = Array.from(element.children || [])
+                  .filter((child) => /translateY/i.test(child.getAttribute?.('style') || '') && /^\d$/.test((child.textContent || '').trim()));
+              return directDigitChildren.length >= 10;
+          });
+
+      if (digitColumns.length > 0) {
+          return '5'.repeat(digitColumns.length);
+      }
+
+      const fallbackDigits = Array.from(root.querySelectorAll('[style*="translateY"]'))
+          .filter((element) => /^\d$/.test((element.textContent || '').trim()));
+      if (fallbackDigits.length > 0) {
+          const estimatedDigits = Math.max(1, Math.round(fallbackDigits.length / 30));
+          return '5'.repeat(estimatedDigits);
+      }
+
+      return '';
+  }
+
+  function getKickArchivedViewCount(kickConfig) {
+      for (const element of getElementsFromSelectorList(kickConfig.archived_views)) {
+          const candidate = element.getAttribute?.('title') || element.innerText || element.textContent || '';
+          const count = extractReadableViewCount(candidate);
+          if (!count) continue;
+
+          const nearbyText = [
+              element.parentElement?.innerText || '',
+              element.closest?.('div, span, section')?.innerText || ''
+          ].join(' ');
+          if ((kickConfig.archived_view_labels || ['views']).some((label) => nearbyText.toLowerCase().includes(String(label).toLowerCase()))) {
+              return count;
+          }
+      }
+      return '';
+  }
+
+  function isKickLivePage(kickConfig) {
+      const liveBadgeVisible = toSelectorList(kickConfig.live_badge).some((selector) => {
+          const matches = getElementsFromSelectorList([selector]);
+          return matches.some((element) => {
+              const badgeText = String(element?.innerText || element?.textContent || '').trim().toLowerCase();
+              return badgeText === 'live';
+          });
+      });
+
+      if (liveBadgeVisible) return true;
+
+      const viewerRoot = getFirstElementFromSelectorList(kickConfig.live_viewer_count);
+      if (viewerRoot) {
+          const nearbyText = String(viewerRoot.parentElement?.innerText || viewerRoot.closest?.('div, section')?.innerText || '').toLowerCase();
+          if (nearbyText.includes('watching')) return true;
+      }
+
+      return false;
+  }
+
+  function normalizeFacebookProfileUrl(href) {
+      if (!href) return '';
+
+      try {
+          const parsed = new URL(href, window.location.href);
+          if (!parsed.hostname.toLowerCase().includes('facebook.com')) return '';
+
+          const firstSegment = parsed.pathname.split('/').filter(Boolean)[0]?.toLowerCase() || '';
+          const blockedSegments = new Set([
+              'watch',
+              'reel',
+              'reels',
+              'videos',
+              'groups',
+              'events',
+              'marketplace',
+              'photo',
+              'photos',
+              'permalink.php',
+              'story.php',
+              'share',
+              'shares',
+              'help',
+              'login',
+              'plugins'
+          ]);
+          if (blockedSegments.has(firstSegment)) return '';
+
+          parsed.hash = '';
+          if (firstSegment === 'profile.php') {
+              const id = parsed.searchParams.get('id');
+              parsed.search = id ? `?id=${encodeURIComponent(id)}` : '';
+          } else {
+              parsed.search = '';
+          }
+
+          return parsed.toString();
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function getFacebookHandleFromProfileUrl(profileUrl) {
+      try {
+          const parsed = new URL(profileUrl);
+          if (parsed.pathname.toLowerCase() === '/profile.php') {
+              return parsed.searchParams.get('id') || '';
+          }
+          return parsed.pathname.split('/').filter(Boolean)[0] || '';
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function isUsableFacebookProfileName(text) {
+      const normalized = normalizeComparableText(text);
+      if (!normalized) return false;
+      if (/\bviews?\b|\bviewers?\b|\bwatching\b/.test(normalized)) return false;
+      if (['like', 'follow', 'message', 'share', 'comment', 'facebook'].includes(normalized)) return false;
+      return true;
+  }
+
+  function getFacebookProfileIdentity(facebookConfig) {
+      for (const element of getElementsFromSelectorList(facebookConfig.profile_links || facebookConfig.handle)) {
+          const anchor = element.matches?.('a[href]')
+              ? element
+              : element.closest?.('a[href]') || element.querySelector?.('a[href]');
+          const profileUrl = normalizeFacebookProfileUrl(anchor?.href || element.getAttribute?.('href') || '');
+          if (!profileUrl) continue;
+
+          const rawName = getElementReadableText(anchor) || getElementReadableText(element);
+          const handle = isUsableFacebookProfileName(rawName)
+              ? normalizeScrapedHandle(rawName)
+              : normalizeScrapedHandle(getFacebookHandleFromProfileUrl(profileUrl));
+
+          return {
+              handle: handle || 'FacebookUser',
+              profileUrl
+          };
+      }
+
+      const fallbackName = getTextsFromSelectorList(facebookConfig.profile_name || facebookConfig.handle)
+          .find(isUsableFacebookProfileName);
+      return {
+          handle: normalizeScrapedHandle(fallbackName) || 'FacebookUser',
+          profileUrl: ''
+      };
+  }
+
+  function getFacebookViewCount(facebookConfig) {
+      for (const text of getTextsFromSelectorList(facebookConfig.views)) {
+          if (!/\bviews?\b|\bviewers?\b/i.test(text)) continue;
+          const views = extractReadableViewCount(text);
+          if (views) return views;
+      }
+
+      const bodyText = document.body?.innerText || '';
+      const match = bodyText.match(/([\d.,]+(?:\s*[KMB])?)\s*(?:views?|viewers?)\b/i);
+      return match ? match[1].replace(/\s+/g, '') : '';
+  }
+
+  function getRumbleStructuredData() {
+      const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+
+      for (const script of scripts) {
+          try {
+              const parsed = JSON.parse(script.textContent || 'null');
+              const queue = Array.isArray(parsed) ? [...parsed] : [parsed];
+
+              while (queue.length > 0) {
+                  const node = queue.shift();
+                  if (!node || typeof node !== 'object') continue;
+
+                  if (Array.isArray(node)) {
+                      queue.push(...node);
+                      continue;
+                  }
+
+                  if (Array.isArray(node['@graph'])) {
+                      queue.push(...node['@graph']);
+                  }
+
+                  const type = Array.isArray(node['@type'])
+                      ? node['@type'].join(' ')
+                      : String(node['@type'] || '');
+
+                  if (!/VideoObject|BroadcastEvent|LiveBlogPosting/i.test(type) && !node.embedUrl && !node.thumbnailUrl) {
+                      continue;
+                  }
+
+                  const author = node.author || node.creator || node.publisher || {};
+                  const interactionStatistic = Array.isArray(node.interactionStatistic)
+                      ? node.interactionStatistic[0]
+                      : node.interactionStatistic || {};
+
+                  return {
+                      authorName: author.name || author.alternateName || '',
+                      authorUrl: author.url || '',
+                      viewCount: interactionStatistic.userInteractionCount || node.viewCount || ''
+                  };
+              }
+          } catch (error) {
+              // Ignore malformed structured data blocks.
+          }
+      }
+
+      return { authorName: '', authorUrl: '', viewCount: '' };
+  }
+
+  function extractReadableViewCount(value) {
+      const text = String(value || '').trim();
+      if (!text) return '';
+
+      const descriptiveMatch = text.match(/([\d.,]+(?:\s*[KMB])?)(?=\s*(?:views?|viewers?|watching|users?\s+watching\s+now)\b)/i);
+      if (descriptiveMatch) {
+          return descriptiveMatch[1].replace(/\s+/g, '');
+      }
+
+      const compactOnlyMatch = text.match(/^([\d.,]+(?:\s*[KMB])?)$/i);
+      if (compactOnlyMatch) {
+          return compactOnlyMatch[1].replace(/\s+/g, '');
+      }
+
+      if (/^\d+$/.test(text)) return text;
+      return '';
+  }
+
+  function extractTwitchHandleFromHref(href) {
+      if (!href) return '';
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          if (!parsed.hostname.toLowerCase().includes('twitch.tv')) return '';
+          const parts = parsed.pathname.split('/').filter(Boolean);
+          const first = parts[0] || '';
+          const reserved = new Set([
+              'directory',
+              'downloads',
+              'jobs',
+              'login',
+              'p',
+              'settings',
+              'videos',
+              'collections',
+              'clip',
+              'clips'
+          ]);
+          if (!first || reserved.has(first.toLowerCase())) return '';
+          return normalizeScrapedHandle(first);
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function getTwitchHandle(twitchConfig, pathParts) {
+      for (const element of getElementsFromSelectorList(twitchConfig.handle_links)) {
+          const anchor = element.matches?.('a[href]')
+              ? element
+              : element.closest?.('a[href]') || element.querySelector?.('a[href]');
+          const handleFromLink = extractTwitchHandleFromHref(anchor?.href || element.getAttribute?.('href') || '');
+          if (handleFromLink) return handleFromLink;
+      }
+
+      const firstSegment = pathParts?.[0] || '';
+      if (firstSegment && !['videos', 'collections', 'clip', 'directory'].includes(firstSegment.toLowerCase())) {
+          return normalizeScrapedHandle(firstSegment);
+      }
+
+      return 'TwitchUser';
+  }
+
+  function getTwitchLiveViewerCount(twitchConfig) {
+      for (const element of getElementsFromSelectorList(twitchConfig.viewer_count)) {
+          const candidateText = [
+              element.getAttribute?.('title') || '',
+              element.getAttribute?.('aria-label') || '',
+              element.innerText || '',
+              element.textContent || ''
+          ].join(' ');
+          const count = extractReadableViewCount(candidateText);
+          if (count) return count;
+      }
+      return '';
+  }
+
+  function getTwitchVodViewCount(twitchConfig) {
+      for (const element of getElementsFromSelectorList(twitchConfig.vod_views)) {
+          const candidateText = [
+              element.getAttribute?.('title') || '',
+              element.getAttribute?.('aria-label') || '',
+              element.innerText || '',
+              element.textContent || ''
+          ].join(' ');
+          if (!/\bviews?\b/i.test(candidateText) || /\bviewers?\b/i.test(candidateText)) continue;
+          const count = extractReadableViewCount(candidateText);
+          if (count) return count;
+      }
+      return '';
+  }
+
+  function getTwitchClipViewCount(twitchConfig) {
+      for (const element of getElementsFromSelectorList(twitchConfig.clip_views || twitchConfig.vod_views)) {
+          const candidateText = [
+              element.getAttribute?.('title') || '',
+              element.getAttribute?.('aria-label') || '',
+              element.innerText || '',
+              element.textContent || ''
+          ].join(' ');
+          if (!/\bviews?\b/i.test(candidateText) || /\bviewers?\b/i.test(candidateText)) continue;
+          const count = extractReadableViewCount(candidateText);
+          if (count) return count;
+      }
+      return '';
+  }
+
+  function hasTwitchLiveSignal(twitchConfig) {
+      return !!getMatchingTextFromSelectorList(twitchConfig.live_indicators, ['live']) ||
+          getElementsFromSelectorList(twitchConfig.live_indicators).some((element) => {
+              const candidateText = [
+                  element.getAttribute?.('title') || '',
+                  element.getAttribute?.('aria-label') || '',
+                  element.innerText || '',
+                  element.textContent || '',
+                  element.className || ''
+              ].join(' ');
+              return /\blive\b|channel-status-text-indicator/i.test(candidateText);
+          });
+  }
+
+  function hasTwitchClipSignal(twitchConfig) {
+      return getElementsFromSelectorList(twitchConfig.clip_indicators).some((element) => {
+          const candidateText = [
+              element.getAttribute?.('href') || '',
+              element.getAttribute?.('title') || '',
+              element.getAttribute?.('aria-label') || '',
+              element.innerText || '',
+              element.textContent || '',
+              element.className || ''
+          ].join(' ');
+          return /clips\.twitch\.tv|\/clip\/|\bclip\b/i.test(candidateText);
+      });
+  }
+
+  function hasTwitchVodSignal(twitchConfig) {
+      return getElementsFromSelectorList(twitchConfig.vod_indicators).some((element) => {
+          const candidateText = [
+              element.getAttribute?.('href') || '',
+              element.getAttribute?.('title') || '',
+              element.getAttribute?.('aria-label') || '',
+              element.innerText || '',
+              element.textContent || '',
+              element.className || ''
+          ].join(' ');
+          return /video-info-game-boxart-link|metadata-layout__split-top|timestamp-metadata|views?\b|\bago\b/i.test(candidateText);
+      });
+  }
+
+  function extractTwitterHandleFromHref(href) {
+      if (!href) return '';
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          const pathParts = parsed.pathname.split('/').filter(Boolean);
+          if (!pathParts.length) return '';
+
+          const reservedSegments = new Set([
+              'account',
+              'compose',
+              'explore',
+              'hashtag',
+              'help',
+              'home',
+              'i',
+              'intent',
+              'login',
+              'logout',
+              'messages',
+              'notifications',
+              'privacy',
+              'search',
+              'settings',
+              'share',
+              'tos'
+          ]);
+          const candidate = pathParts[0];
+          if (reservedSegments.has(candidate.toLowerCase())) return '';
+          return normalizeScrapedHandle(candidate);
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function getTwitterHandle(twitterConfig, currentUrl) {
+      const linkSelectors = twitterConfig.handle_links || twitterConfig.handle;
+      for (const element of getElementsFromSelectorList(linkSelectors)) {
+          const href = element?.href || element?.getAttribute?.('href') || element?.closest?.('a[href]')?.getAttribute?.('href') || '';
+          const handle = extractTwitterHandleFromHref(href);
+          if (handle) return handle;
+      }
+
+      for (const text of getTextsFromSelectorList(twitterConfig.handle)) {
+          const trimmed = String(text || '').trim();
+          if (trimmed.startsWith('@')) return normalizeScrapedHandle(trimmed);
+          if (/^[A-Za-z0-9_]{1,20}$/.test(trimmed)) return normalizeScrapedHandle(trimmed);
+      }
+
+      return extractTwitterHandleFromHref(currentUrl);
+  }
+
+  function hasTwitterViewsContext(element) {
+      let current = element;
+      for (let depth = 0; current && depth < 8; depth += 1) {
+          const href = current.getAttribute?.('href') || '';
+          const ariaLabel = current.getAttribute?.('aria-label') || '';
+          const text = getElementReadableText(current);
+          if (href.includes('/analytics')) return true;
+          if (/view post analytics|views?/i.test(ariaLabel)) return true;
+          if (text.length < 120 && /\bviews?\b/i.test(text) && /\d/.test(text)) return true;
+          current = current.parentElement;
+      }
+      return false;
+  }
+
+  function getTwitterViews(twitterConfig) {
+      for (const container of getElementsFromSelectorList(twitterConfig.views_analytics)) {
+          const containerText = getElementReadableText(container);
+          const countFromContainer = extractReadableViewCount(containerText);
+          if (countFromContainer) return countFromContainer;
+
+          const childTexts = Array.from(container.querySelectorAll?.('span, div') || [])
+              .map((element) => getElementReadableText(element))
+              .filter(Boolean);
+          for (const text of childTexts) {
+              const count = extractReadableViewCount(text);
+              if (count) return count;
+          }
+      }
+
+      for (const element of getElementsFromSelectorList(twitterConfig.views)) {
+          const text = getElementReadableText(element);
+          const count = extractReadableViewCount(text);
+          if (!count) continue;
+          if (hasTwitterViewsContext(element)) return count;
+      }
+
+      return '';
+  }
+
+  function matchFirstRegexPattern(text, patterns) {
+      for (const pattern of toSelectorList(patterns)) {
+          try {
+              const match = String(text || '').match(new RegExp(pattern));
+              if (match) return match;
+          } catch (error) {
+              // Ignore malformed regex patterns and continue.
+          }
+      }
+      return null;
+  }
+
+>>>>>>> Stashed changes
   // ==========================================
   // 1. THE STRATEGY SCRAPER
   // ==========================================
-  function scrapePageStrategy() {
-    const host = window.location.hostname;
-    const url = window.location.href;
-    const timestamp = new Date().toISOString();
-    let views = "N/A"; 
+  function detectLegacyScraperPlatformKey(host, url) {
+    const normalizedHost = String(host || '').toLowerCase();
+    const normalizedUrl = String(url || '').toLowerCase();
 
-    console.log("PIRATE AI: Attempting scrape on", host, url);
+    if (normalizedHost.includes('tiktok.com') || normalizedHost.includes('tiktokforbusiness.com')) return 'tiktok';
+    if (normalizedHost.includes('youtube.com') || normalizedHost.includes('youtu.be')) return 'youtube';
+    if (normalizedHost.includes('instagram.com')) return 'instagram';
+    if (normalizedHost.includes('twitter.com') || normalizedHost.includes('x.com')) return 'twitter';
+    if (normalizedHost.includes('kick.com')) return 'kick';
+    if (normalizedHost.includes('twitch.tv')) return 'twitch';
+    if (normalizedHost.includes('facebook.com')) return 'facebook';
+    if (normalizedHost.includes('rumble.com')) return 'rumble';
+    if (normalizedHost.includes('discord.com')) return 'discord';
+    if (normalizedUrl.includes('youtu.be')) return 'youtube';
 
-    // --- TIKTOK (LAZY LOAD UPDATE) ---
-    if (host.includes('tiktok.com')) {
+    return '';
+  }
+
+  function runLegacyScraperForPlatform(platformKey, host = window.location.hostname, url = window.location.href, timestamp = new Date().toISOString()) {
+    let views = "N/A";
+
+    console.log("PIRATE AI: Attempting scrape on", host, url, `(${platformKey || 'unknown'})`);
+
+    if (platformKey === 'tiktok') {
       let handle = "Unknown";
       let matched = false;
 
@@ -140,9 +1137,7 @@
       } else {
           // Fallback to custom regex
           try {
-              const pattern = SCRAPER_CONFIG.tiktok.url_match;
-              const customRegex = new RegExp(pattern);
-              const customMatch = url.match(customRegex);
+              const customMatch = matchFirstRegexPattern(url, SCRAPER_CONFIG.tiktok.url_match);
               if (customMatch) {
                   handle = customMatch[1] || customMatch[3] || "Unknown";
                   matched = true;
@@ -200,34 +1195,42 @@
     }
 
     // --- YOUTUBE ---
-    else if (host.includes('youtube.com')) {
+    else if (platformKey === 'youtube') {
       const params = new URLSearchParams(window.location.search);
-      const videoId = params.get('v');
+      let videoId = params.get('v');
+      if (!videoId && host.includes('youtu.be')) {
+          try {
+              videoId = new URL(url).pathname.split('/').filter(Boolean)[0] || '';
+          } catch (error) {
+              videoId = '';
+          }
+      }
       
       if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) {
           return null;
       }
 
-      const channelLink = document.querySelector(SCRAPER_CONFIG.youtube.channel_link);
+      const channelHref = getHrefFromSelectorList(SCRAPER_CONFIG.youtube.channel_link);
+      const channelText = getTextFromSelectorList(SCRAPER_CONFIG.youtube.channel_link);
       let channel = "Unknown";
       
-      if (channelLink) {
-          const href = channelLink.getAttribute('href') || "";
+      if (channelHref || channelText) {
+          const href = channelHref || "";
           if (href.includes('/@')) {
-              channel = href.split('/@')[1]; 
+	              channel = href.split('/@')[1];
           } else {
-              channel = channelLink.innerText; 
+	              channel = channelText;
           }
       }
 
-      const viewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_std); 
-      const shortViewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_shorts); 
+      const standardViewText = getTextFromSelectorList(SCRAPER_CONFIG.youtube.views_std);
+      const shortViewText = getTextFromSelectorList(SCRAPER_CONFIG.youtube.views_shorts);
       const shortDescButton = document.querySelector('button[aria-label*="views"]');
       
-      if (viewSelector && viewSelector.innerText) {
-          views = viewSelector.innerText.replace(' views', '');
-      } else if (shortViewSelector && shortViewSelector.innerText) {
-          views = shortViewSelector.innerText;
+      if (standardViewText) {
+          views = standardViewText.replace(' views', '');
+      } else if (shortViewText) {
+          views = shortViewText;
       } else if (shortDescButton) {
           const match = (shortDescButton.getAttribute('aria-label') || '').match(/([0-9.,KMBkmb]+)\s*views/i);
           if (match) views = match[1];
@@ -252,9 +1255,41 @@
     }
 
     // --- INSTAGRAM ---
+<<<<<<< Updated upstream
     else if (host.includes('instagram.com')) {
       if (!url.includes('/p/') && !url.includes('/reel/')) return null;
       const headerHandle = document.querySelector(SCRAPER_CONFIG.instagram.handle)?.innerText;
+=======
+    else if (platformKey === 'instagram') {
+      const isPostLikeUrl = url.includes('/p/') || url.includes('/reel/') || url.includes('/tv/');
+      const isStoryUrl = url.includes('/stories/');
+      if (!isPostLikeUrl && !isStoryUrl) return null;
+
+      const instagramConfig = SCRAPER_CONFIG.instagram || {};
+      const embeddedData = getInstagramEmbeddedData(instagramConfig);
+      const headerHandle = normalizeScrapedHandle(getTextFromSelectorList(instagramConfig.handle));
+      const profileHrefHandle = getInstagramHandleFromProfileLinks(instagramConfig.profile_links);
+      const metaDescription = getAttributeFromSelectorList(instagramConfig.meta_description, 'content');
+      const metaViews = extractReadableViewCount(metaDescription);
+      const semanticViews = getInstagramViewCountFromSemanticDom();
+
+      let handle = embeddedData.handle || profileHrefHandle || headerHandle || "InstagramUser";
+
+      if ((!headerHandle || headerHandle === "InstagramUser") && isStoryUrl) {
+          try {
+              const pathParts = new URL(url).pathname.split('/').filter(Boolean);
+              if (pathParts[0] === 'stories' && pathParts[1]) {
+                  handle = pathParts[1];
+              }
+          } catch (error) {
+              // Ignore parse failure and fall back to the DOM handle.
+          }
+      }
+
+      if (!isStoryUrl) {
+          views = embeddedData.views || metaViews || semanticViews || "N/A";
+      }
+>>>>>>> Stashed changes
       
       return { 
         platform: "Instagram", 
@@ -266,53 +1301,181 @@
     }
 
     // --- TWITTER / X ---
-    else if (host.includes('twitter.com') || host.includes('x.com')) {
+    else if (platformKey === 'twitter') {
       if (!url.includes('/status/')) return null;
-      const pathParts = new URL(url).pathname.split('/');
-      let handle = pathParts[1] || "TwitterUser";
+      const twitterConfig = SCRAPER_CONFIG.twitter || {};
+      const takedownPatterns = twitterConfig.takedown_patterns || [
+        'this media has been disabled',
+        'disabled in response to a report by the copyright owner',
+        'this post has been deleted',
+        'tweet has been deleted',
+        "this page doesn't exist",
+        'account suspended'
+      ];
+      const matchedTakedownText = getMatchingTextFromSelectorList(twitterConfig.takedown_messages, takedownPatterns);
+      const pageTakedownText = [
+        document.title || '',
+        document.body?.innerText || ''
+      ].join(' ');
 
-      const domHandle = document.querySelector(SCRAPER_CONFIG.twitter.handle)?.innerText;
-      if (domHandle && domHandle.startsWith('@')) handle = domHandle.substring(1);
+      if (matchedTakedownText || textIncludesAnyPattern(pageTakedownText, takedownPatterns)) {
+          console.warn('PIRATE AI: X/Twitter media appears unavailable.', matchedTakedownText || 'page text matched a takedown pattern');
+          return null;
+      }
 
-      const viewEl = document.querySelector(SCRAPER_CONFIG.twitter.views);
-      const views = viewEl ? viewEl.innerText.trim() : "N/A";
+      const hasTweet = !!document.querySelector('article[data-testid="tweet"], [data-testid="tweet"]');
+      const hasActiveMedia = !!getFirstElementFromSelectorList(twitterConfig.active_media);
+      if (!hasTweet && !hasActiveMedia) return null;
+
+      const handle = getTwitterHandle(twitterConfig, url) || "TwitterUser";
+      const views = getTwitterViews(twitterConfig) || "N/A";
       
       return { 
         platform: "Twitter", 
         url, 
         handle, 
         views, 
+        contentType: hasActiveMedia ? 'media' : 'post',
         timestamp 
       };
     }
 
     // --- TWITCH ---
-    else if (host.includes('twitch.tv')) {
-      const pathParts = new URL(url).pathname.split('/');
-      const handle = pathParts[1] || "TwitchUser";
+    else if (platformKey === 'kick') {
+      const kickConfig = SCRAPER_CONFIG.kick || {};
+      const isLive = isKickLivePage(kickConfig);
+      const handle = getKickHandle(kickConfig) || extractKickHandleFromHref(window.location.pathname) || 'KickCreator';
+      const views = isLive
+          ? (getKickViewerCountFromAnimatedDigits(kickConfig) || "N/A")
+          : (getKickArchivedViewCount(kickConfig) || "N/A");
 
-      return { 
-        platform: "Twitch", 
-        url, 
-        handle, 
-        views: "N/A", 
-        timestamp 
+      const title = document.title || '';
+      const hasVideo = !!document.querySelector('video#video-player, video');
+      if (!hasVideo && !isLive && !/kick/i.test(title)) return null;
+
+      return {
+        platform: "Kick",
+        url,
+        handle,
+        views,
+        isLive,
+        contentType: isLive ? 'live' : 'vod',
+        timestamp
+      };
+    }
+
+    else if (platformKey === 'twitch') {
+      const parsedUrl = new URL(url);
+      const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+      const lowerPathParts = pathParts.map((part) => part.toLowerCase());
+      const firstSegment = (pathParts[0] || '').toLowerCase();
+      const looksLikeClipUrl = parsedUrl.hostname.toLowerCase().includes('clips.twitch.tv') ||
+        firstSegment === 'clip' ||
+        lowerPathParts.includes('clip');
+      const looksLikeVodUrl = !looksLikeClipUrl && (
+        firstSegment === 'videos' ||
+        firstSegment === 'collections'
+      );
+      const twitchConfig = SCRAPER_CONFIG.twitch || {};
+      const hasClipMetadata = hasTwitchClipSignal(twitchConfig);
+      const hasVodMetadata = hasTwitchVodSignal(twitchConfig);
+      const isClip = looksLikeClipUrl || hasClipMetadata;
+      const isVod = !isClip && (looksLikeVodUrl || hasVodMetadata);
+      const isLive = !isClip && !isVod && hasTwitchLiveSignal(twitchConfig);
+      const liveViewerCount = getTwitchLiveViewerCount(twitchConfig);
+      const vodViewCount = getTwitchVodViewCount(twitchConfig);
+      const clipViewCount = getTwitchClipViewCount(twitchConfig);
+      const handle = getTwitchHandle(twitchConfig, pathParts);
+
+      return {
+        platform: "Twitch",
+        url,
+        handle,
+        views: (isClip ? clipViewCount : (isVod ? vodViewCount : liveViewerCount)) ||
+          liveViewerCount ||
+          vodViewCount ||
+          clipViewCount ||
+          "N/A",
+        isLive,
+        contentType: isClip ? 'clip' : (isVod ? 'vod' : 'live'),
+        timestamp
       };
     }
 
     // --- FACEBOOK ---
-    else if (host.includes('facebook.com')) {
-      return { 
-        platform: "Facebook", 
-        url, 
-        handle: "FacebookUser", 
-        views: "N/A", 
-        timestamp 
+    else if (platformKey === 'facebook') {
+      const facebookConfig = SCRAPER_CONFIG.facebook || {};
+      if (!facebookConfig.profile_links && !facebookConfig.profile_name && !facebookConfig.views) {
+        console.warn('PIRATE AI: Facebook scraper selectors were not loaded from events_config.json.');
+        return null;
+      }
+      const profileIdentity = getFacebookProfileIdentity(facebookConfig);
+      const views = getFacebookViewCount(facebookConfig) || "N/A";
+
+	      return {
+	        platform: "Facebook",
+	        url,
+        handle: profileIdentity.handle || "FacebookUser",
+        profileUrl: profileIdentity.profileUrl || "",
+	        views,
+	        timestamp
       };
     }
 
+<<<<<<< Updated upstream
+=======
+    // --- RUMBLE ---
+    else if (platformKey === 'rumble') {
+      const pathname = window.location.pathname || '';
+      const looksLikeVideoPage = /^\/v[a-z0-9]/i.test(pathname) || pathname.includes('/embed/');
+      const hasPlayableMedia = !!document.querySelector('video');
+
+      if (!looksLikeVideoPage && !hasPlayableMedia) return null;
+
+      const structuredData = getRumbleStructuredData();
+      const rumbleConfig = SCRAPER_CONFIG.rumble || {};
+
+      let handle = normalizeScrapedHandle(getTextFromSelectorList(rumbleConfig.handle));
+      if (!handle) {
+          handle = extractRumbleHandleFromHref(getHrefFromSelectorList(rumbleConfig.candidate_channel_links));
+      }
+      if (!handle) {
+          handle = extractRumbleHandleFromHref(structuredData.authorUrl);
+      }
+      if (!handle) {
+          handle = normalizeScrapedHandle(structuredData.authorName);
+      }
+      if (!handle) {
+          const metaAuthor = document.querySelector('meta[name="author"], meta[property="author"]');
+          handle = normalizeScrapedHandle(metaAuthor?.content || '');
+      }
+
+      const liveViewerCount = getRumbleLiveViewerCount(rumbleConfig);
+      const rawViews = getTextFromSelectorList(rumbleConfig.views);
+      views = liveViewerCount || extractReadableViewCount(rawViews) || extractReadableViewCount(structuredData.viewCount) || "N/A";
+
+      const liveContextText = [
+        document.title,
+        document.querySelector('meta[property="og:title"]')?.content || '',
+        document.querySelector('meta[name="description"]')?.content || ''
+      ].join(' ');
+      const isLive = isRumbleLivePage(rumbleConfig) ||
+        /\busers?\s+watching\s+now\b/i.test(liveContextText);
+
+      return {
+        platform: "Rumble",
+        url,
+        handle: handle || "RumbleCreator",
+        views,
+        timestamp,
+        isLive,
+        contentType: isLive ? 'live' : 'vod'
+      };
+    }
+
+>>>>>>> Stashed changes
     // --- DISCORD ---
-    else if (host.includes('discord.com')) {
+    else if (platformKey === 'discord') {
       return { 
         platform: "Discord", 
         url, 
@@ -323,6 +1486,27 @@
     }
 
     return null;
+  }
+
+  globalThis.__floLegacyScrapers = {
+    run(platformKey) {
+      return runLegacyScraperForPlatform(platformKey);
+    }
+  };
+
+  function scrapePageStrategy() {
+    const host = window.location.hostname;
+    const url = window.location.href;
+    const registryScraper = globalThis.__floPlatformRegistry?.findScraperByUrl?.(url);
+
+    if (registryScraper?.run) {
+      const result = registryScraper.run();
+      if (result) return result;
+    }
+
+    const fallbackPlatformKey = registryScraper?.key || detectLegacyScraperPlatformKey(host, url);
+    if (!fallbackPlatformKey) return null;
+    return runLegacyScraperForPlatform(fallbackPlatformKey, host, url);
   }
 
     // ==========================================
@@ -752,15 +1936,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   });
 
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action !== 'minimizePirateOverlay') return false;
+
+    const minimized = minimizePirateOverlay();
+    sendResponse({ success: true, minimized });
+    return true;
+  });
+
   // ==========================================
   // 3. OVERLAY UI LOGIC (Updated for Capture First)
   // ==========================================
 
-  function handleAddToQueue(btnAdd) {
+  async function handleAddToQueue(btnAdd) {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
       
       let data = null;
       try {
+          if (!configLoaded) {
+              await Promise.race([configLoadPromise, delay(1200)]);
+          }
           data = scrapePageStrategy();
       } catch(err) {
           console.error("Scraping error:", err);
@@ -897,7 +2092,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const currentUrl = window.location.href.toLowerCase();
     const isReportingPage = currentUrl.includes('/legal/report') || 
                             currentUrl.includes('copyright_complaint_form') || 
-                            currentUrl.includes('ipr.tiktokforbusiness');
+                            currentUrl.includes('ipr.tiktokforbusiness') ||
+                            currentUrl.includes('facebook.com/help/contact/copyrightform') ||
+                            currentUrl.includes('twitch.tv/copyright-claims');
 
     const overlay = document.createElement('div');
     overlay.id = 'flo-overlay';
@@ -1035,15 +2232,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 overlay.style.left = 'auto';
             }
         }
-    };
+	    };
 
-    minBtn.addEventListener('click', () => {
-        isMinimized = !isMinimized;
-        sessionStorage.setItem('floPirateAiMinimized', isMinimized);
-        toggleMinimize();
-    });
+	    minBtn.addEventListener('click', () => {
+	        const currentlyMinimized = sessionStorage.getItem('floPirateAiMinimized') === 'true' || mainContent.style.display === 'none';
+	        isMinimized = !currentlyMinimized;
+	        sessionStorage.setItem('floPirateAiMinimized', isMinimized);
+	        toggleMinimize();
+	    });
 
-    if (isMinimized) toggleMinimize(); // Enforce immediately if on reporting page
+	    if (isMinimized) {
+	        sessionStorage.setItem('floPirateAiMinimized', 'true');
+	        toggleMinimize();
+	    } // Enforce immediately if on reporting page
 
     let isDragging = false;
       let startX, startY, initialLeft, initialTop;
@@ -1117,6 +2318,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     overlay.style.right = overlay.style.right || '20px';
     overlay.style.left = overlay.style.left || 'auto';
     sessionStorage.setItem('floPirateAiMinimized', 'false');
+  }
+
+  function minimizePirateOverlay() {
+    sessionStorage.setItem('floPirateAiMinimized', 'true');
+
+    const overlay = document.getElementById('flo-overlay');
+    if (!overlay) return false;
+
+    const mainContent = document.getElementById('flo-main-content');
+    const minBtn = document.getElementById('flo-min-btn');
+    const dragHandle = document.getElementById('flo-drag-handle');
+
+    if (mainContent) mainContent.style.display = 'none';
+    if (minBtn) minBtn.innerHTML = '+';
+    if (dragHandle) dragHandle.innerText = '✥';
+
+    overlay.style.display = 'block';
+    overlay.style.width = 'auto';
+    overlay.style.padding = '8px';
+    overlay.style.left = 'auto';
+    overlay.style.right = '0px';
+    overlay.style.borderTopRightRadius = '0';
+    overlay.style.borderBottomRightRadius = '0';
+
+    return true;
   }
 
   async function showPirateOverlay(options = {}) {

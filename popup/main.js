@@ -188,13 +188,21 @@ function bindProgressListener(dom) {
         state.successAudio.play().catch((error) => console.log('Audio blocked:', error));
       }
 
+      const remainingCount = Number(request.remainingCount || 0);
       if (dom.progressBar) dom.progressBar.style.width = '100%';
       if (dom.statusEl) {
-        dom.statusEl.innerText = 'Success! All reports filed.';
+        dom.statusEl.innerText = remainingCount > 0
+          ? `Batch complete. ${remainingCount} still queued.`
+          : 'Success! All reports filed.';
         dom.statusEl.style.color = 'green';
       }
-      if (dom.videoCountEl) dom.videoCountEl.innerText = '0';
-      setTimeout(() => window.close(), 2000);
+      if (dom.videoCountEl) dom.videoCountEl.innerText = String(remainingCount);
+      if (remainingCount > 0) {
+        if (dom.reportBtn) dom.reportBtn.disabled = false;
+        if (dom.cancelBtn) dom.cancelBtn.disabled = false;
+      } else {
+        setTimeout(() => window.close(), 2000);
+      }
       return;
     }
 

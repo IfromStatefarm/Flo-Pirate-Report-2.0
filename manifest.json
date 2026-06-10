@@ -63,6 +63,8 @@
         "*://www.youtube.com/*",
         "*://www.instagram.com/*",
         "*://www.facebook.com/*",
+        "*://kick.com/*",
+        "*://*.kick.com/*",
         "*://twitter.com/*",
         "*://x.com/*",
         "*://www.twitch.tv/*",
@@ -73,7 +75,20 @@
         "*://vimeo.com/*",
         "*://*.vimeo.com/*"
       ],
-      "js": ["content_scraper.js", "clippy.js"],
+      "js": [
+        "platforms/shared/platform_registry.js",
+        "platforms/scrapers/youtube.js",
+        "platforms/scrapers/tiktok.js",
+        "platforms/scrapers/twitter.js",
+        "platforms/scrapers/instagram.js",
+        "platforms/scrapers/facebook.js",
+        "platforms/scrapers/kick.js",
+        "platforms/scrapers/twitch.js",
+        "platforms/scrapers/rumble.js",
+        "platforms/scrapers/discord.js",
+        "content_scraper.js",
+        "clippy.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     },
@@ -83,11 +98,31 @@
         "*://ipr.tiktokforbusiness.com/*",
         "*://www.tiktok.com/legal/report/*",
         "*://www.youtube.com/copyright_complaint_form*",
+<<<<<<< Updated upstream
+=======
+        "*://kick.com/*",
+        "*://*.kick.com/*",
+        "*://rumble.com/*",
+        "*://*.rumble.com/*",
+        "*://www.twitch.tv/copyright-claims*",
+        "*://*.twitch.tv/copyright-claims*",
+>>>>>>> Stashed changes
         "*://help.instagram.com/*",
         "*://help.x.com/*",
         "*://www.facebook.com/help/contact/*"
       ],
-      "js": ["content_autofill.js"],
+      "js": [
+        "platforms/shared/platform_registry.js",
+        "platforms/autofill/youtube.js",
+        "platforms/autofill/tiktok.js",
+        "platforms/autofill/twitter.js",
+        "platforms/autofill/instagram.js",
+        "platforms/autofill/facebook.js",
+        "platforms/autofill/kick.js",
+        "platforms/autofill/twitch.js",
+        "platforms/autofill/rumble.js",
+        "content_autofill.js"
+      ],
       "run_at": "document_idle", 
       "all_frames": true
     }
@@ -119,6 +154,8 @@
         "*://*.youtube.com/*", 
         "*://*.instagram.com/*", 
         "*://*.facebook.com/*", 
+        "*://kick.com/*",
+        "*://*.kick.com/*",
         "*://twitter.com/*", 
         "*://x.com/*", 
         "*://*.twitch.tv/*", 

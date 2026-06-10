@@ -38,7 +38,8 @@ const sheetScanner = createSheetScanner({
   updateRowStatus,
   updateCellWithRichText,
   addEnforcerBonusPoints,
-  getUserEmail
+  getUserEmail,
+  fetchConfig
 });
 
 const searchWorkflow = createSearchWorkflow({
@@ -80,6 +81,14 @@ const reportingWorkflow = createReportingWorkflow({
   base64ToBlob
 });
 
+<<<<<<< Updated upstream
+=======
+const rumbleWorkflow = createRumbleWorkflow({
+  handleBatchReport: reportingWorkflow.handleBatchReport,
+  handleRumbleBatchReport: reportingWorkflow.handleRumbleBatchReport
+});
+
+>>>>>>> Stashed changes
 function maybeBroadcastManagedSourceUrl(url) {
   const normalizedUrl = String(url || '').toLowerCase();
   if (
@@ -267,6 +276,23 @@ function createActionHandlers() {
     async processQueue(request) {
       const response = await reportingWorkflow.handleBatchReport(request.data);
       if (response.success) {
+        chrome.runtime.sendMessage({
+          action: 'progressComplete',
+          reportedCount: response.reportedCount || 0,
+          remainingCount: response.remainingCount || 0
+        }).catch(() => {});
+      } else {
+        chrome.runtime.sendMessage({ action: 'progressError', error: response.error }).catch(() => {});
+      }
+      return response;
+    },
+
+    async processKickLog(request, sender) {
+      const response = await reportingWorkflow.handleKickBatchReport(request.data, {
+        composerTabId: sender?.tab?.id,
+        windowId: sender?.tab?.windowId
+      });
+      if (response.success) {
         chrome.runtime.sendMessage({ action: 'progressComplete' }).catch(() => {});
       } else {
         chrome.runtime.sendMessage({ action: 'progressError', error: response.error }).catch(() => {});
@@ -274,6 +300,91 @@ function createActionHandlers() {
       return response;
     },
 
+<<<<<<< Updated upstream
+=======
+    async processFacebookLog(request, sender) {
+      try {
+        const response = await reportingWorkflow.handleFacebookBatchReport(request.data, {
+          composerTabId: sender?.tab?.id,
+          windowId: sender?.tab?.windowId
+        });
+        if (response.success) {
+          chrome.runtime.sendMessage({
+            action: 'progressComplete',
+            workflow: 'facebook',
+            reportedCount: response.reportedCount || 0,
+            remainingCount: response.remainingCount || 0
+          }).catch(() => {});
+        } else {
+          chrome.runtime.sendMessage({
+            action: 'progressError',
+            workflow: 'facebook',
+            error: response.error
+          }).catch(() => {});
+        }
+        return response;
+      } catch (error) {
+        chrome.runtime.sendMessage({
+          action: 'progressError',
+          workflow: 'facebook',
+          error: error.message || 'Facebook logging failed.'
+        }).catch(() => {});
+        return { success: false, error: error.message };
+      }
+    },
+
+    async processTwitchLog(request, sender) {
+      try {
+        const response = await reportingWorkflow.handleTwitchBatchReport(request.data, {
+          composerTabId: sender?.tab?.id,
+          windowId: sender?.tab?.windowId
+        });
+        if (response.success) {
+          chrome.runtime.sendMessage({
+            action: 'progressComplete',
+            workflow: 'twitch',
+            reportedCount: response.reportedCount || 0,
+            remainingCount: response.remainingCount || 0
+          }).catch(() => {});
+        } else {
+          chrome.runtime.sendMessage({
+            action: 'progressError',
+            workflow: 'twitch',
+            error: response.error
+          }).catch(() => {});
+        }
+        return response;
+      } catch (error) {
+        chrome.runtime.sendMessage({
+          action: 'progressError',
+          workflow: 'twitch',
+          error: error.message || 'Twitch logging failed.'
+        }).catch(() => {});
+        return { success: false, error: error.message };
+      }
+    },
+
+    async startRumbleQueue(request) {
+      return rumbleWorkflow.start(request.data);
+    },
+
+    async advanceRumbleQueue(request, sender) {
+      const response = await rumbleWorkflow.advance(request.currentUrl, sender?.tab?.id);
+      if (response.done) {
+        if (response.success) {
+          chrome.runtime.sendMessage({ action: 'progressComplete' }).catch(() => {});
+        } else {
+          chrome.runtime.sendMessage({ action: 'progressError', error: response.error || 'Rumble logging failed.' }).catch(() => {});
+        }
+      }
+      return response;
+    },
+
+    async cancelRumbleQueue() {
+      return rumbleWorkflow.cancel();
+    },
+
+>>>>>>> Stashed changes
     async getConfig() {
       return { success: true, config: await fetchConfig() };
     },

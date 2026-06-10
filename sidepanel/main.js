@@ -3,6 +3,10 @@ import { ALLOWED_EMAIL_DOMAIN, SIDEPANEL_CLIPPY_PHRASES } from '../utils/extensi
 import { renderGamificationStats } from '../utils/gamification_ui.js';
 import { detectPlatformDetails } from '../utils/platforms.js';
 import {
+  CONTENT_AUTOFILL_INJECTION_FILES,
+  CONTENT_SCRAPER_INJECTION_FILES
+} from '../utils/content_script_assets.js';
+import {
   renderAccessRestrictedNotice,
   requestVerifiedRuntimeIdentity
 } from '../utils/runtime_identity.js';
@@ -13,7 +17,8 @@ let consecutiveFailures = 0;
 let crawlQueue = [];
 let configData = null;
 const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
-const ENFORCER_ALLOWED_EMAILS = ['social@flosports.tv', 'copyright@flosports.tv', 'copyrights@flosports.tv'];
+const EXPLICIT_PLATFORM_WHITELIST_EMAILS = ['ivan.mcclay@flosports.tv'];
+const ENFORCER_ALLOWED_EMAILS = ['social@flosports.tv', 'copyright@flosports.tv', 'copyrights@flosports.tv', ...EXPLICIT_PLATFORM_WHITELIST_EMAILS];
 const ENFORCER_PLATFORM_DEFAULTS = Object.freeze({
   youtube: {
     authorizedHandles: [
@@ -63,7 +68,7 @@ const ENFORCER_PLATFORM_DEFAULTS = Object.freeze({
   }
 });
 
-const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSports platform account session.";
+const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, ivan.mcclay@flosports.tv, or an approved FloSports platform account session.";
 const ENFORCER_SESSION_SELECTOR_DEFAULTS = Object.freeze({
   youtube: {
     channelHandle: [
@@ -159,6 +164,12 @@ function getEnforcerAccessConfig() {
   };
 }
 
+function canUseScoutMode(currentUserEmail) {
+  const normalizedEmail = String(currentUserEmail || '').toLowerCase().trim();
+  if (!normalizedEmail) return false;
+  return normalizedEmail.endsWith('@flosports.tv') || EXPLICIT_PLATFORM_WHITELIST_EMAILS.includes(normalizedEmail);
+}
+
 function refreshGamificationStats() {
   chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
     renderGamificationStats(stats);
@@ -198,6 +209,26 @@ function isEnforcerPlatformTabUrl(url) {
     normalizedUrl.includes('tiktok.com');
 }
 
+<<<<<<< Updated upstream
+=======
+function isEnforcerAllowlistExemptPlatform(platformKey) {
+  const normalizedPlatform = String(platformKey || '').toLowerCase();
+  return normalizedPlatform === 'tiktok' || normalizedPlatform === 'instagram' || normalizedPlatform === 'facebook';
+}
+
+function getManualReportingMessage(platformDetails) {
+  if (platformDetails?.key === 'kick') {
+    return 'Kick uses an email-based DMCA process. Start the Kick queue from the side panel to open the copied notice composer with `dmca@kick.com` and the prebuilt FloSports takedown email.';
+  }
+
+  if (platformDetails?.key === 'rumble') {
+    return 'Rumble uses the on-page report menu instead of a separate complaint form. Start the Rumble queue from the side panel so Pirate AI can open each URL and submit the copyright report from that video page.';
+  }
+
+  return 'Auto-reporting is currently optimized for TikTok, X (Twitter), and YouTube. Please manually report other platforms.';
+}
+
+>>>>>>> Stashed changes
 async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAccessConfig()) {
   try {
     const [injected] = await chrome.scripting.executeScript({
@@ -218,7 +249,7 @@ async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAc
           if (value == null) return;
           if (Array.isArray(value)) {
             value.forEach(pushCandidate);
-            return;
+		      return;
           }
 
           if (typeof value === 'object') {
@@ -278,7 +309,7 @@ async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAc
           const hasApprovedHandleBeforeMenu = candidateStrings
             .map(normalize)
             .filter(Boolean)
-            .some((candidate) => approvedHandles.some((handle) => candidate.includes(handle)));
+            .some((candidate) => approvedYouTubeHandles.some((handle) => candidate.includes(handle)));
 
           if (!hasApprovedHandleBeforeMenu) {
             const trigger = findFirstElement(platformConfig.youtube?.accountMenuTrigger);
@@ -412,6 +443,194 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
+  let rumbleProgressActive = false;
+  let rumbleDefaultStartText = 'Start Report';
+  let bulkReportActive = false;
+  const bulkReportDefaultText = reportFromSheetBtn?.innerText || 'Report Queued';
+
+  function getRumbleWorkflowModal() {
+    let modal = document.getElementById('rumble-workflow-modal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'rumble-workflow-modal';
+    modal.style.cssText = `
+      position: fixed; inset: 0; z-index: 2147483647; display: none;
+      align-items: center; justify-content: center; padding: 18px;
+      background: rgba(17, 24, 39, 0.48); font-family: sans-serif;
+    `;
+    modal.innerHTML = `
+      <div style="width: min(440px, 100%); max-height: 92vh; overflow:auto; background:#fff; border-radius:8px; border:2px solid #2f855a; box-shadow:0 18px 45px rgba(0,0,0,0.28); padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; border-bottom:1px solid #e5e7eb; padding-bottom:10px; margin-bottom:12px;">
+          <h3 id="rumble-workflow-title" style="margin:0; color:#166534; font-size:16px;">Rumble Reporter</h3>
+          <button id="rumble-workflow-close" type="button" style="border:none; background:transparent; color:#6b7280; font-size:22px; line-height:1; cursor:pointer;">×</button>
+        </div>
+        <div id="rumble-workflow-copy" style="font-size:13px; line-height:1.45; color:#374151;"></div>
+        <ol id="rumble-workflow-steps" style="margin:12px 0 12px 18px; padding:0; font-size:12px; line-height:1.55; color:#1f2937;">
+          <li>Open each queued Rumble URL in a background tab.</li>
+          <li>Submit the Rumble copyright report on each page.</li>
+          <li>Revisit each URL to scrape views, handle, live/VOD status, and evidence screenshots.</li>
+          <li>Log the final batch to the report sheet.</li>
+        </ol>
+        <div id="rumble-workflow-url-shell" style="display:none; margin:12px 0; padding:10px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
+          <div id="rumble-workflow-url-heading" style="font-size:12px; font-weight:700; color:#111827; margin-bottom:6px;"></div>
+          <div id="rumble-workflow-url-list" style="max-height:96px; overflow:auto; font-size:11px; line-height:1.45; color:#4b5563; word-break:break-word;"></div>
+        </div>
+        <div id="rumble-workflow-progress-shell" style="display:none; margin-top:12px;">
+          <div style="height:10px; background:#e5e7eb; border-radius:999px; overflow:hidden;">
+            <div id="rumble-workflow-progress-bar" style="height:100%; width:0%; background:linear-gradient(90deg, #166534, #53fc18); transition:width .25s ease;"></div>
+          </div>
+          <div id="rumble-workflow-progress-status" style="margin-top:10px; color:#111827; font-size:13px; font-weight:700;">Preparing...</div>
+          <div id="rumble-workflow-progress-meta" style="margin-top:3px; color:#6b7280; font-size:11px;">0% complete</div>
+        </div>
+        <div id="rumble-workflow-actions" style="display:flex; gap:8px; margin-top:14px;">
+          <button id="rumble-workflow-cancel" type="button" style="flex:1; border:1px solid #d1d5db; background:#fff; color:#374151; border-radius:6px; padding:10px; font-weight:700; cursor:pointer;">Cancel</button>
+          <button id="rumble-workflow-confirm" type="button" style="flex:1; border:none; background:#166534; color:#fff; border-radius:6px; padding:10px; font-weight:800; cursor:pointer;">Confirm</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function setRumbleWorkflowUrls(cart) {
+    const modal = getRumbleWorkflowModal();
+    const shell = modal.querySelector('#rumble-workflow-url-shell');
+    const heading = modal.querySelector('#rumble-workflow-url-heading');
+    const list = modal.querySelector('#rumble-workflow-url-list');
+    const urls = cart.map((item) => item.url).filter(Boolean);
+
+    shell.style.display = urls.length > 0 ? 'block' : 'none';
+    heading.textContent = `${urls.length} queued URL${urls.length === 1 ? '' : 's'}`;
+    list.replaceChildren();
+    urls.slice(0, 6).forEach((url) => {
+      const row = document.createElement('div');
+      row.textContent = url;
+      list.appendChild(row);
+    });
+    if (urls.length > 6) {
+      const more = document.createElement('div');
+      more.textContent = `...and ${urls.length - 6} more`;
+      more.style.marginTop = '4px';
+      more.style.fontWeight = '700';
+      list.appendChild(more);
+    }
+  }
+
+  function showRumbleConfirmDialog(cart) {
+    return new Promise((resolve) => {
+      const modal = getRumbleWorkflowModal();
+      const count = cart.length;
+      modal.querySelector('#rumble-workflow-title').textContent = 'Confirm Rumble Report';
+      modal.querySelector('#rumble-workflow-copy').textContent =
+        `You are about to report ${count} Rumble URL${count === 1 ? '' : 's'}. Pirate AI will run the queue in background tabs so you can stay on this page.`;
+      modal.querySelector('#rumble-workflow-progress-shell').style.display = 'none';
+      modal.querySelector('#rumble-workflow-actions').style.display = 'flex';
+      modal.querySelector('#rumble-workflow-confirm').textContent = `Report ${count} URL${count === 1 ? '' : 's'}`;
+      modal.querySelector('#rumble-workflow-cancel').textContent = 'Cancel';
+      setRumbleWorkflowUrls(cart);
+
+      const closeBtn = modal.querySelector('#rumble-workflow-close');
+      const cancelBtn = modal.querySelector('#rumble-workflow-cancel');
+      const confirmBtn = modal.querySelector('#rumble-workflow-confirm');
+      const finish = (confirmed) => {
+        modal.style.display = 'none';
+        closeBtn.onclick = null;
+        cancelBtn.onclick = null;
+        confirmBtn.onclick = null;
+        resolve(confirmed);
+      };
+
+      closeBtn.style.display = 'block';
+      closeBtn.onclick = () => finish(false);
+      cancelBtn.onclick = () => finish(false);
+      confirmBtn.onclick = () => finish(true);
+      modal.style.display = 'flex';
+    });
+  }
+
+  function showRumbleProgressWindow(total) {
+    const modal = getRumbleWorkflowModal();
+    rumbleProgressActive = true;
+    modal.querySelector('#rumble-workflow-title').textContent = 'Rumble Reporting Progress';
+    modal.querySelector('#rumble-workflow-copy').textContent =
+      `Reporting ${total} Rumble URL${total === 1 ? '' : 's'} in background tabs. Keep this panel open to watch progress.`;
+    modal.querySelector('#rumble-workflow-url-shell').style.display = 'none';
+    modal.querySelector('#rumble-workflow-progress-shell').style.display = 'block';
+    modal.querySelector('#rumble-workflow-actions').style.display = 'none';
+    modal.querySelector('#rumble-workflow-close').style.display = 'none';
+    updateRumbleProgressWindow('Starting Rumble queue...', 3);
+    modal.style.display = 'flex';
+  }
+
+  function updateRumbleProgressWindow(status, percent, metaText) {
+    const modal = getRumbleWorkflowModal();
+    const safePercent = Number.isFinite(Number(percent)) ? Math.max(0, Math.min(100, Math.round(Number(percent)))) : null;
+    const bar = modal.querySelector('#rumble-workflow-progress-bar');
+    const statusEl = modal.querySelector('#rumble-workflow-progress-status');
+    const metaEl = modal.querySelector('#rumble-workflow-progress-meta');
+
+    if (statusEl && status) statusEl.textContent = status;
+    if (bar && safePercent !== null) bar.style.width = `${safePercent}%`;
+    if (metaEl) metaEl.textContent = metaText || (safePercent !== null ? `${safePercent}% complete` : '');
+  }
+
+  function finishRumbleProgressWindow(status, isError = false) {
+    const modal = getRumbleWorkflowModal();
+    rumbleProgressActive = false;
+    updateRumbleProgressWindow(status, isError ? 100 : 100, isError ? 'Needs attention' : '100% complete');
+    const actions = modal.querySelector('#rumble-workflow-actions');
+    const closeBtn = modal.querySelector('#rumble-workflow-close');
+    const cancelBtn = modal.querySelector('#rumble-workflow-cancel');
+    const confirmBtn = modal.querySelector('#rumble-workflow-confirm');
+    const statusEl = modal.querySelector('#rumble-workflow-progress-status');
+
+    if (statusEl) statusEl.style.color = isError ? '#ce0e2d' : '#166534';
+    actions.style.display = 'flex';
+    cancelBtn.style.display = 'none';
+    confirmBtn.textContent = 'Close';
+    confirmBtn.style.background = isError ? '#ce0e2d' : '#166534';
+    closeBtn.style.display = 'block';
+
+    const close = () => {
+      modal.style.display = 'none';
+      cancelBtn.style.display = '';
+      closeBtn.onclick = null;
+      confirmBtn.onclick = null;
+      if (statusEl) statusEl.style.color = '#111827';
+    };
+    closeBtn.onclick = close;
+    confirmBtn.onclick = close;
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.innerText = rumbleDefaultStartText;
+    }
+  }
+
+  async function minimizeActivePirateOverlay() {
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!activeTab?.id) return;
+
+      await chrome.tabs.sendMessage(activeTab.id, { action: 'minimizePirateOverlay' }).catch(() => {});
+    } catch (error) {
+      // Some active tabs do not run the page overlay content script. That is fine.
+    }
+  }
+
+  async function minimizePirateOverlayInTab(tabId, attempts = 8) {
+    if (!tabId) return;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const response = await chrome.tabs.sendMessage(tabId, { action: 'minimizePirateOverlay' });
+        if (response?.success || response?.minimized) return;
+      } catch (error) {
+        // The content script may still be starting on the newly opened tab.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
   
   // Rogue Site Elements
   const nukeStreamBtn = document.getElementById('nukeStreamBtn');
@@ -578,11 +797,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         crawlStatusEl.innerText = msg.message;
         return;
     }
+
+    if (bulkReportActive && msg.action === 'progressUpdate' && crawlStatusEl) {
+        crawlStatusEl.innerText = msg.status || "Bulk report in progress...";
+        return;
+    }
+
+    if (bulkReportActive && msg.action === 'progressError' && crawlStatusEl) {
+        crawlStatusEl.innerText = `Bulk report failed: ${msg.error || "Unknown error"}`;
+        return;
+    }
     
     // Closer Status Update
-    if (msg.action === 'closerProgress') {
-        if (closerStatusEl) {
-            closerStatusEl.style.display = 'block';
+	    if (msg.action === 'closerProgress') {
+	      if (closerStatusEl) {
+	          closerStatusEl.style.display = 'block';
             closerStatusEl.innerHTML = `<strong>${msg.status}</strong><br>${msg.details || ''}`;
             
             // If stopped, finished, or failed, toggle the switch off automatically
@@ -596,10 +825,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                  }
             }
         }
-        return; 
-    }
+	      return;
+	    }
 
-    if (!isCrawling) return;
+	    if (rumbleProgressActive && msg.action === 'progressUpdate') {
+	      updateRumbleProgressWindow(msg.status || 'Rumble reporting in progress...', msg.percent);
+	      return;
+	    }
+
+	    if (rumbleProgressActive && msg.action === 'progressComplete') {
+	      finishRumbleProgressWindow('Rumble reports submitted and logged.', false);
+	      return;
+	    }
+
+	    if (rumbleProgressActive && msg.action === 'progressError') {
+	      finishRumbleProgressWindow(msg.error || 'Rumble reporting failed.', true);
+	      return;
+	    }
+
+	    if (!isCrawling) return;
 
     if (msg.action === 'urlFound') {
         consecutiveFailures = 0; // Reset failure count on success
@@ -805,9 +1049,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (reporterInput) {
       reporterInput.addEventListener('change', () => {
-            chrome.storage.local.set({ last_reporter: reporterInput.value });
-        });
-    }
+            chrome.storage.local.set({ last_reporter: reporterInput.value.trim() });
+      });
+  }
 
     if (sourceDisplay && grabBtn) {
         sourceDisplay.addEventListener('input', () => {
@@ -867,7 +1111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
-                files: ['content_scraper.js']
+                files: CONTENT_SCRAPER_INJECTION_FILES
             });
 
             await chrome.tabs.sendMessage(tab.id, message);
@@ -947,11 +1191,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   if (nukeBtn) nukeBtn.addEventListener('click', () => handleNukeClick(nukeBtn));
 
-    if (startBtn) {
-      startBtn.addEventListener('click', async () => {
-          const reporterName = reporterInput.value;
-          const vertical = verticalSelect.value;
-          const eventName = eventInput.value;
+	    if (startBtn) {
+	      startBtn.addEventListener('click', async () => {
+	          await minimizeActivePirateOverlay();
+
+	          const reporterName = reporterInput.value.trim();
+	          const vertical = verticalSelect.value;
+	          const eventName = eventInput.value;
           const sourceUrl = document.getElementById('sourceUrlDisplay').value;
           
           // PATCH: Fetch mode early and define default text for resets
@@ -961,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 // --- NEW: SCOUT / ENFORCER ACCESS FILTER ---
                 const currentUserEmail = await getUserEmail();
-                if (isScout && (!currentUserEmail || !currentUserEmail.endsWith('@flosports.tv'))) {
+                if (isScout && !canUseScoutMode(currentUserEmail)) {
                     alert("Access Denied: Scout mode requires a @flosports.tv email address.");
                     return;
                 }
@@ -976,6 +1222,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (!reporterName || !vertical || !eventName) {
               alert("Please fill in Reporter, Vertical, and Event Name.");
+              return;
+          }
+
+          const normalizedReporterName = reporterName.toLowerCase().replace(/['\u2019]/g, '').trim();
+          if (['user name', 'users name', 'your name', 'reporter name', 'unknown user'].includes(normalizedReporterName)) {
+              alert("Please enter your actual reporter name before starting the report.");
               return;
           }
 
@@ -999,8 +1251,20 @@ document.addEventListener('DOMContentLoaded', async () => {
           const platform = platformDetails.label;
           const reportUrl = platformDetails.reportUrl;
 
+<<<<<<< Updated upstream
           if (!reportUrl) {
               alert("Auto-reporting is currently optimized for TikTok, X (Twitter), and YouTube. Please manually report other platforms.");
+=======
+          if (!isScout && !isEnforcerAllowlistExemptPlatform(platformDetails.key) && !(await canUseEnforcerMode())) {
+              alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
+              startBtn.disabled = false;
+              startBtn.innerText = defaultBtnText;
+              return;
+          }
+
+          if (!reportUrl && !['rumble', 'kick'].includes(platformDetails.key)) {
+              alert(getManualReportingMessage(platformDetails));
+>>>>>>> Stashed changes
               startBtn.disabled = false;
               startBtn.innerText = defaultBtnText; // PATCHED
               return;
@@ -1027,26 +1291,122 @@ document.addEventListener('DOMContentLoaded', async () => {
               chrome.runtime.sendMessage({ action: 'processQueue', data: payload });
               setTimeout(() => { startBtn.innerText = defaultBtnText; startBtn.disabled = false; }, 3000); // PATCHED
               return;
-          }
+	          }
 
-          startBtn.innerText = `Opening ${platform}...`;
-          
-          chrome.tabs.create({ url: reportUrl }, (tab) => {
-              // For TikTok, manually inject content_autofill.js because the manifest 
-              // might not match the specific legal report page URL automatically.
-              if (platform === "TikTok") {
-                  const listener = (tabId, changeInfo, tabInfo) => {
-                      if (tabId === tab.id && changeInfo.status === 'complete') {
-                          chrome.tabs.onUpdated.removeListener(listener);
-                          chrome.scripting.executeScript({
-                              target: { tabId: tabId },
-                              files: ['content_autofill.js']
-                          }).then(() => console.log("Autofill script injected for TikTok"))
-                            .catch(err => console.warn("Injection failed:", err));
+<<<<<<< Updated upstream
+=======
+	          if (platformDetails.key === 'rumble') {
+	              rumbleDefaultStartText = defaultBtnText;
+	              const confirmed = await showRumbleConfirmDialog(cart);
+	              if (!confirmed) {
+	                  startBtn.innerText = defaultBtnText;
+	                  startBtn.disabled = false;
+	                  return;
+	              }
+
+	              showRumbleProgressWindow(cart.length);
+		              startBtn.innerText = `Reporting ${cart.length} Rumble URL${cart.length === 1 ? '' : 's'}...`;
+		              const payload = { reporterName, vertical, eventName, mode: 'enforcer', uploadScreenshots: true };
+		              chrome.runtime.sendMessage({ action: 'startRumbleQueue', data: payload }, (response) => {
+		                  if (chrome.runtime.lastError) {
+		                      finishRumbleProgressWindow(chrome.runtime.lastError.message || "Failed to start the Rumble report queue.", true);
+		                      startBtn.innerText = defaultBtnText;
+		                      startBtn.disabled = false;
+		                      return;
+		                  }
+
+		                  if (response && response.success) {
+		                      updateRumbleProgressWindow('Rumble queue started in background tabs.', 4);
+		                      return;
+		                  }
+
+	                  finishRumbleProgressWindow(response?.error || "Failed to start the Rumble report queue.", true);
+	                  startBtn.innerText = defaultBtnText;
+	                  startBtn.disabled = false;
+	              });
+	              return;
+	          }
+
+          if (platformDetails.key === 'kick') {
+              startBtn.innerText = `Opening ${platform}...`;
+              const kickComposerData = {
+                  fullName: reporterName,
+                  email: reporterInfo.email,
+                  urls: cart.map((item) => item.url),
+                  platform: 'Kick',
+                  eventName,
+                  vertical,
+                  sourceUrl: sourceUrl || ''
+              };
+
+              const openKickComposerOnTab = async (tabId) => {
+                  await chrome.scripting.executeScript({
+                      target: { tabId },
+                      files: CONTENT_AUTOFILL_INJECTION_FILES
+                  });
+
+                  await chrome.tabs.sendMessage(tabId, {
+                      action: 'showKickDmcaComposer',
+                      data: kickComposerData
+                  });
+              };
+
+              try {
+                  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                  if (activeTab?.id && /kick\.com/i.test(activeTab.url || '')) {
+                      await openKickComposerOnTab(activeTab.id);
+                      startBtn.innerText = defaultBtnText;
+                      startBtn.disabled = false;
+                      return;
+                  }
+              } catch (error) {
+                  console.warn('Could not reuse active Kick tab, opening a new one instead.', error);
+              }
+
+              chrome.tabs.create({ url: firstUrl }, (tab) => {
+                  const listener = async (tabId, changeInfo) => {
+                      if (tabId !== tab.id || changeInfo.status !== 'complete') return;
+                      chrome.tabs.onUpdated.removeListener(listener);
+                      try {
+                          await openKickComposerOnTab(tabId);
+                      } catch (error) {
+                          console.warn('Kick composer injection failed:', error);
+                      } finally {
+                          startBtn.innerText = defaultBtnText;
+                          startBtn.disabled = false;
                       }
                   };
                   chrome.tabs.onUpdated.addListener(listener);
-              }
+              });
+              return;
+          }
+
+>>>>>>> Stashed changes
+          startBtn.innerText = `Opening ${platform}...`;
+          await minimizeActivePirateOverlay();
+          
+          chrome.tabs.create({ url: reportUrl }, (tab) => {
+              const listener = async (tabId, changeInfo) => {
+                  if (tabId !== tab.id || changeInfo.status !== 'complete') return;
+                  chrome.tabs.onUpdated.removeListener(listener);
+
+                  try {
+                      // For TikTok, manually inject content_autofill.js because the manifest
+                      // might not match the specific legal report page URL automatically.
+                      if (platform === "TikTok") {
+                          await chrome.scripting.executeScript({
+                              target: { tabId },
+                              files: CONTENT_AUTOFILL_INJECTION_FILES
+                          });
+                          console.log("Autofill script injected for TikTok");
+                      }
+
+                      await minimizePirateOverlayInTab(tabId);
+                  } catch (err) {
+                      console.warn("Report tab setup failed:", err);
+                  }
+              };
+              chrome.tabs.onUpdated.addListener(listener);
 
               // The content script on that page will pick up 'reporterInfo' and 'piracy_cart'.
               startBtn.disabled = false;
@@ -1206,17 +1566,27 @@ document.addEventListener('DOMContentLoaded', async () => {
           doubleTapBtn.disabled = true;
           if (stopScanBtn) stopScanBtn.style.display = 'block';
 
-          // Delegate formatting fetch and parsing to background script
-          const response = await chrome.runtime.sendMessage({ action: 'scanSheetForActiveLinks', platform, vertical, startRow });
-          
-          doubleTapBtn.disabled = false;
-          if (stopScanBtn) stopScanBtn.style.display = 'none';
+          let response = null;
+          try {
+              // Delegate formatting fetch and parsing to background script
+              response = await chrome.runtime.sendMessage({ action: 'scanSheetForActiveLinks', platform, vertical, startRow });
+          } catch (error) {
+              response = { success: false, error: error.message };
+          } finally {
+              doubleTapBtn.disabled = false;
+              if (stopScanBtn) stopScanBtn.style.display = 'none';
+          }
 
           if (response && response.success) {
+              const queueCount = Number(response.queueCount ?? response.count ?? 0);
               crawlStatusEl.innerText = `Queued ${response.count} active links.`;
-              if (response.count > 0 && reportFromSheetBtn) {
+              if (queueCount > 0 && reportFromSheetBtn) {
+                  reportFromSheetBtn.disabled = false;
+                  reportFromSheetBtn.innerText = `Report Queued (${queueCount})`;
                   reportFromSheetBtn.style.display = 'block';
               } else if (reportFromSheetBtn) {
+                  reportFromSheetBtn.disabled = false;
+                  reportFromSheetBtn.innerText = bulkReportDefaultText;
                   reportFromSheetBtn.style.display = 'none';
               }
           } else {
@@ -1241,21 +1611,50 @@ document.addEventListener('DOMContentLoaded', async () => {
                   }
                   // ----------------------------------------
 
-                  reportFromSheetBtn.disabled = true;
+          reportFromSheetBtn.disabled = true;
           reportFromSheetBtn.innerText = "Processing Bulk Report...";
+          bulkReportActive = true;
 
-          // Trigger the existing bulk reporting logic in background.js
-          chrome.runtime.sendMessage({ 
-              action: 'processQueue', 
-              data: { 
-                  reporterName, 
-                  vertical, 
-                  eventName: "Bulk Sheet Report", 
-                  uploadScreenshots: false // Skip screenshots to save memory on bulk runs
-              } 
-          });
-          
           crawlStatusEl.innerText = "Bulk report started. Monitor via Popup.";
+
+          try {
+              // Trigger the existing bulk reporting logic in background.js
+              const response = await chrome.runtime.sendMessage({
+                  action: 'processQueue',
+                  data: {
+                      reporterName,
+                      vertical,
+                      eventName: "Bulk Sheet Report",
+                      uploadScreenshots: false // Skip screenshots to save memory on bulk runs
+                  }
+              });
+
+              if (!response?.success) {
+                  throw new Error(response?.error || "Bulk report failed.");
+              }
+
+              const storage = await chrome.storage.local.get('piracy_cart');
+              const remainingCount = Number(response.remainingCount ?? storage.piracy_cart?.length ?? 0);
+
+              if (remainingCount > 0) {
+                  crawlStatusEl.innerText = `Bulk batch complete. ${remainingCount} link${remainingCount === 1 ? '' : 's'} still queued.`;
+                  reportFromSheetBtn.innerText = `Report Remaining (${remainingCount})`;
+                  reportFromSheetBtn.disabled = false;
+                  reportFromSheetBtn.style.display = 'block';
+              } else {
+                  crawlStatusEl.innerText = "Bulk report complete.";
+                  reportFromSheetBtn.innerText = bulkReportDefaultText;
+                  reportFromSheetBtn.disabled = false;
+                  reportFromSheetBtn.style.display = 'none';
+              }
+          } catch (error) {
+              crawlStatusEl.innerText = `Bulk report failed: ${error.message}`;
+              reportFromSheetBtn.innerText = bulkReportDefaultText;
+              reportFromSheetBtn.disabled = false;
+              reportFromSheetBtn.style.display = 'block';
+          } finally {
+              bulkReportActive = false;
+          }
       });
   }
 

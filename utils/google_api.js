@@ -460,26 +460,34 @@ export async function uploadToDrive(token, folderId, name, blob, mimeType) {
 // ==========================================
 
 export async function fetchConfig() {
-  const { driveRootId } = await getOptions();
-  if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
-
-  const token = await getAuthToken();
   const bundledDefaults = await loadBundledConfigDefaults();
-  
-  const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
-  const data = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
-     headers: { Authorization: `Bearer ${token}` }
-  });
-  
-  if (!data.files || data.files.length === 0) {
-    throw new Error("Config file not found. Folder appears empty or inaccessible.");
+  const { driveRootId } = await getOptions();
+  if (!driveRootId) {
+    console.warn("Drive Root ID is missing in Options. Using bundled events_config.json.");
+    return bundledDefaults;
   }
 
-  const fileId = data.files[0].id;
-  const remoteConfig = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return mergeConfigDefaults(bundledDefaults, remoteConfig);
+  try {
+    const token = await getAuthToken();
+    const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
+    const data = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
+       headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!data.files || data.files.length === 0) {
+      console.warn("Drive events_config.json not found. Using bundled events_config.json.");
+      return bundledDefaults;
+    }
+
+    const fileId = data.files[0].id;
+    const remoteConfig = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return mergeConfigDefaults(bundledDefaults, remoteConfig);
+  } catch (error) {
+    console.warn("Drive events_config.json unavailable. Using bundled events_config.json.", error);
+    return bundledDefaults;
+  }
 }
 /**
  * Patches the config file using etags to prevent race conditions.
@@ -563,6 +571,70 @@ export async function patchConfigSelector(platform, section, field, newSelector,
         return currentConfig;
     } catch (error) {
         console.error("Patch error:", error);
+        throw error;
+    }
+}
+
+/**
+ * Updates top-level sections of the shared events_config.json file.
+ * This is used by the Options page for managed content like community highlights
+ * and Double XP event lists without touching unrelated selector settings.
+ */
+export async function updateConfigSections(sectionUpdates, retryCount = 0) {
+    const { driveRootId } = await getOptions();
+    if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
+
+    let cachedToken = await getAuthToken();
+    await new Promise(resolve => chrome.identity.removeCachedAuthToken({ token: cachedToken }, resolve));
+    const token = await getAuthToken();
+
+    const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
+    const searchData = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!searchData.files || searchData.files.length === 0) {
+        throw new Error("Config file not found in Drive.");
+    }
+    const fileId = searchData.files[0].id;
+
+    const getRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!getRes.ok) throw new Error(`Failed to fetch config: ${getRes.statusText}`);
+
+    const currentConfig = await getRes.json();
+    const currentEtag = getRes.headers.get('ETag');
+
+    Object.entries(sectionUpdates || {}).forEach(([key, value]) => {
+        currentConfig[key] = value;
+    });
+
+    try {
+        const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
+        const res = await fetch(url, {
+            method: 'PATCH',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'If-Match': currentEtag
+            },
+            body: JSON.stringify(currentConfig, null, 2)
+        });
+
+        if (res.status === 412) {
+            if (retryCount < 5) {
+                const delay = Math.pow(2, retryCount) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return await updateConfigSections(sectionUpdates, retryCount + 1);
+            }
+            throw new Error("Conflict: Config was updated by another user. Please try again.");
+        }
+
+        if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+        return currentConfig;
+    } catch (error) {
+        console.error("Config section update error:", error);
         throw error;
     }
 }
@@ -688,7 +760,11 @@ export async function setColumnKRichText(rowIndex, channelUrl, handle, pdfUrl, r
 
   // 2. Format the display strings
   const line1 = reportId ? `Report #: ${reportId}` : 'Report #: Pending';
-  const line2 = `Channel: @${handle}`;
+  const handleText = String(handle || 'Unknown');
+  const handleDisplay = handleText.startsWith('@') || /[^A-Za-z0-9_.-]/.test(handleText)
+    ? handleText
+    : `@${handleText}`;
+  const line2 = `Channel: ${handleDisplay}`;
   const line3 = `PDF Report`;
   const fullText = `${line1}\n${line2}\n${line3}`;
   

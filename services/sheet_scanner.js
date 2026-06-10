@@ -9,11 +9,13 @@ export function createSheetScanner({
   updateRowStatus,
   updateCellWithRichText,
   addEnforcerBonusPoints,
-  getUserEmail
+  getUserEmail,
+  fetchConfig = async () => ({})
 }) {
   let stopRequested = false;
   let isRunning = false;
   let heartbeatPort = null;
+  let selectorConfigCache = null;
 
   function sendProgress(status, details) {
     if (!heartbeatPort) {
@@ -53,7 +55,21 @@ export function createSheetScanner({
     return appliedFormat?.strikethrough === true;
   }
 
-  async function verifyTakedownViaTab(url, platform) {
+  async function getPlatformScraperConfig(platform) {
+    try {
+      if (!selectorConfigCache) {
+        selectorConfigCache = await fetchConfig();
+      }
+
+      const platformKey = platform === 'x' ? 'twitter' : platform;
+      return selectorConfigCache?.platform_selectors?.[platformKey]?.scraper || {};
+    } catch (error) {
+      console.warn('Unable to load closer selector config. Using built-in fallbacks.', error);
+      return {};
+    }
+  }
+
+  async function verifyTakedownViaTab(url, platform, scraperConfig = {}) {
     let tabId = null;
 
     try {
@@ -85,7 +101,7 @@ export function createSheetScanner({
 
       const result = await chrome.scripting.executeScript({
         target: { tabId },
-        func: async (targetPlatform) =>
+        func: async (targetPlatform, platformScraperConfig = {}) =>
           new Promise((resolve) => {
             let attempts = 0;
 
@@ -152,28 +168,89 @@ export function createSheetScanner({
               }
 
               if (targetPlatform === 'twitter' || targetPlatform === 'x') {
-                if (
-                  text.includes('this page doesn’t exist') ||
-                  text.includes('this post has been deleted') ||
-                  text.includes('tweet has been deleted') ||
-                  text.includes('account suspended') ||
-                  text.includes('this media has been disabled in response to a report by the copyright owner') ||
-                  text.includes('this media has been disabled')
-                ) {
+                const configuredList = (value, fallback = []) => {
+                  const rawValues = Array.isArray(value) ? value : (value ? [value] : []);
+                  const normalizedValues = rawValues
+                    .map((entry) => (typeof entry === 'string' ? entry : entry?.selector))
+                    .filter(Boolean);
+                  return normalizedValues.length > 0 ? normalizedValues : fallback;
+                };
+                const queryAllByPath = (selector) => {
+                  try {
+                    if (selector.startsWith('//') || selector.startsWith('(')) {
+                      const snapshot = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                      const nodes = [];
+                      for (let index = 0; index < snapshot.snapshotLength; index++) {
+                        nodes.push(snapshot.snapshotItem(index));
+                      }
+                      return nodes;
+                    }
+
+                    return Array.from(document.querySelectorAll(selector));
+                  } catch (error) {
+                    return [];
+                  }
+                };
+                const normalizeTwitterStatusText = (value) => String(value || '')
+                  .toLowerCase()
+                  .replace(/[\u2018\u2019`]/g, "'")
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                const twitterDownMessages = configuredList(platformScraperConfig.takedown_patterns, [
+                  "this page doesn't exist",
+                  'this post has been deleted',
+                  'tweet has been deleted',
+                  'account suspended',
+                  'this media has been disabled in response to a report by the copyright owner',
+                  'this media has been disabled',
+                  'disabled in response to a report by the copyright owner'
+                ]);
+                const twitterMessageSelectors = configuredList(platformScraperConfig.takedown_messages, [
+                  '[data-testid="tweetText"] span',
+                  '[data-testid="tweetText"]',
+                  '[data-testid="videoPlayer"] span',
+                  'article[data-testid="tweet"] span'
+                ]);
+                const twitterActiveMediaSelectors = configuredList(platformScraperConfig.active_media, [
+                  '[data-testid="videoPlayer"] video',
+                  '[data-testid="videoPlayer"]',
+                  'video[aria-label="Embedded video"]',
+                  'article[data-testid="tweet"] video',
+                  'video'
+                ]);
+                const matchesTwitterDownMessage = (candidate) => {
+                  const normalizedCandidate = normalizeTwitterStatusText(candidate);
+                  return twitterDownMessages.some((message) => normalizedCandidate.includes(normalizeTwitterStatusText(message)));
+                };
+                const getTwitterSelectorText = () => twitterMessageSelectors
+                  .flatMap((selector) => queryAllByPath(selector))
+                  .map((element) => [
+                    element.innerText || '',
+                    element.textContent || '',
+                    element.getAttribute?.('title') || '',
+                    element.getAttribute?.('aria-label') || ''
+                  ].join(' '))
+                  .join(' ');
+                const hasTwitterActiveMedia = () => twitterActiveMediaSelectors.some((selector) => queryAllByPath(selector).length > 0);
+                const currentTwitterStatusText = [
+                  title,
+                  text,
+                  getTwitterSelectorText()
+                ].join(' ');
+
+                if (matchesTwitterDownMessage(currentTwitterStatusText)) {
                   return resolve(true);
                 }
 
-                if (document.querySelector('article[data-testid="tweet"]') || document.querySelector('video')) {
+                if (document.querySelector('article[data-testid="tweet"]') || hasTwitterActiveMedia()) {
                   setTimeout(() => {
-                    const doubleCheckText = document.body.innerText.toLowerCase();
-                    if (
-                      doubleCheckText.includes('this page doesn’t exist') ||
-                      doubleCheckText.includes('this post has been deleted') ||
-                      doubleCheckText.includes('tweet has been deleted') ||
-                      doubleCheckText.includes('account suspended') ||
-                      doubleCheckText.includes('this media has been disabled in response to a report by the copyright owner') ||
-                      doubleCheckText.includes('this media has been disabled')
-                    ) {
+                    const doubleCheckText = [
+                      document.title || '',
+                      document.body.innerText || '',
+                      getTwitterSelectorText()
+                    ].join(' ');
+
+                    if (matchesTwitterDownMessage(doubleCheckText)) {
                       resolve(true);
                     } else {
                       resolve(false);
@@ -210,7 +287,7 @@ export function createSheetScanner({
 
             checkStatus();
           }),
-        args: [platform]
+        args: [platform, scraperConfig]
       });
 
       return result[0]?.result || false;
@@ -228,6 +305,7 @@ export function createSheetScanner({
 
     isRunning = true;
     stopRequested = false;
+    selectorConfigCache = null;
     sendProgress(`Starting from Row ${startRowUI}`, 'Fetching sheet data with formatting...');
 
     try {
@@ -304,7 +382,8 @@ export function createSheetScanner({
 
           let isDown = false;
           try {
-            isDown = await verifyTakedownViaTab(url, platform);
+            const scraperConfig = await getPlatformScraperConfig(platform);
+            isDown = await verifyTakedownViaTab(url, platform, scraperConfig);
           } catch (error) {
             console.error('Link check failed:', error);
           }
@@ -406,6 +485,7 @@ export function createSheetScanner({
     void vertical;
 
     stopRequested = false;
+    selectorConfigCache = null;
 
     try {
       const scannerEmail = (await getUserEmail()) || 'Unknown';
@@ -452,7 +532,8 @@ export function createSheetScanner({
           }).catch(() => {});
 
           const checkTask = (async () => {
-            const isDown = await verifyTakedownViaTab(url, platform);
+            const scraperConfig = await getPlatformScraperConfig(platform);
+            const isDown = await verifyTakedownViaTab(url, platform, scraperConfig);
             if (isDown) return;
 
             activeLinks.push({
@@ -485,17 +566,20 @@ export function createSheetScanner({
 
       await Promise.all(activeWorkers);
 
+      const storage = await chrome.storage.local.get('piracy_cart');
+      const existingCart = storage.piracy_cart || [];
+      let queueCount = existingCart.length;
+
       if (activeLinks.length > 0) {
-        const storage = await chrome.storage.local.get('piracy_cart');
-        const existingCart = storage.piracy_cart || [];
         const uniqueCart = Array.from(
           new Map([...existingCart, ...activeLinks].map((item) => [item.url, item])).values()
         );
 
         await chrome.storage.local.set({ piracy_cart: uniqueCart });
+        queueCount = uniqueCart.length;
       }
 
-      return { success: true, count: activeLinks.length };
+      return { success: true, count: activeLinks.length, queueCount };
     } catch (error) {
       console.error('Scan Sheet Error:', error);
       return { success: false, error: error.message };

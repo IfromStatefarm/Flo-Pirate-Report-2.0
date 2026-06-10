@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 const PLATFORM_DEFINITIONS = Object.freeze([
   {
     key: 'youtube',
@@ -42,6 +43,9 @@ const PLATFORM_DEFINITIONS = Object.freeze([
     buildChannelUrl: (handle) => `https://www.twitch.tv/${handle}`
   }
 ]);
+=======
+import { PLATFORM_CATALOG, PLATFORM_CATALOG_BY_KEY } from './platform_catalog.js';
+>>>>>>> Stashed changes
 
 const INTERNAL_MANAGED_DOMAIN_FRAGMENTS = Object.freeze([
   'varsity.com',
@@ -57,12 +61,12 @@ export function normalizePlatformKey(platform) {
 
 export function getPlatformDefinition(platform) {
   const normalizedKey = normalizePlatformKey(platform);
-  return PLATFORM_DEFINITIONS.find(({ key }) => key === normalizedKey) || null;
+  return PLATFORM_CATALOG_BY_KEY[normalizedKey] || null;
 }
 
 export function detectPlatformDetails(url) {
   const normalizedUrl = String(url || '').toLowerCase();
-  return PLATFORM_DEFINITIONS.find((definition) => definition.matches(normalizedUrl)) || {
+  return PLATFORM_CATALOG.find((definition) => definition.matches(normalizedUrl)) || {
     key: 'other',
     label: 'Other',
     reportUrl: null,
@@ -74,7 +78,9 @@ export function buildChannelUrl(platform, handle) {
   if (!handle) return '';
 
   const definition = getPlatformDefinition(platform) || detectPlatformDetails(platform);
-  return definition.buildChannelUrl ? definition.buildChannelUrl(handle) : '';
+  return typeof definition?.buildChannelUrl === 'function'
+    ? definition.buildChannelUrl(handle)
+    : '';
 }
 
 export function urlMatchesPlatform(url, platform) {
