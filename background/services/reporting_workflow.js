@@ -22,6 +22,73 @@ const PLATFORM_BATCH_LIMITS = Object.freeze({
   instagram: 30
 });
 
+const TWITCH_SCRAPE_SETTLE_MS = 1500;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTwitchUrl(url) {
+  return String(url || '').toLowerCase().includes('twitch.tv');
+}
+
+function inferTwitchContentTypeFromUrl(url) {
+  try {
+    const parsedUrl = new URL(String(url || ''));
+    const host = parsedUrl.hostname.toLowerCase();
+    const pathParts = parsedUrl.pathname.split('/').filter(Boolean).map((part) => part.toLowerCase());
+    const firstSegment = pathParts[0] || '';
+
+    if (host.includes('clips.twitch.tv') || firstSegment === 'clip' || pathParts.includes('clip')) return 'clip';
+    if (firstSegment === 'videos' || firstSegment === 'collections') return 'vod';
+  } catch (error) {
+    // Ignore malformed URLs and let the item metadata decide.
+  }
+
+  return '';
+}
+
+function normalizeTwitchContentType(item = {}) {
+  const explicitType = String(item.contentType || item.type || '').toLowerCase();
+  if (item.isLive || explicitType.includes('live')) return 'live';
+  if (explicitType.includes('clip')) return 'clip';
+  if (explicitType.includes('vod') || explicitType.includes('video')) return 'vod';
+
+  return inferTwitchContentTypeFromUrl(item.url) || 'vod';
+}
+
+function normalizeTwitchHandle(handle) {
+  const normalized = String(handle || '').trim().replace(/^@/, '').replace(/^\/+|\/+$/g, '');
+  return normalized && normalized.toLowerCase() !== 'twitchuser' ? normalized : '';
+}
+
+function mergeScrapedTwitchData(item, scrapedData) {
+  if (!scrapedData || typeof scrapedData !== 'object') return item;
+
+  const merged = { ...item };
+  const scrapedHandle = normalizeTwitchHandle(scrapedData.handle);
+  if (scrapedHandle) merged.handle = scrapedHandle;
+
+  const scrapedViews = String(scrapedData.views || '').trim();
+  if (scrapedViews && scrapedViews.toUpperCase() !== 'N/A') {
+    merged.views = scrapedViews;
+  } else if (!merged.views) {
+    merged.views = 'N/A';
+  }
+
+  const contentType = normalizeTwitchContentType({
+    ...merged,
+    ...scrapedData,
+    url: merged.url || scrapedData.url
+  });
+
+  merged.contentType = contentType;
+  merged.isLive = contentType === 'live';
+  if (contentType === 'clip') merged.isClip = true;
+
+  return merged;
+}
+
 export function createReportingWorkflow({
   appendToSheet,
   checkIfAuthorized,
@@ -51,6 +118,201 @@ export function createReportingWorkflow({
       console.warn('Screenshot capture skipped/failed:', error);
       return null;
     }
+  }
+
+  async function waitForTabComplete(tabId, timeout = 15000) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.status === 'complete') return;
+    } catch (error) {
+      return;
+    }
+
+    await new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }, timeout);
+
+      const listener = (updatedTabId, changeInfo) => {
+        if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+        clearTimeout(timeoutId);
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      };
+
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+  }
+
+  async function injectContentScraper(tabId) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId, allFrames: false },
+        files: ['content_scraper.js']
+      });
+    } catch (error) {
+      console.warn('Twitch scrape helper injection skipped/failed:', error);
+    }
+  }
+
+  async function scrapeTwitchPageFallback(tabId) {
+    try {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId, allFrames: false },
+        func: () => {
+          const toText = (element) => [
+            element?.innerText,
+            element?.textContent,
+            element?.getAttribute?.('aria-label'),
+            element?.getAttribute?.('title')
+          ].filter(Boolean).join(' ');
+          const readViews = (value) => {
+            const text = String(value || '').trim();
+            const match = text.match(/([\d.,]+(?:\s*[KMB])?)(?=\s*(?:views?|watching|viewers?)\b)/i) ||
+              text.match(/^([\d.,]+(?:\s*[KMB])?)$/i);
+            return match?.[1]?.replace(/\s+/g, '') || '';
+          };
+          const all = (selector) => {
+            try {
+              return Array.from(document.querySelectorAll(selector));
+            } catch (error) {
+              return [];
+            }
+          };
+          const pathParts = window.location.pathname.split('/').filter(Boolean);
+          const lowerParts = pathParts.map((part) => part.toLowerCase());
+          const firstSegment = lowerParts[0] || '';
+          const host = window.location.hostname.toLowerCase();
+          const isClip = host.includes('clips.twitch.tv') || firstSegment === 'clip' || lowerParts.includes('clip');
+          const isVod = !isClip && (firstSegment === 'videos' || firstSegment === 'collections');
+          const liveSignal = Boolean(document.querySelector('[data-a-target="stream-live-indicator"], [data-a-target="channel-status-text-indicator"], [class*="tw-channel-status-text-indicator"], [class*="ScChannelStatusTextIndicator"]'));
+          const isLive = !isClip && !isVod && liveSignal;
+          const reserved = new Set(['clip', 'clips', 'collections', 'directory', 'downloads', 'jobs', 'login', 'p', 'settings', 'videos']);
+          const handleSelectors = [
+            '[data-test-selector="metadata-layout__split-top"] a[href^="/"]',
+            '[class*="metadata-layout__split-top"] a[href^="/"]',
+            '#live-channel-stream-information a[href^="/"]',
+            'a[href^="/"][class*="CoreLink"]',
+            'h1 a[href^="/"]',
+            'a[href^="/"] h1'
+          ];
+          let handle = '';
+          for (const selector of handleSelectors) {
+            for (const element of all(selector)) {
+              const anchor = element.matches?.('a[href]') ? element : element.closest?.('a[href]') || element.querySelector?.('a[href]');
+              const candidate = (anchor?.getAttribute('href') || '').split('/').filter(Boolean).find((segment) => !reserved.has(segment.toLowerCase()));
+              if (candidate) {
+                handle = candidate.replace(/^@/, '');
+                break;
+              }
+            }
+            if (handle) break;
+          }
+          if (!handle) {
+            handle = pathParts.find((segment) => !reserved.has(segment.toLowerCase())) || 'TwitchUser';
+          }
+
+          const viewSelectors = [
+            '[data-a-target="animated-channel-viewers-count"]',
+            '[data-a-target="channel-viewers-count"]',
+            '[data-test-selector="metadata-layout__split-top"] p',
+            '[class*="metadata-layout__split-top"] p',
+            '[class*="ScAnimatedNumber"]',
+            'p[class*="CoreText"]'
+          ];
+          let views = '';
+          for (const selector of viewSelectors) {
+            for (const element of all(selector)) {
+              views = readViews(toText(element));
+              if (views) break;
+            }
+            if (views) break;
+          }
+
+          return {
+            platform: 'Twitch',
+            url: window.location.href,
+            handle,
+            views: views || 'N/A',
+            contentType: isClip ? 'clip' : (isLive ? 'live' : 'vod'),
+            isLive,
+            timestamp: new Date().toISOString()
+          };
+        }
+      });
+
+      return result?.result || null;
+    } catch (error) {
+      console.warn('Twitch fallback scrape failed:', error);
+      return null;
+    }
+  }
+
+  async function scrapeTwitchUrlInSecondTab(url, options = {}) {
+    const createOptions = { url, active: false };
+    if (Number.isInteger(options.windowId)) createOptions.windowId = options.windowId;
+
+    let tab = null;
+    try {
+      tab = await chrome.tabs.create(createOptions);
+      if (!tab?.id) return null;
+
+      await waitForTabComplete(tab.id);
+      await sleep(TWITCH_SCRAPE_SETTLE_MS);
+      await injectContentScraper(tab.id);
+      await sleep(300);
+
+      try {
+        const response = await chrome.tabs.sendMessage(tab.id, { action: 'getCurrentPirateScrape' });
+        if (response?.success && response.data) return response.data;
+      } catch (error) {
+        // Fall through to the self-contained scraper when the content script is unavailable.
+      }
+
+      return scrapeTwitchPageFallback(tab.id);
+    } catch (error) {
+      console.warn(`Failed to scrape Twitch URL in second tab: ${url}`, error);
+      return null;
+    } finally {
+      if (tab?.id) {
+        try {
+          await chrome.tabs.remove(tab.id);
+        } catch (error) {
+          // The user may have closed the temporary tab manually.
+        }
+      }
+    }
+  }
+
+  async function refreshTwitchQueueMetadata(options = {}) {
+    const storage = await chrome.storage.local.get('piracy_cart');
+    const cart = storage.piracy_cart || [];
+    if (!cart.some((item) => isTwitchUrl(item.url))) return cart;
+
+    const refreshedCart = [];
+    let twitchIndex = 0;
+    const twitchItems = cart.filter((item) => isTwitchUrl(item.url));
+
+    for (const item of cart) {
+      if (!isTwitchUrl(item.url)) {
+        refreshedCart.push(item);
+        continue;
+      }
+
+      twitchIndex += 1;
+      chrome.runtime.sendMessage({
+        action: 'progressUpdate',
+        status: `Scraping Twitch metadata (${twitchIndex}/${twitchItems.length})...`,
+        percent: Math.min(35, 5 + Math.floor((twitchIndex / twitchItems.length) * 25))
+      });
+
+      const scrapedData = await scrapeTwitchUrlInSecondTab(item.url, options);
+      refreshedCart.push(mergeScrapedTwitchData(item, scrapedData));
+    }
+
+    await chrome.storage.local.set({ piracy_cart: refreshedCart });
+    return refreshedCart;
   }
 
   async function handleAddVideo(tab, data) {
@@ -165,6 +427,10 @@ export function createReportingWorkflow({
       const finalReporterName = formData.reporterName || savedName;
       const enforcedByEmail = (await getUserEmail()) || 'Unknown';
 
+      if (cart.some((item) => isTwitchUrl(item.url))) {
+        cart = await refreshTwitchQueueMetadata(formData?.tabOptions || {});
+      }
+
       let remainingCart = [];
       const primaryPlatformKey = cart.length > 0 ? detectPlatformDetails(cart[0].url).key : '';
       const batchLimit = PLATFORM_BATCH_LIMITS[primaryPlatformKey];
@@ -227,26 +493,45 @@ export function createReportingWorkflow({
       const grouped = {};
       cart.forEach((item) => {
         const handle = item.handle || 'Unknown';
-        if (!grouped[handle]) grouped[handle] = [];
-        grouped[handle].push(item);
+        const platformDetails = detectPlatformDetails(item.url);
+        const twitchLabel = platformDetails.key === 'twitch'
+          ? (normalizeTwitchContentType(item) === 'live' ? 'Live' : 'VOD')
+          : '';
+        const groupKey = twitchLabel ? `${handle}::${twitchLabel}` : handle;
+
+        if (!grouped[groupKey]) {
+          grouped[groupKey] = {
+            handle,
+            items: [],
+            contentTypeLabel: twitchLabel
+          };
+        }
+
+        grouped[groupKey].items.push(item);
       });
 
-      const handles = Object.keys(grouped);
-      for (let groupIndex = 0; groupIndex < handles.length; groupIndex++) {
-        const handle = handles[groupIndex];
+      const groups = Object.values(grouped);
+      for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+        const group = groups[groupIndex];
+        const handle = group.handle;
         chrome.runtime.sendMessage({
           action: 'progressUpdate',
-          status: `Processing Report ${groupIndex + 1}/${handles.length} (@${handle})...`,
-          percent: 40 + Math.floor(((groupIndex + 1) / handles.length) * 50)
+          status: `Processing Report ${groupIndex + 1}/${groups.length} (@${handle})...`,
+          percent: 40 + Math.floor(((groupIndex + 1) / groups.length) * 50)
         });
 
-        const items = grouped[handle];
+        const items = group.items;
         const urls = items.map((item) => item.url);
         const urlString = urls.join('\n');
         const viewString = items.reduce((sum, item) => sum + parseViewCount(item.views), 0);
         const reportId = generateReportId();
         const platformDetails = detectPlatformDetails(urls[0]);
-        const channelUrl = buildChannelUrl(platformDetails.key, handle) || urls[0];
+        const savedProfileUrl = items.find((item) => item.profileUrl || item.channelUrl)?.profileUrl ||
+          items.find((item) => item.profileUrl || item.channelUrl)?.channelUrl || '';
+        const channelUrl = savedProfileUrl || buildChannelUrl(platformDetails.key, handle) || urls[0];
+        const contentTypeLabel = group.contentTypeLabel || (items.some((item) => item.isLive || String(item.contentType || '').toLowerCase() === 'live')
+          ? 'Live'
+          : 'VOD');
 
         const evidenceLinks = await Promise.all(
           items.map(async (item, index) => {
@@ -341,7 +626,7 @@ export function createReportingWorkflow({
             formData.vertical,
             formData.eventConfig?.eventName || formData.eventName || 'Unknown Event',
             platformDetails.label,
-            'VOD',
+            contentTypeLabel,
             viewString > 0 ? viewString.toLocaleString() : 'N/A',
             finalReporterName,
             urlString,

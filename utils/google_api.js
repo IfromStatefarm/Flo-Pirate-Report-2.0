@@ -137,6 +137,22 @@ function isPlainObject(value) {
   return value != null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function getNestedPatchTarget(root, pathSegments) {
+  let cursor = root;
+  for (let index = 0; index < pathSegments.length - 1; index += 1) {
+    const segment = pathSegments[index];
+    if (!isPlainObject(cursor[segment])) {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment];
+  }
+
+  return {
+    target: cursor,
+    key: pathSegments[pathSegments.length - 1]
+  };
+}
+
 function mergeConfigDefaults(defaultValue, remoteValue) {
   if (remoteValue === undefined) return defaultValue;
   if (defaultValue === undefined) return remoteValue;
@@ -519,7 +535,11 @@ export async function patchConfigSelector(platform, section, field, newSelector,
     if (!currentConfig.platform_selectors[platform]) currentConfig.platform_selectors[platform] = {};
     if (!currentConfig.platform_selectors[platform][section]) currentConfig.platform_selectors[platform][section] = {};
 
-    const existing = currentConfig.platform_selectors[platform][section][field];
+    const fieldPath = String(field || '').split('.').map((segment) => segment.trim()).filter(Boolean);
+    if (fieldPath.length === 0) throw new Error("Field is required.");
+
+    const { target, key } = getNestedPatchTarget(currentConfig.platform_selectors[platform][section], fieldPath);
+    const existing = target[key];
     const newEntry = actionType ? { "selector": newSelector, "action": actionType } : newSelector;
     
     // If it's already an array, prepend and prune
@@ -532,10 +552,10 @@ export async function patchConfigSelector(platform, section, field, newSelector,
         }
     } else if (existing && (existing.selector || existing) !== newSelector) {
         // Convert existing string to an array, preserving both with the new one first
-        currentConfig.platform_selectors[platform][section][field] = [newEntry, existing];
+        target[key] = [newEntry, existing];
     } else {
         // Otherwise overwrite the string
-        currentConfig.platform_selectors[platform][section][field] = newEntry;
+        target[key] = newEntry;
     }
 
     // 4. Update with If-Match header to ensure no one else modified it in the meantime
@@ -555,7 +575,7 @@ export async function patchConfigSelector(platform, section, field, newSelector,
             if (retryCount < 5) {
                 const delay = Math.pow(2, retryCount) * 1000;
                 await new Promise(r => setTimeout(r, delay));
-                return await patchConfigSelector(platform, section, field, newSelector, retryCount + 1);
+                return await patchConfigSelector(platform, section, field, newSelector, actionType, retryCount + 1);
             }
             throw new Error("Conflict: Config was updated by another user. Please try again.");
         }
@@ -564,6 +584,70 @@ export async function patchConfigSelector(platform, section, field, newSelector,
         return currentConfig;
     } catch (error) {
         console.error("Patch error:", error);
+        throw error;
+    }
+}
+
+/**
+ * Updates top-level sections of the shared events_config.json file.
+ * Used by the Options page for managed content such as community highlights,
+ * Double XP event lists, and selector path edits.
+ */
+export async function updateConfigSections(sectionUpdates, retryCount = 0) {
+    const { driveRootId } = await getOptions();
+    if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
+
+    let cachedToken = await getAuthToken();
+    await new Promise(resolve => chrome.identity.removeCachedAuthToken({ token: cachedToken }, resolve));
+    const token = await getAuthToken();
+
+    const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
+    const searchData = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!searchData.files || searchData.files.length === 0) {
+        throw new Error("Config file not found in Drive.");
+    }
+    const fileId = searchData.files[0].id;
+
+    const getRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!getRes.ok) throw new Error(`Failed to fetch config: ${getRes.statusText}`);
+
+    const currentConfig = await getRes.json();
+    const currentEtag = getRes.headers.get('ETag');
+
+    Object.entries(sectionUpdates || {}).forEach(([key, value]) => {
+        currentConfig[key] = value;
+    });
+
+    try {
+        const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
+        const res = await fetch(url, {
+            method: 'PATCH',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'If-Match': currentEtag
+            },
+            body: JSON.stringify(currentConfig, null, 2)
+        });
+
+        if (res.status === 412) {
+            if (retryCount < 5) {
+                const delay = Math.pow(2, retryCount) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return await updateConfigSections(sectionUpdates, retryCount + 1);
+            }
+            throw new Error("Conflict: Config was updated by another user. Please try again.");
+        }
+
+        if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+        return currentConfig;
+    } catch (error) {
+        console.error("Config section update error:", error);
         throw error;
     }
 }
@@ -784,8 +868,8 @@ export async function getColumnHDataWithFormatting() {
   const token = await getAuthToken();
   const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
 
-  // Fetch specific range with grid data for styling evaluation
-  const range = `'${sheetName}'!H:H`;
+  // Fetch URL rich-text data from Column H and row status from Column J.
+  const range = `'${sheetName}'!H:J`;
   
   // ADDED 'startRow' to fields so we know if Google skipped leading blank rows
   const fields = "sheets(data(startRow,rowData(values(userEnteredValue,formattedValue,textFormatRuns,userEnteredFormat,effectiveFormat))))";
@@ -799,19 +883,33 @@ export async function getColumnHDataWithFormatting() {
   
   // Create an array that accurately represents the absolute row indices
   // by filling empty placeholders up to the startRow where data actually begins.
-  const emptyPad = new Array(startRow).fill({ text: "", formatRuns: [], cellStrikethrough: false });
+  const emptyPad = Array.from({ length: startRow }, () => ({
+      text: "",
+      status: "",
+      formatRuns: [],
+      cellStrikethrough: false
+  }));
   
   const mappedRows = rowData.map(row => {
       const cell = row.values?.[0];
-      if (!cell) return { text: "", formatRuns: [], cellStrikethrough: false };
+      const statusCell = row.values?.[2];
+      if (!cell) {
+          return {
+              text: "",
+              status: statusCell?.formattedValue || statusCell?.userEnteredValue?.stringValue || "",
+              formatRuns: [],
+              cellStrikethrough: false
+          };
+      }
       
       const text = cell.formattedValue || cell.userEnteredValue?.stringValue || "";
+      const status = statusCell?.formattedValue || statusCell?.userEnteredValue?.stringValue || "";
       const formatRuns = cell.textFormatRuns || [];
       
       // Catch if the ENTIRE cell has base formatting applied to it
       const cellStrikethrough = cell.userEnteredFormat?.textFormat?.strikethrough || cell.effectiveFormat?.textFormat?.strikethrough || false;
       
-      return { text, formatRuns, cellStrikethrough };
+      return { text, status, formatRuns, cellStrikethrough };
   });
 
   return emptyPad.concat(mappedRows);

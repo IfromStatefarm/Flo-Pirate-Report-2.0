@@ -62,6 +62,7 @@
             const data = {
                 fullName: info.name || "",
                 email: info.email || "copyright@flosports.tv",
+                cart,
                 urls: cart.map(c => c.url),
                 platform: platform,
                 eventName: info.eventName || "",
@@ -105,6 +106,8 @@
         } else if (host.includes('rumble.com')) {
             if (!isActiveRumbleSessionForCurrentPage(data?.rumbleSession)) return;
             createRumbleOverlay(data);
+        } else if (host.includes('twitch.tv') && currentUrl.includes('/copyright-claims')) {
+            createTwitchOverlay(data);
         } else if (host.includes('youtube')) {
             createYouTubeOverlay(data);
         } else {
@@ -332,6 +335,129 @@
         const hasStory = list.some((url) => String(url || '').toLowerCase().includes('/stories/'));
         const hasPostLike = list.some((url) => !String(url || '').toLowerCase().includes('/stories/'));
         return { hasStory, hasPostLike };
+    }
+
+    function classifyTwitchReportItem(item) {
+        const url = String(item?.url || item || '');
+        const explicitType = String(item?.contentType || item?.type || '').toLowerCase();
+        if (item?.isLive || explicitType.includes('live')) return 'live';
+        if (explicitType.includes('clip')) return 'clip';
+        if (explicitType.includes('vod') || explicitType.includes('video')) return 'vod';
+
+        try {
+            const parsedUrl = new URL(url);
+            const host = parsedUrl.hostname.toLowerCase();
+            const pathParts = parsedUrl.pathname.split('/').filter(Boolean).map((part) => part.toLowerCase());
+            const firstSegment = pathParts[0] || '';
+            if (host.includes('clips.twitch.tv') || firstSegment === 'clip' || pathParts.includes('clip')) return 'clip';
+            if (firstSegment === 'videos' || firstSegment === 'collections') return 'vod';
+        } catch (error) {
+            // Keep unknown URLs in the VOD bucket so they are still reported.
+        }
+
+        return 'vod';
+    }
+
+    function getTwitchReportBuckets(data) {
+        const items = Array.isArray(data?.cart) && data.cart.length > 0
+            ? data.cart
+            : (data?.urls || []).map((url) => ({ url }));
+        const buckets = { live: [], vod: [], clip: [] };
+
+        items.forEach((item) => {
+            const url = String(item?.url || item || '').trim();
+            if (!url) return;
+            buckets[classifyTwitchReportItem(item)].push(url);
+        });
+
+        return buckets;
+    }
+
+    function findButtonByText(textMatchers) {
+        const matchers = Array.isArray(textMatchers) ? textMatchers : [textMatchers];
+        return Array.from(document.querySelectorAll('button')).find((button) => {
+            if (!isVisible(button) || button.disabled) return false;
+            const text = button.innerText || button.textContent || '';
+            return matchers.some((matcher) => {
+                if (matcher instanceof RegExp) return matcher.test(text);
+                return normalizeText(text).includes(normalizeText(matcher));
+            });
+        });
+    }
+
+    async function clickTwitchButton(textMatchers, timeout = 5000) {
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            const button = findButtonByText(textMatchers);
+            if (button) {
+                clickElement(button);
+                return true;
+            }
+            await sleep(200);
+        }
+        return false;
+    }
+
+    function setSelectValue(select, value, labelText) {
+        if (!select) return false;
+        const option = Array.from(select.options || []).find((candidate) =>
+            candidate.value === value || matchesAnyText(candidate.textContent || candidate.innerText || '', labelText || value)
+        );
+        if (!option) return false;
+
+        select.value = option.value;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    }
+
+    function selectTwitchContentType(type) {
+        const typeMap = {
+            live: { value: 'live-stream', label: 'Live Broadcast' },
+            vod: { value: 'vod', label: 'VOD' },
+            clip: { value: 'clip', label: 'Clip' }
+        };
+        const target = typeMap[type] || typeMap.vod;
+        const selects = Array.from(document.querySelectorAll('select')).filter(isVisible).reverse();
+        const targetSelect = selects.find((select) =>
+            Array.from(select.options || []).some((option) => ['live-stream', 'vod', 'clip'].includes(option.value))
+        ) || findControlByLabelText(['Select the nature of the allegedly infringing material'], 'select');
+
+        return setSelectValue(targetSelect, target.value, target.label);
+    }
+
+    function fillLatestTwitchUrlInput(type, url) {
+        const labels = {
+            live: ['Stream URL', 'Live Broadcast URL'],
+            vod: ['VOD URL'],
+            clip: ['Clip URL']
+        };
+        const nameHints = {
+            live: ['live', 'stream'],
+            vod: ['vod'],
+            clip: ['clip']
+        };
+
+        const preferredByLabel = findControlByLabelText(labels[type] || ['URL'], 'input, textarea');
+        if (preferredByLabel && typeValue(preferredByLabel, url)) return true;
+
+        const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea'))
+            .filter(isVisible)
+            .reverse();
+        const hints = nameHints[type] || ['url'];
+        const hintedInput = inputs.find((input) => {
+            const descriptor = [
+                input.name,
+                input.id,
+                input.placeholder,
+                input.getAttribute('aria-label'),
+                input.getAttribute('aria-labelledby')
+            ].join(' ').toLowerCase();
+            return hints.some((hint) => descriptor.includes(hint)) && input.value !== url;
+        });
+
+        const emptyInput = inputs.find((input) => !String(input.value || '').trim());
+        return typeValue(emptyInput || hintedInput || inputs[0], url);
     }
 
     function buildInstagramExplanation(data) {
@@ -1510,6 +1636,216 @@
       });
     });
 }
+
+function createTwitchOverlay(data) {
+    if (cachedOverlay && cachedOverlay.id === "flo-twitch-overlay") {
+        if (!document.getElementById("flo-twitch-overlay")) {
+            document.body.appendChild(cachedOverlay);
+        }
+        return;
+    }
+
+    const existing = document.getElementById("flo-twitch-overlay");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "flo-twitch-overlay";
+    overlay.style.cssText = `
+      position: fixed; top: 80px; right: 20px; width: 300px;
+      background: white; border: 3px solid #9146ff; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
+    `;
+
+    overlay.innerHTML = `
+      <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+        <h3 id="flo-wiz-title" style="margin:0; color:#9146ff; font-size:16px; pointer-events:none;">Twitch Wizard</h3>
+        <div>
+            <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">-</button>
+            <button id="flo-wiz-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">x</button>
+        </div>
+      </div>
+      <div id="flo-wiz-main-content">
+          <div id="flo-step-container" style="display: flex; flex-direction: column; gap: 8px;">
+              <button id="flo-twitch-btn-step1" style="background: #9146ff; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Copyrighted work</button>
+              <button id="flo-twitch-btn-step2" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 2: URLs to remove</button>
+              <button id="flo-twitch-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Contact & legal</button>
+          </div>
+          <div id="flo-log-container" style="display: none; margin-top: 15px;">
+              <button id="flo-log-btn" style="background: #9146ff; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+              <div id="flo-log-status" style="margin-top:8px; font-size:12px; text-align: center;"></div>
+          </div>
+      </div>
+    `;
+
+    cachedOverlay = overlay;
+    document.body.appendChild(overlay);
+    setupDrag(overlay);
+
+    let isWizMinimized = false;
+    const minBtn = document.getElementById('flo-wiz-min-btn');
+    const closeBtn = document.getElementById('flo-wiz-close-btn');
+    const mainContent = document.getElementById('flo-wiz-main-content');
+    const title = document.getElementById('flo-wiz-title');
+    const topBar = document.getElementById('flo-wiz-top-bar');
+
+    minBtn.addEventListener('click', () => {
+        isWizMinimized = !isWizMinimized;
+        if (isWizMinimized) {
+            mainContent.style.display = 'none';
+            minBtn.innerHTML = '+';
+            title.innerText = 'Twitch';
+            overlay.style.width = 'auto';
+            topBar.style.borderBottom = 'none';
+            topBar.style.marginBottom = '0';
+            topBar.style.paddingBottom = '0';
+            overlay.style.right = '0px';
+        } else {
+            mainContent.style.display = 'block';
+            minBtn.innerHTML = '-';
+            title.innerText = 'Twitch Wizard';
+            overlay.style.width = '300px';
+            topBar.style.borderBottom = '1px solid #eee';
+            topBar.style.marginBottom = '10px';
+            topBar.style.paddingBottom = '8px';
+        }
+    });
+
+    closeBtn.addEventListener('click', () => overlay.remove());
+
+    const btn1 = document.getElementById('flo-twitch-btn-step1');
+    const btn2 = document.getElementById('flo-twitch-btn-step2');
+    const btn3 = document.getElementById('flo-twitch-btn-step3');
+    const logContainer = document.getElementById('flo-log-container');
+
+    btn1.addEventListener('click', async () => {
+        btn1.innerText = "Running...";
+        await runTwitchStep1(data);
+        btn1.innerText = "Step 1: Done";
+        btn1.style.background = "#ccc"; btn1.style.color = "#333";
+        btn2.style.background = "#9146ff"; btn2.style.color = "white";
+    });
+
+    btn2.addEventListener('click', async () => {
+        btn2.innerText = "Running...";
+        await runTwitchStep2(data);
+        btn2.innerText = "Step 2: Done";
+        btn2.style.background = "#ccc"; btn2.style.color = "#333";
+        btn3.style.background = "#9146ff"; btn3.style.color = "white";
+    });
+
+    btn3.addEventListener('click', async () => {
+        btn3.innerText = "Running...";
+        await runTwitchStep3(data);
+        btn3.innerText = "Step 3: Done";
+        btn3.style.background = "#ccc"; btn3.style.color = "#333";
+        logContainer.style.display = "block";
+    });
+
+    document.getElementById("flo-log-btn").addEventListener("click", (event) => {
+        const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
+        if (event.target) event.target.disabled = true;
+        const status = document.getElementById("flo-log-status");
+        status.innerText = "Logging...";
+
+        chrome.runtime.sendMessage({ action: "logToSheet", data }, (response) => {
+            if (response && response.success) {
+                successAudio.play().catch(() => {});
+                status.innerText = "Logged. Closing...";
+                status.style.color = "green";
+                setTimeout(() => {
+                    lastReportData = null;
+                    cachedOverlay = null;
+                    overlay.remove();
+                }, 2000);
+            } else {
+                status.innerText = response?.error || "Failed.";
+                status.style.color = "red";
+                event.target.disabled = false;
+                event.target.innerText = "Log to Sheet";
+            }
+        });
+    });
+}
+
+async function runTwitchStep1(data) {
+    fillFieldWithFallback(
+        ['textarea[name="copyrightWorkAllegedlyInfringed"]'],
+        ['Describe the copyrighted work'],
+        data.eventName || 'FloSports Event'
+    );
+    selectFieldOption(
+        ['select[aria-label*="copyrighted work" i]', 'select[name*="copyright" i]'],
+        ['Which of these best describes the copyrighted work'],
+        'Video'
+    );
+    fillFieldWithFallback(
+        ['input[name="copyrightWorkUrl"]'],
+        ['Link [URL] to an example of the copyrighted work', 'example of the copyrighted work'],
+        data.sourceUrl || ''
+    );
+}
+
+async function addTwitchUrlToList(type, url) {
+    await clickTwitchButton([/add\s+(a\s+|another\s+|new\s+)?url/i], 5000);
+    await sleep(300);
+    selectTwitchContentType(type);
+    await sleep(300);
+    fillLatestTwitchUrlInput(type, url);
+    await sleep(300);
+    await clickTwitchButton(['Add to list'], 5000);
+    await sleep(600);
+}
+
+async function runTwitchStep2(data) {
+    const buckets = getTwitchReportBuckets(data);
+    const orderedEntries = [
+        ['live', buckets.live],
+        ['vod', buckets.vod],
+        ['clip', buckets.clip]
+    ];
+
+    for (const [type, urls] of orderedEntries) {
+        for (const url of urls) {
+            await addTwitchUrlToList(type, url);
+        }
+    }
+}
+
+async function runTwitchStep3(data) {
+    const reporterFullName = await resolveReporterFullName(data);
+    const contactEmail = 'Social@flosports.tv';
+
+    fillFieldWithFallback(['input[name="claimantName"]'], ['Your name or organization'], reporterFullName);
+    fillFieldWithFallback(['input[name="relationship"]'], ['Relationship to copyrighted work'], 'Authorized Agent');
+    fillFieldWithFallback(['input[name="email"]'], ['Email Address', 'Email'], contactEmail);
+    selectFieldOption(['select[name="country"]'], ['Country'], 'United States');
+    fillFieldWithFallback(['input[name="city"]'], ['City'], 'Austin');
+    fillFieldWithFallback(['input[name="ownerName"]'], ['Name of copyright owner'], COPYRIGHT_OWNER_NAME);
+    fillFieldWithFallback(['input[name="phoneNumber"]'], ['Phone number'], '5122702356');
+    fillFieldWithFallback(['input[name="address"]'], ['Street address'], '301 Congress ave #1500');
+    selectFieldOption(['select[name="stateOrProvince"]'], ['State/Province', 'State'], 'Texas');
+    fillFieldWithFallback(['input[name="postalCode"]'], ['Zip/Postal Code', 'Postal Code', 'Zip'], '78745');
+
+    [
+        'input[name="goodFaithCheckbox"]',
+        'input[name="notificationAccurateCheckBox"]',
+        'input[name="underPenaltyCheckBox"]'
+    ].forEach((selector) => {
+        const checkbox = document.querySelector(selector);
+        if (checkbox) checkReactCheckbox(checkbox);
+    });
+
+    checkChoiceField([], ['good faith belief'], 'good faith', 'checkbox');
+    checkChoiceField([], ['This notification is accurate'], 'accurate', 'checkbox');
+    checkChoiceField([], ['UNDER PENALTY OF PERJURY', 'authorized to act'], 'perjury', 'checkbox');
+
+    fillFieldWithFallback(
+        ['input[name="signature"]'],
+        ['Typing your full name in this box', 'electronic signature', 'Signature'],
+        reporterFullName
+    );
+}
+
 function setupDrag(overlay) {
       let isDragging = false, startX, startY, initialLeft, initialTop;
       overlay.addEventListener('mousedown', (e) => {

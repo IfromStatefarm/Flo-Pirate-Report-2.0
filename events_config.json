@@ -147,6 +147,40 @@
         ]
       }
     },
+    "twitch": {
+      "scraper": {
+        "handle_links": [
+          "[data-test-selector=\"metadata-layout__split-top\"] a[href^=\"/\"]",
+          "[class*=\"metadata-layout__split-top\"] a[href^=\"/\"]",
+          "#live-channel-stream-information a[href^=\"/\"]",
+          "a[href^=\"/\"][class*=\"CoreLink\"]",
+          "h1 a[href^=\"/\"]",
+          "a[href^=\"/\"] h1"
+        ],
+        "live_indicators": [
+          "[data-a-target=\"stream-live-indicator\"]",
+          "[data-a-target=\"channel-status-text-indicator\"]",
+          "[class*=\"tw-channel-status-text-indicator\"]",
+          "[class*=\"ScChannelStatusTextIndicator\"]"
+        ],
+        "live_viewers": [
+          "[data-a-target=\"animated-channel-viewers-count\"]",
+          "[data-a-target=\"channel-viewers-count\"]",
+          "[class*=\"ScAnimatedNumber\"]",
+          "strong[aria-hidden=\"true\"] span"
+        ],
+        "vod_views": [
+          "[data-test-selector=\"metadata-layout__split-top\"] p",
+          "[class*=\"metadata-layout__split-top\"] p",
+          "p[class*=\"CoreText\"]"
+        ],
+        "clip_views": [
+          "[data-test-selector=\"metadata-layout__split-top\"] p",
+          "[class*=\"metadata-layout__split-top\"] p",
+          "p[class*=\"CoreText\"]"
+        ]
+      }
+    },
     "instagram": {
       "scraper": {
         "handle": [

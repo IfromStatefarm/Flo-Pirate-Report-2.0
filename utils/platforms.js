@@ -37,7 +37,7 @@ const PLATFORM_DEFINITIONS = Object.freeze([
   {
     key: 'twitch',
     label: 'Twitch',
-    reportUrl: null,
+    reportUrl: 'https://www.twitch.tv/copyright-claims',
     matches: (url) => url.includes('twitch'),
     buildChannelUrl: (handle) => `https://www.twitch.tv/${handle}`
   },
@@ -55,7 +55,25 @@ const PLATFORM_DEFINITIONS = Object.freeze([
       }
       return `https://rumble.com/c/${normalizedHandle}`;
     }
+  },
+  {
+    key: 'discord',
+    label: 'Discord',
+    reportUrl: null,
+    matches: (url) => url.includes('discord.com'),
+    buildChannelUrl: () => ''
   }
+]);
+
+const SUPPORTED_PLATFORM_ORDER = Object.freeze([
+  'tiktok',
+  'instagram',
+  'youtube',
+  'twitter',
+  'twitch',
+  'facebook',
+  'discord',
+  'rumble'
 ]);
 
 const INTERNAL_MANAGED_DOMAIN_FRAGMENTS = Object.freeze([
@@ -73,6 +91,13 @@ export function normalizePlatformKey(platform) {
 export function getPlatformDefinition(platform) {
   const normalizedKey = normalizePlatformKey(platform);
   return PLATFORM_DEFINITIONS.find(({ key }) => key === normalizedKey) || null;
+}
+
+export function getSupportedPlatforms() {
+  return SUPPORTED_PLATFORM_ORDER
+    .map((key) => getPlatformDefinition(key))
+    .filter(Boolean)
+    .map(({ key, label }) => ({ key, label }));
 }
 
 export function detectPlatformDetails(url) {

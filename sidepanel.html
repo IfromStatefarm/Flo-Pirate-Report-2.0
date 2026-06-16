@@ -4,840 +4,1032 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    /* Global Styles */
-    body { 
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-        background-color: #f4f7f6; 
-        color: #1f2937; 
-        padding: 12px; 
-        margin: 0; 
-        box-sizing: border-box;
+    :root {
+      --flo-red: #ce0e2d;
+      --flo-red-dark: #a80b24;
+      --ink: #111827;
+      --muted: #64748b;
+      --line: #e5e7eb;
+      --panel: #ffffff;
+      --soft: #f8fafc;
+      --blue: #0288d1;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --danger: #ef4444;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
     }
+
     * { box-sizing: border-box; }
 
-    /* Typography & Headers */
-    h2 { 
-        color: #ce0e2d; 
-        margin: 0 0 12px 0; 
-        font-size: 18px; 
-        font-weight: 800; 
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .section-title { font-size: 14px; font-weight: 700; margin: 0 0 12px 0; color: #111827; }
-
-    /* Layout Cards */
-    .container { display: flex; flex-direction: column; gap: 12px; }
-    .card { 
-        background: #ffffff; 
-        border-radius: 8px; 
-        padding: 15px; 
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
-        border: 1px solid #e5e7eb; 
-        position: relative;
-    }
-    .auto-card { background: #f8fafc; border-color: #bfdbfe; }
-    .auto-card .section-title { color: #1e3a8a; }
-
-    /* Form Elements */
-    label { font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #4b5563; display: flex; align-items: center; gap: 4px; }
-    input, select { 
-        width: 100%; padding: 9px 10px; margin-bottom: 12px; 
-        border: 1px solid #d1d5db; border-radius: 6px; 
-        font-size: 13px; color: #111827; background-color: #f9fafb; 
-        transition: all 0.2s; 
-    }
-    input:focus, select:focus { 
-        outline: none; border-color: #0288d1; box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.15); 
-        background-color: #ffffff; 
-    }
-    #sourceUrlDisplay { border-color: #93c5fd; background-color: #eff6ff; }
-    
-    /* Tooltip Styles */
-    .tooltip-container {
-        position: relative;
-        display: inline-block;
-        cursor: help;
-        color: #ce0e2d;
-        line-height: 0;
-    }
-    .tooltip-text {
-        visibility: hidden;
-        width: 180px;
-        background-color: #ffffff;
-        color: #333;
-        text-align: left;
-        border: 2px solid #ce0e2d;
-        border-radius: 8px;
-        padding: 8px;
-        position: absolute;
-        z-index: 100;
-        bottom: 125%;
-        left: 50%;
-        margin-left: -90px;
-        opacity: 0;
-        transition: opacity 0.3s;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-        font-size: 11px;
-        font-weight: normal;
-        line-height: 1.4;
-        pointer-events: none;
-    }
-    .tooltip-container:hover .tooltip-text {
-        visibility: visible;
-        opacity: 1;
+    body {
+      margin: 0;
+      background: #f3f5f7;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 13px;
     }
 
-    /* Buttons */
-    .btn { 
-        width: 100%; padding: 10px; border: none; border-radius: 6px; 
-        cursor: pointer; font-weight: 600; font-size: 13px; 
-        transition: background-color 0.2s, transform 0.1s; 
-        text-align: center; display: inline-block;
-    }
-    .btn:active { transform: scale(0.98); }
-    .btn:disabled { background: #d1d5db !important; color: #9ca3af !important; cursor: not-allowed; transform: none; }
-    
-    .btn-primary { background: #ce0e2d; color: white; }
-    .btn-primary:hover:not(:disabled) { background: #a80b24; }
-    
-    .btn-info { background: #0288d1; color: white; }
-    .btn-info:hover:not(:disabled) { background: #026b9c; }
-    
-    .btn-success { background: #10b981; color: white; }
-    .btn-success:hover:not(:disabled) { background: #059669; }
-
-    .btn-warning { background: #f59e0b; color: white; }
-    .btn-warning:hover:not(:disabled) { background: #d97706; }
-
-    .btn-danger { background: #ef4444; color: white; }
-    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
-
-    .link-btn { 
-        background: none; border: none; color: #6b7280; font-size: 11px; 
-        cursor: pointer; text-decoration: none; padding: 0; font-weight: 500; transition: color 0.2s; 
-    }
-    .link-btn:hover { color: #0288d1; text-decoration: underline; }
-
-    /* Layout Utilities */
-    .flex-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-    .flex-row input, .flex-row select, .flex-row button { margin-bottom: 0; }
-    .flex-between { display: flex; justify-content: space-between; align-items: center; margin-top: 6px;}
-
-    /* Milestone Indicators */
-    .milestone-container {
-        display: flex;
-        justify-content: space-between;
-        background: #f8fafc;
-        border-radius: 8px;
-        padding: 8px 12px;
-        margin-bottom: 15px;
-        border: 1px solid #e2e8f0;
-    }
-    .milestone-step {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 2px;
-        opacity: 0.3;
-        transition: all 0.3s;
-        font-size: 10px;
-        font-weight: 600;
-        color: #64748b;
-    }
-    .milestone-step.active {
-        opacity: 1;
-        color: #ce0e2d;
+    .app-shell {
+      min-height: 100vh;
+      padding: 10px;
     }
 
-    /* Clippy Interactive Bubble */
-    .clippy-bubble {
-        background: #fff;
-        border: 2px solid #ce0e2d;
-        border-radius: 12px 12px 12px 0;
-        padding: 10px;
-        font-size: 12px;
-        margin-bottom: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        position: relative;
-        display: flex;
-        align-items: center;
-        gap: 12px;
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      margin: -10px -10px 10px;
+      padding: 10px;
+      background: rgba(243, 245, 247, 0.96);
+      border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+      backdrop-filter: blur(10px);
     }
-    .clippy-bubble:after {
-        content: '';
-        position: absolute;
-        bottom: -10px;
-        left: 0;
-        border-width: 10px 10px 0 0;
-            border-style: solid;
-            border-color: #ce0e2d transparent transparent transparent;
-        }
 
-        /* Interactive Spotlighting Cutout */
-        .clippy-focus {
-            position: relative;
-            z-index: 99999;
-            /* The box-shadow creates a glowing effect around the focused element, simulating a spotlight. Adjust the color and spread as needed. */
-            box-shadow: 0 0 15px 2px rgba(206,14,45,0.8);
-            pointer-events: auto;
-            animation: spotlight-pulse 1.5s infinite;
-        }
-        @keyframes spotlight-pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
+    .brand-row,
+    .status-row,
+    .flex-row,
+    .inline-actions,
+    .panel-heading,
+    .leaderboard-heading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-        /* Text Hints */
-        .hint { font-size: 11px; color: #6b7280; margin-top: -8px; margin-bottom: 12px; line-height: 1.4; }
-        .hint strong { color: #0288d1; }
+    .brand-row { justify-content: space-between; }
+    .brand-lockup { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .brand-logo { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; }
+    .brand-copy { min-width: 0; }
+    .brand-title { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: 0; }
+    .brand-subtitle { margin-top: 2px; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    /* Instructions Box */
-    .instructions { background: #f0fdf4; padding: 12px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 15px; }
-    .instructions strong { color: #166534; font-size: 12px; display: block; margin-bottom: 6px; }
-    .instructions ol { margin: 0; padding-left: 20px; font-size: 11px; color: #15803d; line-height: 1.5; }
-    .instructions li { margin-bottom: 4px; }
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: #475569;
+      cursor: pointer;
+    }
 
-    /* Gamification Snapshot */
+    .icon-btn:hover { color: var(--flo-red); border-color: rgba(206, 14, 45, 0.3); }
+
+    .status-row {
+      margin-top: 9px;
+      flex-wrap: wrap;
+    }
+
+    .status-chip,
+    #loading {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 24px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    #loading {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    #loading.init-error {
+      display: block;
+      width: 100%;
+      padding: 9px;
+      border-radius: 8px;
+      white-space: normal;
+    }
+
+    #recording-badge {
+      display: none;
+      background: var(--flo-red);
+      color: #fff;
+      border-color: var(--flo-red);
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink { 50% { opacity: 0.3; } }
+
+    .assistant-strip {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 10px;
+      padding: 9px 34px 9px 9px;
+      border: 1px solid rgba(206, 14, 45, 0.22);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+    }
+
+    .assistant-strip img {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      object-fit: contain;
+    }
+
+    .assistant-copy { min-width: 0; color: #334155; line-height: 1.35; }
+    .assistant-copy strong { display: block; color: var(--flo-red); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+    #close-clippy-btn {
+      position: absolute;
+      top: 7px;
+      right: 10px;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    #close-clippy-btn:hover { color: var(--flo-red); }
+
     .gamification-card {
-        --gamification-theme: #ce0e2d;
-        display: none;
-        background:
-          linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%);
-        border: 1px solid var(--gamification-theme);
-        border-radius: 10px;
-        margin-bottom: 12px;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+      --gamification-theme: var(--flo-red);
+      display: none;
+      margin-bottom: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(206, 14, 45, 0.2);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
     }
+
     .gamification-toggle {
-        list-style: none;
-        cursor: pointer;
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px;
+      cursor: pointer;
+      list-style: none;
     }
-    .gamification-toggle::-webkit-details-marker {
-        display: none;
-    }
-    .gamification-card > summary::marker {
-        content: "";
-    }
-    .gamification-toggle-copy {
-        min-width: 0;
-        flex: 1;
-    }
-    .gamification-eyebrow {
-        font-size: 10px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #64748b;
-        font-weight: 700;
-        margin-bottom: 8px;
-    }
-    .gamification-inline-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-    }
+
+    .gamification-toggle::-webkit-details-marker,
+    .gamification-card > summary::marker { display: none; content: ""; }
+    .gamification-toggle-copy { min-width: 0; flex: 1; }
+    .gamification-eyebrow { margin-bottom: 7px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+    .gamification-inline-list { display: flex; flex-wrap: wrap; gap: 6px; }
+
     .gamification-inline-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        min-width: 0;
-        max-width: 100%;
-        padding: 6px 8px;
-        border-radius: 999px;
-        border: 1px solid #e5e7eb;
-        background: #ffffff;
-        color: #475569;
-        font-size: 11px;
-        line-height: 1.2;
-        white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      max-width: 100%;
+      padding: 5px 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: #475569;
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
     }
-    .gamification-inline-pill strong {
-        color: #111827;
-        font-weight: 800;
-    }
-    .gamification-inline-pill-value {
-        display: inline-block;
-        min-width: 0;
-        max-width: 120px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        vertical-align: bottom;
-    }
-    .gamification-inline-pill[data-pill="goal"] {
-        background: rgba(206, 14, 45, 0.08);
-        border-color: rgba(206, 14, 45, 0.18);
-        color: var(--gamification-theme);
-    }
-    .gamification-chevron {
-        flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        border-radius: 999px;
-        border: 1px solid #e5e7eb;
-        background: rgba(255,255,255,0.94);
-        color: #64748b;
-        font-size: 12px;
-        font-weight: 800;
-        transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-    }
-    .gamification-card[open] .gamification-chevron {
-        transform: rotate(180deg);
-        border-color: rgba(206, 14, 45, 0.28);
-        color: var(--gamification-theme);
-    }
-    .gamification-body {
-        border-top: 1px solid #e5e7eb;
-        padding: 12px;
-    }
-    .gamification-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-    }
-    .gamification-track {
-        border-radius: 10px;
-        padding: 10px;
-        border: 1px solid #e5e7eb;
-        background: #ffffff;
-        min-width: 0;
-    }
-    .gamification-track[data-track="scout"] {
-        background: linear-gradient(180deg, rgba(255, 247, 237, 0.95) 0%, rgba(255,255,255,1) 100%);
-        border-color: #fed7aa;
-    }
-    .gamification-track[data-track="enforcer"] {
-        background: linear-gradient(180deg, rgba(236, 253, 245, 0.95) 0%, rgba(255,255,255,1) 100%);
-        border-color: #bbf7d0;
-    }
-    .gamification-track-label {
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #64748b;
-        margin-bottom: 6px;
-    }
-    .gamification-rank {
-        font-size: 13px;
-        font-weight: 800;
-        color: #111827;
-        line-height: 1.3;
-    }
-    .gamification-points {
-        margin-top: 6px;
-        font-size: 11px;
-        color: #475569;
-    }
-    .gamification-points strong {
-        font-size: 14px;
-        color: #111827;
-        margin-right: 4px;
-    }
-    .gamification-track-meta {
-        margin-top: 6px;
-        font-size: 11px;
-        color: #64748b;
-        line-height: 1.4;
-    }
-    .gamification-track .goal-celebration-btn {
-        margin-top: 8px;
-        padding: 8px 10px;
-        font-size: 10.5px;
-    }
-    .gamification-footer {
-        display: grid;
-        grid-template-columns: 1.2fr 1fr;
-        gap: 10px;
-        margin-top: 10px;
-    }
+
+    .gamification-inline-pill strong { color: var(--ink); }
+    .gamification-inline-pill-value { max-width: 112px; overflow: hidden; text-overflow: ellipsis; }
+    .gamification-inline-pill[data-pill="goal"] { border-color: rgba(206, 14, 45, 0.18); background: rgba(206, 14, 45, 0.08); color: var(--gamification-theme); }
+    .gamification-chevron { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-weight: 800; transition: transform 0.2s ease; }
+    .gamification-card[open] .gamification-chevron { transform: rotate(180deg); color: var(--gamification-theme); }
+    .gamification-body { padding: 10px; border-top: 1px solid var(--line); }
+    .gamification-grid,
+    .gamification-footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .gamification-footer { margin-top: 8px; }
+
+    .gamification-track,
     .gamification-summary {
-        border-radius: 10px;
-        padding: 10px;
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        min-width: 0;
+      min-width: 0;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
     }
-    .gamification-summary[data-summary="mvp"] {
-        background: linear-gradient(180deg, rgba(240, 253, 250, 0.96) 0%, rgba(255,255,255,1) 100%);
-        border-color: #99f6e4;
-    }
-    .gamification-summary[data-summary="goal"] {
-        background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255,255,255,1) 100%);
-        border-color: #bfdbfe;
-    }
+
+    .gamification-track-label,
     .gamification-summary-label {
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #64748b;
-        margin-bottom: 6px;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
     }
-    .gamification-summary-value {
-        font-size: 14px;
-        font-weight: 800;
-        color: #111827;
-        line-height: 1.25;
-        word-break: break-word;
-    }
-    .gamification-summary-meta {
-        margin-top: 5px;
-        font-size: 11px;
-        color: #64748b;
-    }
-    .gamification-summary-meta + .gamification-summary-meta {
-        margin-top: 3px;
-    }
-    .gamification-progress {
-        margin-top: 8px;
-        height: 8px;
-        border-radius: 999px;
-        background: #e5e7eb;
-        overflow: hidden;
-    }
-    .gamification-progress-fill {
-        width: 0%;
-        height: 100%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, var(--gamification-theme) 0%, #f59e0b 100%);
-        transition: width 0.35s ease;
-    }
+
+    .gamification-rank,
+    .gamification-summary-value { color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1.25; }
+    .gamification-points,
+    .gamification-track-meta,
+    .gamification-summary-meta { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .gamification-points strong { color: var(--ink); font-size: 14px; }
+    .gamification-progress { height: 8px; margin-top: 8px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
+    .gamification-progress-fill { width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--gamification-theme), var(--amber)); transition: width 0.35s ease; }
+
     .goal-celebration-btn {
-        margin-top: 10px;
-        width: 100%;
-        border: none;
-        border-radius: 8px;
-        padding: 9px 12px;
-        background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
-        color: #ffffff;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.02em;
-        cursor: pointer;
-        box-shadow: 0 6px 14px rgba(20, 184, 166, 0.25);
-        transition: transform 0.18s ease, box-shadow 0.18s ease;
-    }
-    .goal-celebration-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 10px 18px rgba(20, 184, 166, 0.32);
-    }
-    .goal-celebration-btn:active {
-        transform: translateY(0);
-    }
-    .goal-video-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.9);
-        z-index: 9999;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        padding: 18px;
-        box-sizing: border-box;
-    }
-    .goal-video-shell {
-        width: min(100%, 440px);
-        max-height: calc(100vh - 72px);
-        background: #0f172a;
-        border: 2px solid #14b8a6;
-        border-radius: 14px;
-        padding: 12px;
-        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
-        display: flex;
-        flex-direction: column;
-    }
-    .goal-video-title {
-        color: #f8fafc;
-        font-size: 14px;
-        font-weight: 800;
-        margin-bottom: 10px;
-        text-align: center;
-    }
-    .goal-video-frame {
-        width: 100%;
-        height: min(68vh, 420px);
-        min-height: 320px;
-        border: none;
-        border-radius: 10px;
-        background: #000000;
-        flex: 1;
-    }
-    .goal-video-close {
-        color: #e2e8f0;
-        margin-top: 14px;
-        font-family: monospace;
-        font-size: 12px;
-        cursor: pointer;
-        text-align: center;
-    }
-    @media (max-width: 360px) {
-        .gamification-grid,
-        .gamification-footer {
-            grid-template-columns: 1fr;
-        }
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px 10px;
+      border: none;
+      border-radius: 8px;
+      background: #0f766e;
+      color: #fff;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 800;
     }
 
-    /* Smooth UI Toggles */
-    @keyframes fadeInSlideUp {
-        from { opacity: 0; transform: translateY(6px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    #gamification-header, #bounty-list-container, #rogue-walkthrough, #closerStatus {
-          animation: fadeInSlideUp 0.25s ease-out forwards;
+    .tabbar {
+      position: sticky;
+      top: 88px;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 4px;
+      margin-bottom: 10px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
     }
 
-    /* Status & Alerts */
-    #loading { color: #0288d1; font-weight: bold; font-size: 12px; margin-bottom: 10px; background: #e0f2fe; padding: 8px; border-radius: 4px; text-align: center; }
-    #closerStatus { margin-top: 8px; margin-bottom: 12px; background: #e5e7eb; padding: 8px; border-radius: 4px; display: none; font-size: 11px; color: #374151; }
-    #crawlStatus { font-size: 11px; color: #4b5563; margin-top: 8px; font-weight: bold; text-align: center; }
+    .tab-button {
+      min-width: 0;
+      padding: 8px 5px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
 
-    /* Toggle Switch */
-    .switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+    .tab-button.active {
+      background: var(--flo-red);
+      color: #fff;
+      box-shadow: 0 4px 10px rgba(206, 14, 45, 0.18);
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .tab-panel {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .tab-panel.active { display: flex; }
+
+    .panel {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel.subtle { background: #f8fafc; border-color: #dbeafe; }
+    .panel.danger-zone { border-color: #fecaca; background: #fffafa; }
+    .panel-heading { justify-content: space-between; margin-bottom: 10px; }
+    .panel-title { margin: 0; color: var(--ink); font-size: 14px; font-weight: 800; }
+    .panel-kicker { margin: -5px 0 10px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin: 0 0 5px;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      margin: 0 0 10px;
+      padding: 9px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    textarea { min-height: 92px; resize: vertical; line-height: 1.35; }
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.14);
+    }
+
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .flex-row { margin-bottom: 10px; }
+    .flex-row input,
+    .flex-row select,
+    .flex-row button { margin-bottom: 0; }
+    .flex-row .grow { flex: 1; min-width: 0; }
+    .inline-actions { justify-content: space-between; flex-wrap: wrap; margin: 2px 0 8px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      min-height: 38px;
+      padding: 9px 11px;
+      border: none;
+      border-radius: 7px;
+      color: #fff;
+      background: #475569;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+      text-align: center;
+      transition: transform 0.08s ease, background-color 0.15s ease;
+    }
+
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { background: #cbd5e1 !important; color: #94a3b8 !important; cursor: not-allowed; transform: none; }
+    .btn-primary { background: var(--flo-red); }
+    .btn-primary:hover:not(:disabled) { background: var(--flo-red-dark); }
+    .btn-info { background: var(--blue); }
+    .btn-success { background: var(--green); }
+    .btn-warning { background: var(--amber); }
+    .btn-danger { background: var(--danger); }
+    .btn-dark { background: #111827; }
+    .btn-small { width: auto; min-height: 34px; padding: 8px 10px; white-space: nowrap; }
+
+    .link-btn {
+      padding: 0;
+      border: none;
+      background: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .link-btn:hover { color: var(--blue); text-decoration: underline; }
+
+    .hint {
+      margin: -4px 0 10px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .workflow-list {
+      margin: 0 0 10px;
+      padding-left: 18px;
+      color: #475569;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .queue-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .metric {
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+    }
+
+    .metric-label { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
+    .metric-value { margin-top: 4px; color: var(--ink); font-size: 16px; font-weight: 900; }
+    #queueHint,
+    #crawlStatus,
+    #closerStatus,
+    #nukeStatus,
+    #patchStatus {
+      color: #475569;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
+    #closerStatus {
+      display: none;
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 7px;
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    #crawlStatus,
+    #nukeStatus,
+    #patchStatus { min-height: 18px; text-align: center; }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 38px;
+      height: 22px;
+      flex: 0 0 auto;
+    }
+
     .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #d1d5db; transition: .4s; border-radius: 20px; }
-    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-    input:checked + .slider { background-color: #10b981; }
+    .slider {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: #cbd5e1;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      width: 16px;
+      height: 16px;
+      left: 3px;
+      bottom: 3px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.24);
+      transition: transform 0.2s ease;
+    }
+
+    input:checked + .slider { background: var(--green); }
     input:checked + .slider:before { transform: translateX(16px); }
 
- /* Recording Pulse Animation */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .toggle-row label:first-child { margin: 0; flex: 1; }
+    .leaderboard-heading { justify-content: space-between; margin-bottom: 8px; }
+    .leaderboard-list { margin: 0 0 12px; padding-left: 20px; color: #334155; font-size: 12px; line-height: 1.65; }
+    #bounty-list-container { display: none; margin-top: 8px; padding: 10px; border: 1px solid #fcd34d; border-radius: 8px; background: #fffbeb; color: #92400e; font-size: 11px; }
+    #bounty-list { margin: 5px 0 0; padding-left: 15px; }
+
+    .tooltip-container {
+      position: relative;
+      display: inline-flex;
+      color: var(--flo-red);
+      cursor: help;
+    }
+
+    .tooltip-text {
+      position: absolute;
+      bottom: 130%;
+      left: 50%;
+      z-index: 60;
+      width: 190px;
+      margin-left: -95px;
+      padding: 8px;
+      border: 1px solid rgba(206, 14, 45, 0.35);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+      color: #334155;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.35;
+      opacity: 0;
+      pointer-events: none;
+      visibility: hidden;
+      transition: opacity 0.15s ease;
+    }
+
+    .tooltip-container:hover .tooltip-text { opacity: 1; visibility: visible; }
+
+    .goal-video-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      padding: 18px;
+      background: rgba(0, 0, 0, 0.9);
+    }
+
+    .goal-video-shell {
+      width: min(100%, 440px);
+      max-height: calc(100vh - 72px);
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      border: 2px solid #14b8a6;
+      border-radius: 14px;
+      background: #0f172a;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
+    }
+
+    .goal-video-title { margin-bottom: 10px; color: #f8fafc; text-align: center; font-size: 14px; font-weight: 800; }
+    .goal-video-frame { width: 100%; height: min(68vh, 420px); min-height: 320px; border: none; border-radius: 10px; background: #000; }
+    .goal-video-close { margin-top: 14px; color: #e2e8f0; cursor: pointer; text-align: center; font-family: monospace; font-size: 12px; }
+
+    #rogue-walkthrough {
+      display: none;
+      margin-top: 10px;
+    }
+
+    .textarea-readonly {
+      background: #f1f5f9;
+      color: #334155;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 11px;
+    }
+
     @keyframes recording-pulse {
-        0% { box-shadow: inset 0 0 0 0px rgba(206, 14, 45, 0); }
-        50% { box-shadow: inset 0 0 15px 3px rgba(206, 14, 45, 0.6); }
-        100% { box-shadow: inset 0 0 0 0px rgba(206, 14, 45, 0); }
+      0% { box-shadow: inset 0 0 0 0 rgba(206, 14, 45, 0); }
+      50% { box-shadow: inset 0 0 18px 4px rgba(206, 14, 45, 0.5); }
+      100% { box-shadow: inset 0 0 0 0 rgba(206, 14, 45, 0); }
     }
 
     .recording-active {
-        animation: recording-pulse 2s infinite;
-        border: 2px solid #ce0e2d !important;
-    }
-    
-    #recording-badge {
-        display: none; /* Logic in sidepanel.js toggles this */
-        background: #ce0e2d;
-        color: white;
-        font-size: 10px;
-        font-weight: bold;
-        padding: 2px 6px;
-        border-radius: 4px;
-        text-transform: uppercase;
-        margin-left: 8px;
-        vertical-align: middle;
-        animation: blink 1s step-end infinite;
+      animation: recording-pulse 2s infinite;
+      border: 2px solid var(--flo-red);
     }
 
-    @keyframes blink {
-        50% { opacity: 0; }
+    .clippy-focus {
+      position: relative;
+      z-index: 25;
+      box-shadow: 0 0 0 3px rgba(206, 14, 45, 0.26), 0 0 16px rgba(206, 14, 45, 0.35) !important;
+      animation: spotlight-pulse 1.5s infinite;
+    }
+
+    @keyframes spotlight-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    @media (max-width: 360px) {
+      .field-grid,
+      .queue-summary,
+      .gamification-grid,
+      .gamification-footer { grid-template-columns: 1fr; }
+      .tabbar { top: 104px; }
+      .tab-button { font-size: 10px; padding-inline: 3px; }
     }
   </style>
 </head>
 <body>
-
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-  <h2 style="margin: 0;">🛡️ FloSports Reporter <span id="recording-badge">Recording...</span></h2>
-  
-  <!-- Options Gear Icon -->
-  <button id="openOptionsGearBtn" title="Open Settings" style="background: none; border: none; cursor: pointer; color: #6b7280; padding: 4px; transition: color 0.2s;">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="3"></circle>
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-    </svg>
-  </button>
-</div>
-
-  
-  <!-- Interactive Feedback Placeholder -->
-  <div id="clippy-process-bubble" class="clippy-bubble">
-      <span id="close-clippy-btn" style="position: absolute; top: 5px; right: 10px; cursor: pointer; color: #999; font-weight: bold; font-size: 16px;" title="Dismiss">×</span>
-      <img id="clippy-state-icon" src="images/clippy starting postion.png" alt="Clippy" style="width: 45px; height: auto;">
-      <div>
-          <strong>Clippy Says:</strong> <span id="clippy-feedback-text">Ready to hunt some pirates?</span>
-      </div>
-  </div>
-
-  <div id="loading">Connecting to Secure Services...</div>
-
-  <details id="gamification-header" class="gamification-card">
-    <summary class="gamification-toggle">
-      <div class="gamification-toggle-copy">
-        <div class="gamification-eyebrow">Squad Snapshot</div>
-        <div class="gamification-inline-list">
-          <span class="gamification-inline-pill"><strong>Scout:</strong> <span id="summary-scout-rank">Level 1</span></span>
-          <span class="gamification-inline-pill"><strong>Enforcer:</strong> <span id="summary-enforcer-rank">Level 1</span></span>
-          <span class="gamification-inline-pill"><strong>MVP:</strong> <span id="summary-mvp-name" class="gamification-inline-pill-value" style="text-transform: capitalize;">Loading...</span></span>
-          <span class="gamification-inline-pill" data-pill="goal"><strong>Goal:</strong> <span id="team-takedowns-inline">0</span>/1000</span>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-row">
+        <div class="brand-lockup">
+          <img class="brand-logo" src="FloReporter_logo.png" alt="FloSports Reporter">
+          <div class="brand-copy">
+            <h1 class="brand-title">FloSports Reporter</h1>
+            <div class="brand-subtitle">Clean reports, bulk tools, and repair workflows.</div>
+          </div>
         </div>
-      </div>
-      <span class="gamification-chevron" aria-hidden="true">▾</span>
-    </summary>
 
-    <div class="gamification-body">
-      <div class="gamification-grid">
-        <div class="gamification-track" data-track="scout">
-          <div class="gamification-track-label">Scout Track</div>
-          <div id="scout-rank" class="gamification-rank">Level 1 Scout Reporter</div>
-          <div class="gamification-points"><strong id="scout-points">0</strong> pts</div>
-          <div id="scout-next-level" class="gamification-track-meta">501 pts to Level 2</div>
-          <button id="scout-level3-video-btn" class="goal-celebration-btn" type="button" hidden>▶ Play Scout Level 3 Clip</button>
-        </div>
-        <div class="gamification-track" data-track="enforcer">
-          <div class="gamification-track-label">Enforcer Track</div>
-          <div id="enforcer-rank" class="gamification-rank">Level 1 Enforcer</div>
-          <div class="gamification-points"><strong id="enforcer-points">0</strong> pts</div>
-          <div id="enforcer-next-level" class="gamification-track-meta">501 pts to Level 2</div>
-          <button id="enforcer-level3-video-btn" class="goal-celebration-btn" type="button" hidden>▶ Play Enforcer Level 3 Clip</button>
-        </div>
+        <button id="openOptionsGearBtn" class="icon-btn" type="button" title="Open Settings" aria-label="Open Settings">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.23.65.23 1H21a2 2 0 0 1 0 4h-1.37c0 .35-.09.69-.23 1z"></path>
+          </svg>
+        </button>
       </div>
 
-      <div class="gamification-footer">
-        <div class="gamification-summary" data-summary="mvp">
-          <div class="gamification-summary-label">MVP of the Month</div>
-          <div id="mvp-name" class="gamification-summary-value" style="text-transform: capitalize;">Loading...</div>
-          <div class="gamification-summary-meta"><span id="mvp-points">0</span> total points</div>
-          <div id="mvp-gap" class="gamification-summary-meta">First report sets the pace.</div>
-          <button id="mvp-video-btn" class="goal-celebration-btn" type="button" hidden>▶ Play MVP Clip</button>
-        </div>
-        <div class="gamification-summary" data-summary="goal">
-        <div class="gamification-summary-label">Team Goal</div>
-        <div class="gamification-summary-value"><span id="team-takedowns">0</span> / 1000</div>
-        <div class="gamification-progress">
-          <div id="team-goal-progress" class="gamification-progress-fill"></div>
-        </div>
-        <div class="gamification-summary-meta">1k takedowns target</div>
-        <div id="team-goal-remaining" class="gamification-summary-meta">About 1000 reports to goal.</div>
-        <button id="team-goal-video-btn" class="goal-celebration-btn" type="button" hidden>▶ Play Victory Clip</button>
+      <div class="status-row">
+        <span id="modeChip" class="status-chip">Scout Mode</span>
+        <span id="loading">Connecting to Secure Services...</span>
+        <span id="recording-badge" class="status-chip">Recording</span>
       </div>
+    </header>
+
+    <div id="clippy-process-bubble" class="assistant-strip">
+      <span id="close-clippy-btn" title="Dismiss">x</span>
+      <img id="clippy-state-icon" src="images/clippy starting postion.png" alt="Assistant">
+      <div class="assistant-copy">
+        <strong>Assistant</strong>
+        <span id="clippy-feedback-text">Ready to hunt some pirates?</span>
       </div>
     </div>
-  </details>
 
-  <div id="goal-video-overlay" class="goal-video-overlay">
-    <div class="goal-video-shell">
-      <div id="goal-video-title" class="goal-video-title">Team Goal Celebration</div>
-      <iframe id="goal-video-frame" class="goal-video-frame" allow="autoplay; fullscreen" allowfullscreen referrerpolicy="no-referrer"></iframe>
+    <details id="gamification-header" class="gamification-card">
+      <summary class="gamification-toggle">
+        <div class="gamification-toggle-copy">
+          <div class="gamification-eyebrow">Squad Snapshot</div>
+          <div class="gamification-inline-list">
+            <span class="gamification-inline-pill"><strong>Scout:</strong> <span id="summary-scout-rank">Level 1</span></span>
+            <span class="gamification-inline-pill"><strong>Enforcer:</strong> <span id="summary-enforcer-rank">Level 1</span></span>
+            <span class="gamification-inline-pill"><strong>MVP:</strong> <span id="summary-mvp-name" class="gamification-inline-pill-value" style="text-transform: capitalize;">Loading...</span></span>
+            <span class="gamification-inline-pill" data-pill="goal"><strong>Goal:</strong> <span id="team-takedowns-inline">0</span>/1000</span>
+          </div>
+        </div>
+        <span class="gamification-chevron" aria-hidden="true">v</span>
+      </summary>
+
+      <div class="gamification-body">
+        <div class="gamification-grid">
+          <div class="gamification-track" data-track="scout">
+            <div class="gamification-track-label">Scout Track</div>
+            <div id="scout-rank" class="gamification-rank">Level 1 Scout Reporter</div>
+            <div class="gamification-points"><strong id="scout-points">0</strong> pts</div>
+            <div id="scout-next-level" class="gamification-track-meta">501 pts to Level 2</div>
+            <button id="scout-level3-video-btn" class="goal-celebration-btn" type="button" hidden>Play Scout Level 3 Clip</button>
+          </div>
+
+          <div class="gamification-track" data-track="enforcer">
+            <div class="gamification-track-label">Enforcer Track</div>
+            <div id="enforcer-rank" class="gamification-rank">Level 1 Enforcer</div>
+            <div class="gamification-points"><strong id="enforcer-points">0</strong> pts</div>
+            <div id="enforcer-next-level" class="gamification-track-meta">501 pts to Level 2</div>
+            <button id="enforcer-level3-video-btn" class="goal-celebration-btn" type="button" hidden>Play Enforcer Level 3 Clip</button>
+          </div>
+        </div>
+
+        <div class="gamification-footer">
+          <div class="gamification-summary" data-summary="mvp">
+            <div class="gamification-summary-label">MVP of the Month</div>
+            <div id="mvp-name" class="gamification-summary-value" style="text-transform: capitalize;">Loading...</div>
+            <div class="gamification-summary-meta"><span id="mvp-points">0</span> total points</div>
+            <div id="mvp-gap" class="gamification-summary-meta">First report sets the pace.</div>
+            <button id="mvp-video-btn" class="goal-celebration-btn" type="button" hidden>Play MVP Clip</button>
+          </div>
+
+          <div class="gamification-summary" data-summary="goal">
+            <div class="gamification-summary-label">Team Goal</div>
+            <div class="gamification-summary-value"><span id="team-takedowns">0</span> / 1000</div>
+            <div class="gamification-progress">
+              <div id="team-goal-progress" class="gamification-progress-fill"></div>
+            </div>
+            <div class="gamification-summary-meta">1k takedowns target</div>
+            <div id="team-goal-remaining" class="gamification-summary-meta">About 1000 reports to goal.</div>
+            <button id="team-goal-video-btn" class="goal-celebration-btn" type="button" hidden>Play Victory Clip</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <div id="goal-video-overlay" class="goal-video-overlay">
+      <div class="goal-video-shell">
+        <div id="goal-video-title" class="goal-video-title">Team Goal Celebration</div>
+        <iframe id="goal-video-frame" class="goal-video-frame" allow="autoplay; fullscreen" allowfullscreen referrerpolicy="no-referrer"></iframe>
+      </div>
+      <div class="goal-video-close">Click anywhere to close</div>
     </div>
-    <div class="goal-video-close">Click anywhere to close</div>
-  </div>
 
-  <div class="container">
-    
-    <!-- MANUAL REPORTING CARD -->
-    <div class="card">
-      <h3 class="section-title">Manual Reporting</h3>
-      
-      <label>Reporter Name</label>
-      <input type="text" id="reporterName" placeholder="e.g. John Doe">
-      
-      <label>
-        Vertical
-        <div class="tooltip-container">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span class="tooltip-text">Select the sport category (e.g., FloRacing). This identifies which Rights PDF to use for the legal claim.</span>
-        </div>
-      </label>
-      <select id="verticalSelect"><option value="">Loading...</option></select>
-      
-      <label>
-        FloSports Event Name
-        <div class="tooltip-container">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span class="tooltip-text">Start typing the event name. If it's a new event, use the "Search" button to find and save the correct URL to the sheet.</span>
-        </div>
-      </label>
-      <input type="text" id="eventInput" list="eventList" placeholder="202X Name of Event">
-      <datalist id="eventList"></datalist>
+    <nav class="tabbar" aria-label="Side panel sections">
+      <button class="tab-button active" type="button" data-tab-target="report">Report</button>
+      <button class="tab-button" type="button" data-tab-target="automate">Automate</button>
+      <button class="tab-button" type="button" data-tab-target="intel">Intel</button>
+      <button class="tab-button" type="button" data-tab-target="scoreboard">Scoreboard</button>
+      <button class="tab-button" type="button" data-tab-target="repair">Repair</button>
+    </nav>
 
-      <label>
-        Flo's Source URL
-        <div class="tooltip-container">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span class="tooltip-text">This is the official FloSports link. If empty, push Search. Grabbing this link is required for evidence!</span>
-        </div>
-      </label>
+    <main class="container">
+      <section id="tab-report" class="tab-panel active" data-tab-panel="report">
+        <div class="panel">
+          <div class="panel-heading">
+            <h2 class="panel-title">Report Setup</h2>
+          </div>
 
-      <div class="flex-row">
-        <input type="text" id="sourceUrlDisplay" placeholder="Paste URL here..." style="flex: 1;">
-        <button id="searchEventBtn" class="btn btn-info" style="width: auto; padding: 9px 15px;" title="Search Event">Search</button>
-      </div>
+          <label for="reporterName">Reporter Name</label>
+          <input type="text" id="reporterName" placeholder="e.g. John Doe">
 
-      <button id="btn-grab-flo" class="btn btn-success" style="margin-bottom: 8px;">Copy Current Tab's URL</button>
-      
-      <div class="flex-between">
-          <button id="copyEventNameBtn" class="link-btn">Copy Event Name</button>
-          <button id="copyUrlBtn" class="link-btn">Copy "Stolen From" URL</button>
-      </div>
+          <div class="field-grid">
+            <div>
+              <label for="verticalSelect">
+                Vertical
+                <span class="tooltip-container">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span class="tooltip-text">Select the sport category. This identifies which Rights PDF to use for the legal claim.</span>
+                </span>
+              </label>
+              <select id="verticalSelect"><option value="">Loading...</option></select>
+            </div>
 
-      <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 15px 0;">
+            <div>
+              <label for="eventInput">
+                FloSports Event
+                <span class="tooltip-container">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span class="tooltip-text">Start typing the event name. If it is new, use Search to find and save the correct URL.</span>
+                </span>
+              </label>
+              <input type="text" id="eventInput" list="eventList" placeholder="202X Name of Event">
+              <datalist id="eventList"></datalist>
+            </div>
+          </div>
 
-      <!-- Instructions -->
-      <div class="instructions">
-        <strong>Workflow Steps:</strong>
-        <ol>
-          <li>Select the <b>Vertical</b> and <b>Event Name</b>.</li>
-          <li>Open the original broadcast and click <b>Copy Current Tab's URL</b>.</li>
-          <li>Navigate to the pirated video and click <b>+ Add</b> on the screen overlay.</li>
-          <li>Click <b>Start Report</b> below.</li>
-        </ol>
-      </div>
-      
-      <button id="startBtn" class="btn" disabled>Start Report</button>
-      <button id="nukeStreamBtn" class="btn" style="background-color: #1a1a1a; margin-top: 10px;">Nuke Stream (Rogue Site)</button>
-
-      <!--  TOGGLE FOR PAGE OVERLAY -->
-      <div class="flex-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
-          <label for="rogueToggle" style="margin:0; font-size: 11px; flex: 1;">Show 'Nuke' Button on Video Page</label>
-          <label class="switch">
-            <input type="checkbox" id="rogueToggle">
-            <span class="slider"></span>
+          <label for="sourceUrlDisplay">
+            Flo Source URL
+            <span class="tooltip-container">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span class="tooltip-text">Official FloSports link used as evidence. Search or copy the current tab when empty.</span>
+            </span>
           </label>
-      </div>
-    </div>
+          <div class="flex-row">
+            <input class="grow" type="text" id="sourceUrlDisplay" placeholder="Paste URL here...">
+            <button id="searchEventBtn" class="btn btn-info btn-small" type="button" title="Search Event">Search</button>
+          </div>
 
-    <!-- AUTOMATION TOOLS CARD -->
-    <div class="card auto-card">
-      <h3 class="section-title">🤖 Automation Tools</h3>
-      <div class="hint" style="color: #92400e; margin-bottom: 15px;">
-        Automate tasks using the connected <a href="#" id="automationSheetLink" target="_blank" style="color: inherit; text-decoration: underline;">Google Sheet</a>. <strong>Run only one tool at a time.</strong>
-      </div>
-      
-      <!-- The Closer -->
-      <label>1. The Closer (Status Checker)</label>
-      <div class="hint">
-        Scans Column H for live links. Automatically skips dead links and updates the row status to 'Resolved' or 'Investigating'.
-      </div>
-      <div class="flex-row">
-          <label for="startRowInput" style="margin:0; font-size: 11px; white-space: nowrap;">Start Row:</label>
-          <input type="number" id="startRowInput" placeholder="e.g. 2" min="1" value="2" style="flex: 1; min-width: 75px;">
-          <label for="closerTabsSelect" style="margin:0; font-size: 11px; white-space: nowrap;">Tabs:</label>
-          <select id="closerTabsSelect" style="width: 50px;">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4" selected>4</option>
-          </select>
-          <label class="switch">
-            <input type="checkbox" id="closerToggle">
-            <span class="slider"></span>
-          </label>
-          <span id="closerToggleLabel" style="font-size: 12px; font-weight: bold; color: #6b7280; width: 25px; text-align: right;">Off</span>
-      </div>
-      <div id="closerStatus">Waiting to start...</div>
+          <button id="btn-grab-flo" class="btn btn-success" type="button">Copy Current Tab URL</button>
+          <div class="inline-actions">
+            <button id="copyEventNameBtn" class="link-btn" type="button">Copy Event Name</button>
+            <button id="copyUrlBtn" class="link-btn" type="button">Copy Stolen From URL</button>
+          </div>
 
-      <hr style="border: 0; border-top: 1px solid #d1d5db; margin: 15px 0;">
+          <ol class="workflow-list">
+            <li>Select vertical and event.</li>
+            <li>Save or copy the official source URL.</li>
+            <li>Add pirated videos from the page overlay.</li>
+          </ol>
+        </div>
 
-      <!-- Double Tap Scan -->
-      <label>2. Double Tap (Bulk Reporter)</label>
-      <div class="hint">
-        Finds active links for a specific platform in your sheet and queues them up so you can report them all at once.
-      </div>
-      <div class="flex-row">
-          <select id="platformScanSelect" style="width: 90px;">
+        <div class="panel">
+          <div class="panel-heading">
+            <h2 class="panel-title">Queue + Action</h2>
+          </div>
+
+          <div class="queue-summary">
+            <div class="metric">
+              <div class="metric-label">Queued URLs</div>
+              <div id="queueCount" class="metric-value">0</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Detected Platform</div>
+              <div id="queuePlatform" class="metric-value">-</div>
+            </div>
+          </div>
+          <div id="queueHint" class="hint">Use the page overlay Add button to queue pirated links.</div>
+          <button id="startBtn" class="btn btn-primary" type="button" disabled>Start Report</button>
+        </div>
+
+        <div class="panel danger-zone">
+          <div class="panel-heading">
+            <h2 class="panel-title">Rogue Site Tools</h2>
+          </div>
+          <p class="panel-kicker">Use safety mode by default. Turn on the page overlay only when you are working a third-party stream.</p>
+
+          <button id="nukeStreamBtn" class="btn btn-dark" type="button">3rd Party Safety: ON</button>
+          <div class="flex-row" style="margin-top: 8px;">
+            <button id="nukeBtn" class="btn btn-danger" type="button">Capture Rogue Evidence</button>
+          </div>
+          <div id="nukeStatus"></div>
+
+          <div class="toggle-row">
+            <label for="rogueToggle">Show Nuke button on video page</label>
+            <label class="switch">
+              <input type="checkbox" id="rogueToggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-automate" class="tab-panel" data-tab-panel="automate">
+        <div class="panel subtle">
+          <div class="panel-heading">
+            <h2 class="panel-title">Automation Tools</h2>
+          </div>
+          <p class="panel-kicker">Automate work from the connected <a href="#" id="automationSheetLink" target="_blank">Google Sheet</a>. Run only one tool at a time.</p>
+
+          <label>The Closer</label>
+          <div class="hint">Scans Column H for live links, then updates each row as Resolved or Investigating.</div>
+          <div class="flex-row">
+            <label for="startRowInput" style="margin:0; white-space:nowrap;">Start Row</label>
+            <input type="number" id="startRowInput" placeholder="2" min="1" value="2" style="max-width: 72px;">
+            <label for="closerDurationSelect" style="margin:0; white-space:nowrap;">Run Time</label>
+            <select id="closerDurationSelect" style="max-width: 88px;">
+              <option value="on" selected>On</option>
+              <option value="1">1 min</option>
+              <option value="3">3 min</option>
+              <option value="5">5 min</option>
+              <option value="10">10 min</option>
+              <option value="15">15 min</option>
+              <option value="30">30 min</option>
+            </select>
+            <label class="switch">
+              <input type="checkbox" id="closerToggle">
+              <span class="slider"></span>
+            </label>
+            <span id="closerToggleLabel" style="font-size: 12px; font-weight: 800; color: #64748b; width: 24px; text-align: right;">Off</span>
+          </div>
+          <div id="closerStatus">Waiting to start...</div>
+        </div>
+
+        <div class="panel subtle">
+          <div class="panel-heading">
+            <h2 class="panel-title">Double Tap</h2>
+          </div>
+          <div class="hint">Finds active platform links in the sheet and queues them for bulk reporting.</div>
+          <div class="flex-row">
+            <select id="platformScanSelect" style="max-width: 104px;">
+              <option value="tiktok">TikTok</option>
+              <option value="instagram">Instagram</option>
+              <option value="youtube">YouTube</option>
+              <option value="twitter">Twitter</option>
+              <option value="twitch">Twitch</option>
+              <option value="facebook">Facebook</option>
+              <option value="discord">Discord</option>
+              <option value="rumble">Rumble</option>
+              <option value="other">Other</option>
+            </select>
+            <label for="doubleTapStartRow" style="margin:0; white-space:nowrap;">Start Row</label>
+            <input type="number" id="doubleTapStartRow" min="1" value="2" title="Start Row" style="max-width: 72px;">
+            <button id="doubleTapBtn" class="btn btn-warning btn-small" type="button">Scan</button>
+          </div>
+
+          <div class="flex-row">
+            <button id="reportFromSheetBtn" class="btn btn-success" type="button" style="display: none; flex: 1;">Report Queued</button>
+            <button id="stopScanBtn" class="btn btn-danger" type="button" style="display: none; flex: 1;">Stop Scan</button>
+          </div>
+          <div id="crawlStatus"></div>
+        </div>
+      </section>
+
+      <section id="tab-intel" class="tab-panel" data-tab-panel="intel">
+        <div class="panel">
+          <div class="panel-heading">
+            <h2 class="panel-title">Intelligence Briefing</h2>
+          </div>
+          <p class="panel-kicker">Generate tactical PDF reports for piracy trends, resolved rates, and team performance.</p>
+
+          <div class="field-grid">
+            <div>
+              <label for="reportStartDate">Start Date</label>
+              <input type="date" id="reportStartDate" title="Start Date">
+            </div>
+            <div>
+              <label for="reportEndDate">End Date</label>
+              <input type="date" id="reportEndDate" title="End Date">
+            </div>
+          </div>
+          <button id="generateIntelReportBtn" class="btn btn-info" type="button">Generate Briefing</button>
+        </div>
+      </section>
+
+      <section id="tab-scoreboard" class="tab-panel" data-tab-panel="scoreboard">
+        <div class="panel">
+          <div class="leaderboard-heading">
+            <h2 class="panel-title">Top Scouts</h2>
+            <button id="bountyBtn" class="link-btn" type="button">Active Bounties</button>
+          </div>
+          <ul id="scout-leaderboard" class="leaderboard-list">
+            <li>Loading Scouts...</li>
+          </ul>
+
+          <h2 class="panel-title" style="margin-bottom: 8px;">Top Enforcers</h2>
+          <ul id="enforcer-leaderboard" class="leaderboard-list">
+            <li>Loading Enforcers...</li>
+          </ul>
+
+          <div id="bounty-list-container">
+            <strong>Double XP Events:</strong>
+            <ul id="bounty-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-repair" class="tab-panel" data-tab-panel="repair">
+        <div class="panel danger-zone">
+          <div class="panel-heading">
+            <h2 class="panel-title">Platform Repair</h2>
+          </div>
+          <p class="panel-kicker">Train selectors or record a macro on the active platform page.</p>
+
+          <label for="repairPlatformSelect">Platform</label>
+          <select id="repairPlatformSelect">
             <option value="tiktok">TikTok</option>
-            <option value="youtube">YouTube</option>
             <option value="instagram">Instagram</option>
-            <option value="facebook">Facebook</option>
-            <option value="rumble">Rumble</option>
-            <option value="discord">Discord</option>
-            <option value="other">Other</option>
-          </select>
-          <label for="doubleTapStartRow" style="margin:0; font-size: 11px; white-space: nowrap;">Start Row:</label>
-          <input type="number" id="doubleTapStartRow" min="1" value="2" title="Start Row" style="flex: 1; min-width: 75px;">
-          <button id="doubleTapBtn" class="btn btn-warning" style="width: auto; padding: 9px 12px;">Scan</button>
-      </div>
-
-      <div class="flex-row" style="margin-top: 8px;">
-          <button id="reportFromSheetBtn" class="btn btn-success" style="display: none; flex: 1;">Report Queued</button>
-          <button id="stopScanBtn" class="btn btn-danger" style="display: none; flex: 1;">Stop Scan</button>
-      </div>
-      
-      <div id="crawlStatus" style="font-size: 11px; color: #4b5563; margin-top: 8px; font-weight: bold; text-align: center;"></div>
-
-      <!-- ========================================== -->
-      <!--      INTELLIGENCE BRIEFING SECTION         -->
-      <!-- ========================================== -->
-      <hr style="border: 0; border-top: 1px solid #d1d5db; margin: 15px 0;">
-
-      <label>3. Intelligence Briefing</label>
-      <div class="hint">
-        Generate tactical PDF reports analyzing piracy trends, resolved rates, and team performance over time.
-      </div>
-      <div class="flex-row">
-          <input type="date" id="reportStartDate" title="Start Date" style="flex: 1;">
-          <input type="date" id="reportEndDate" title="End Date" style="flex: 1;">
-      </div>
-      <div style="display: flex; justify-content: center; margin-top: 8px;">
-          <button id="generateIntelReportBtn" class="btn btn-info" style="width: auto; padding: 9px 24px; display: flex; align-items: center; justify-content: center; gap: 6px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-            Briefing
-          </button>
-      </div>
-      <!-- End of Intelligence Briefing -->
-    </div>
-
-    <!-- LEADERBOARD CARD -->
-    <div class="card auto-card" style="margin-top: 12px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <h3 class="section-title" style="margin:0;">🏆 Top 5 Scouts</h3>
-        <button id="bountyBtn" class="link-btn" style="color:#f59e0b; font-weight:bold;">⭐ Active Bounties</button>
-      </div>
-      <ul id="scout-leaderboard" style="margin:0 0 10px 0; padding-left:20px; font-size:12px; color:#333; line-height: 1.6;">
-          <li>Loading Scouts...</li>
-      </ul>
-      <h3 class="section-title">👮 Top 5 Enforcers</h3>
-      <ul id="enforcer-leaderboard" style="margin:0; padding-left:20px; font-size:12px; color:#333; line-height: 1.6;">
-          <li>Loading Enforcers...</li>
-      </ul>
-      <div id="bounty-list-container" style="display:none; margin-top:10px; padding:10px; background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; font-size:11px;">
-          <strong>🔥 Double XP Events:</strong>
-          <ul id="bounty-list" style="margin:5px 0 0 0; padding-left:15px; color:#92400e;"></ul>
-      </div>
-    </div>
-
-    <!-- DEV TOOLS CARD -->
-    <div class="card auto-card" style="margin-top: 12px; border-color: #fca5a5;">
-      <h3 class="section-title" style="color: #b91c1c;">🔧 Platform Repair</h3>
-      <div class="hint">Click to train new selectors on the active page.</div>
-      <div class="flex-row">
-          <select id="repairPlatformSelect" style="flex: 1;">
-            <option value="tiktok">TikTok</option>
             <option value="youtube">YouTube</option>
+            <option value="twitter">Twitter</option>
+            <option value="twitch">Twitch</option>
+            <option value="facebook">Facebook</option>
+            <option value="discord">Discord</option>
+            <option value="rumble">Rumble</option>
           </select>
-         <button id="startTrainingBtn" class="btn btn-danger" style="width: auto; padding: 9px 12px;">Record Selectors</button>
-         <button id="startMacroBtn" class="btn btn-warning" style="width: auto; padding: 9px 12px; margin-left: 5px;">Record Macro</button>
-         <button id="stopMacroBtn" class="btn btn-primary" style="width: auto; padding: 9px 12px; margin-left: 5px; display: none; background-color: #111827;">Stop</button>
-</div>
-    </div>
-  </div>
 
-  <!-- ROGUE WALKTHROUGH CONTAINER -->
-  <div id="rogue-walkthrough" style="display: none; padding-top: 10px;">
-    <h3 style="color: #1a1a1a; margin-top: 0;">Rogue Site Takedown</h3>
-    <div style="font-size: 12px; margin-bottom: 10px;">
-      <strong>Scraped Data:</strong><br>
-      <textarea id="rogueScrapedData" rows="6" readonly style="width: 100%; margin-top: 5px; font-size: 11px; padding: 6px; box-sizing: border-box; background: #e5e7eb; color: #374151;"></textarea>
-    </div>
-    <div style="font-size: 12px; margin-bottom: 10px;">
-      <strong>User Notes:</strong><br>
-      <textarea id="rogueUserNotes" rows="4" style="width: 100%; margin-top: 5px; font-size: 11px; padding: 6px; box-sizing: border-box;" placeholder="Enter details about the stream..."></textarea>
-    </div>
-    <button id="saveRogueToSheetBtn" class="btn" style="background: #ce0e2d; color: white; padding: 8px; margin-bottom: 10px; width: 100%;">Save to Pirate Websites Sheet</button>
-    <button id="closeRogueBtn" class="btn" style="background: #ccc; color: #333; padding: 8px; width: 100%;">Cancel / Close</button>
+          <div class="flex-row">
+            <button id="startTrainingBtn" class="btn btn-danger" type="button" style="flex: 1;">Record Selectors</button>
+            <button id="startMacroBtn" class="btn btn-warning" type="button" style="flex: 1;">Record Macro</button>
+            <button id="stopMacroBtn" class="btn btn-primary" type="button" style="display: none; flex: 1; background-color: #111827;">Stop</button>
+          </div>
+          <div id="patchStatus"></div>
+        </div>
+
+        <div id="selectorPatchUI" class="panel" style="display: none;">
+          <div class="panel-heading">
+            <h2 class="panel-title">Captured Patch Review</h2>
+          </div>
+          <label for="capturedSelectorRaw">Captured Selector or Macro</label>
+          <textarea id="capturedSelectorRaw" class="textarea-readonly" readonly placeholder="Captured selector or macro data will appear here."></textarea>
+
+          <div class="field-grid">
+            <div>
+              <label for="selectorSectionMap">Config Section</label>
+              <select id="selectorSectionMap">
+                <option value="scraper">Scraper</option>
+                <option value="autofill">Autofill</option>
+                <option value="session">Session</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="flo-patch-action">Action Type</label>
+              <select id="flo-patch-action">
+                <option value="click">Click</option>
+                <option value="type">Type</option>
+                <option value="select">Select</option>
+                <option value="">Selector Only</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="selectorFieldMap">Field Name</label>
+          <input id="selectorFieldMap" list="selectorFieldOptions" placeholder="e.g. submit_button">
+          <datalist id="selectorFieldOptions">
+            <option value="account_handle">
+            <option value="account_menu_trigger">
+            <option value="buttons.next">
+            <option value="candidate_anchors">
+            <option value="candidate_channel_links">
+            <option value="channel_handle">
+            <option value="channel_link">
+            <option value="clip_views">
+            <option value="copyright_reason">
+            <option value="fields.content_urls">
+            <option value="fields.send_button">
+            <option value="handle">
+            <option value="handle_links">
+            <option value="live_indicators">
+            <option value="live_viewers">
+            <option value="menu_button">
+            <option value="profile_links">
+            <option value="report_button">
+            <option value="submit_button">
+            <option value="success_indicators">
+            <option value="views">
+            <option value="views_shorts">
+            <option value="views_std">
+            <option value="vod_views">
+          </datalist>
+
+          <button id="saveSelectorBtn" class="btn btn-primary" type="button">Patch Cloud Config</button>
+        </div>
+      </section>
+    </main>
+
+    <section id="rogue-walkthrough" class="panel danger-zone">
+      <div class="panel-heading">
+        <h2 class="panel-title">Rogue Site Takedown</h2>
+      </div>
+
+      <label for="rogueScrapedData">Scraped Data</label>
+      <textarea id="rogueScrapedData" class="textarea-readonly" rows="7" readonly></textarea>
+
+      <label for="rogueUserNotes">User Notes</label>
+      <textarea id="rogueUserNotes" rows="4" placeholder="Enter details about the stream..."></textarea>
+
+      <label for="dmcaNoticeArea">DMCA Notice Draft</label>
+      <textarea id="dmcaNoticeArea" rows="8" placeholder="Generated DMCA notice will appear here."></textarea>
+
+      <div class="flex-row">
+        <button id="generateDmcaBtn" class="btn btn-info" type="button" style="flex: 1;">Open Email Draft</button>
+        <button id="googleDeindexBtn" class="btn btn-warning" type="button" style="flex: 1;">Google Deindex</button>
+      </div>
+
+      <button id="saveRogueToSheetBtn" class="btn btn-primary" type="button">Save to Pirate Websites Sheet</button>
+      <button id="closeRogueBtn" class="btn" type="button" style="margin-top: 8px; background: #cbd5e1; color: #334155;">Cancel / Close</button>
+    </section>
   </div>
 
   <script src="sidepanel.js" type="module"></script>

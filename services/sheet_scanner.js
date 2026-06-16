@@ -36,6 +36,23 @@ export function createSheetScanner({
     }).catch(() => {});
   }
 
+  const CLOSED_ROW_STATUSES = new Set(['resolve', 'resolved', 'retract', 'retracted']);
+
+  function isClosedRowStatus(status) {
+    return CLOSED_ROW_STATUSES.has(String(status || '').trim().toLowerCase());
+  }
+
+  function getDurationMs(durationMinutes) {
+    const minutes = Number(durationMinutes);
+    if (!Number.isFinite(minutes) || minutes <= 0) return null;
+    return minutes * 60 * 1000;
+  }
+
+  function formatDuration(durationMinutes) {
+    const minutes = Number(durationMinutes);
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+
   function isUrlCrossedOut(startIndex, endIndex, formatRuns, cellStrikethrough) {
     if (cellStrikethrough) return true;
     if (!formatRuns || formatRuns.length === 0) return false;
@@ -221,18 +238,24 @@ export function createSheetScanner({
     }
   }
 
-  async function run(startRowUI = 1, maxConcurrentTabs = 4) {
-    void maxConcurrentTabs;
-
+  async function run(startRowUI = 1, options = {}) {
     if (isRunning) return;
+
+    const durationMs = getDurationMs(options?.durationMinutes);
+    const durationDeadline = durationMs ? Date.now() + durationMs : null;
+    const durationLabel = durationMs ? formatDuration(options.durationMinutes) : null;
 
     isRunning = true;
     stopRequested = false;
-    sendProgress(`Starting from Row ${startRowUI}`, 'Fetching sheet data with formatting...');
+    sendProgress(
+      `Starting from Row ${startRowUI}`,
+      durationLabel
+        ? `Timed Closer run will continue for ${durationLabel}.`
+        : 'Runs until stopped or the bottom of the sheet is reached.'
+    );
 
     try {
       const rows = await getColumnHDataWithFormatting();
-      let consecutiveBlanks = 0;
       const startIndex = Math.max(0, startRowUI - 1);
 
       if (startIndex >= rows.length) {
@@ -240,19 +263,63 @@ export function createSheetScanner({
         return;
       }
 
-      for (let rowIndex = startIndex; rowIndex < rows.length; rowIndex++) {
+      let rowIndex = startIndex;
+      let consecutiveBlanks = 0;
+      let completionSent = false;
+
+      const finish = (status, details) => {
+        sendProgress(status, details);
+        completionSent = true;
+      };
+
+      const restartTimedRun = async () => {
+        finish('Reached Bottom', `Restarting at Row ${startRowUI} until the ${durationLabel} run is complete.`);
+        completionSent = false;
+        rowIndex = startIndex;
+        consecutiveBlanks = 0;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      };
+
+      while (true) {
         if (stopRequested) {
-          sendProgress('Scanner Stopped', 'User interrupted the process.');
+          finish('Scanner Stopped', 'User interrupted the process.');
+          break;
+        }
+
+        if (durationDeadline && Date.now() >= durationDeadline) {
+          finish('Scanner Complete', `Timed Closer run finished after ${durationLabel}.`);
+          break;
+        }
+
+        if (rowIndex >= rows.length) {
+          if (durationDeadline) {
+            await restartTimedRun();
+            continue;
+          }
+
+          finish('Scanner Complete', 'Finished processing rows.');
           break;
         }
 
         const cellData = rows[rowIndex];
+        if (isClosedRowStatus(cellData?.status)) {
+          consecutiveBlanks = 0;
+          rowIndex++;
+          continue;
+        }
+
         if (!cellData || !cellData.text) {
           consecutiveBlanks++;
           if (consecutiveBlanks >= 3) {
-            sendProgress('Scanner Complete', 'Hit 3 consecutive blank cells.');
+            if (durationDeadline) {
+              await restartTimedRun();
+              continue;
+            }
+
+            finish('Scanner Complete', 'Hit 3 consecutive blank cells.');
             break;
           }
+          rowIndex++;
           continue;
         }
 
@@ -270,7 +337,10 @@ export function createSheetScanner({
           });
         }
 
-        if (matches.length === 0) continue;
+        if (matches.length === 0) {
+          rowIndex++;
+          continue;
+        }
 
         sendProgress(`Scanning Row ${rowIndex + 1}`, `Checking ${matches.length} link(s)...`);
 
@@ -281,6 +351,10 @@ export function createSheetScanner({
 
         for (let matchIndex = 0; matchIndex < matches.length; matchIndex++) {
           if (stopRequested) break;
+          if (durationDeadline && Date.now() >= durationDeadline) {
+            finish('Scanner Complete', `Timed Closer run finished after ${durationLabel}.`);
+            break;
+          }
 
           const { url, index, end } = matches[matchIndex];
           if (isInternalManagedUrl(url)) continue;
@@ -373,25 +447,34 @@ export function createSheetScanner({
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
 
-        if (stopRequested) break;
+        if (stopRequested) {
+          finish('Scanner Stopped', 'User interrupted the process.');
+          break;
+        }
+
+        if (completionSent) break;
 
         const totalDead = newlyStruck + previouslyDeadCount;
         if (totalDead > 0 && totalActive === 0) {
           await updateRowStatus(rowIndex, 'Resolved');
+          cellData.status = 'Resolved';
           sendProgress(`Row ${rowIndex + 1}`, 'All links DOWN. Row resolved.');
           if (newlyStruck > 0) {
             await addEnforcerBonusPoints(rowIndex, newlyStruck * 15);
           }
         } else if (totalActive > 0) {
           await updateRowStatus(rowIndex, 'Investigating');
+          cellData.status = 'Investigating';
           sendProgress(
             `Row ${rowIndex + 1}`,
             totalDead > 0 ? 'Mixed links. Marked Investigating.' : 'Row is ACTIVE.'
           );
         }
+
+        rowIndex++;
       }
 
-      if (!stopRequested) {
+      if (!completionSent && !stopRequested) {
         sendProgress('Scanner Complete', 'Finished processing rows.');
       }
     } catch (error) {
@@ -399,6 +482,7 @@ export function createSheetScanner({
       sendProgress('Scanner Failed', error.message);
     } finally {
       isRunning = false;
+      chrome.storage.local.set({ closer_enabled: false }).catch(() => {});
     }
   }
 
@@ -424,6 +508,7 @@ export function createSheetScanner({
         if (stopRequested || activeLinks.length >= 100) break;
 
         const cellData = rows[rowIndex];
+        if (isClosedRowStatus(cellData?.status)) continue;
         if (!cellData || !cellData.text) continue;
 
         const matches = [];

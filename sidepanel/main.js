@@ -1,7 +1,7 @@
 import { getUserEmail } from '../utils/auth.js';
 import { ALLOWED_EMAIL_DOMAIN, SIDEPANEL_CLIPPY_PHRASES } from '../utils/extension_constants.js';
 import { renderGamificationStats } from '../utils/gamification_ui.js';
-import { detectPlatformDetails } from '../utils/platforms.js';
+import { detectPlatformDetails, getSupportedPlatforms } from '../utils/platforms.js';
 import {
   renderAccessRestrictedNotice,
   requestVerifiedRuntimeIdentity
@@ -405,8 +405,167 @@ function setupGoalCelebrationOverlay() {
     }
   });
 }
+
+function setupSidepanelTabs() {
+  const tabButtons = Array.from(document.querySelectorAll('[data-tab-target]'));
+  const tabPanels = Array.from(document.querySelectorAll('[data-tab-panel]'));
+  if (tabButtons.length === 0 || tabPanels.length === 0) return;
+
+  const activateTab = (target) => {
+    tabButtons.forEach((button) => {
+      const isActive = button.dataset.tabTarget === target;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-selected', String(isActive));
+    });
+
+    tabPanels.forEach((panel) => {
+      panel.classList.toggle('active', panel.dataset.tabPanel === target);
+    });
+  };
+
+  tabButtons.forEach((button) => {
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-selected', button.classList.contains('active') ? 'true' : 'false');
+    button.addEventListener('click', () => activateTab(button.dataset.tabTarget));
+  });
+}
+
+function updateModeChip(mode = 'scout') {
+  const modeChip = document.getElementById('modeChip');
+  if (!modeChip) return;
+
+  const isScout = (mode || 'scout') === 'scout';
+  modeChip.innerText = isScout ? 'Scout Mode' : 'Enforcer Mode';
+  modeChip.style.background = isScout ? '#ecfdf5' : '#eff6ff';
+  modeChip.style.borderColor = isScout ? '#bbf7d0' : '#bfdbfe';
+  modeChip.style.color = isScout ? '#047857' : '#1d4ed8';
+}
+
+function renderQueueSummary(cart = []) {
+  const queueCount = document.getElementById('queueCount');
+  const queuePlatform = document.getElementById('queuePlatform');
+  const queueHint = document.getElementById('queueHint');
+  const queue = Array.isArray(cart) ? cart : [];
+
+  if (queueCount) queueCount.innerText = String(queue.length);
+
+  if (queue.length === 0) {
+    if (queuePlatform) queuePlatform.innerText = '-';
+    if (queueHint) queueHint.innerText = 'Use the page overlay Add button to queue pirated links.';
+    return;
+  }
+
+  const platformDetails = detectPlatformDetails(queue[0]?.url || '');
+  if (queuePlatform) queuePlatform.innerText = platformDetails?.label || 'Unknown';
+  if (queueHint) {
+    const plural = queue.length === 1 ? 'link' : 'links';
+    queueHint.innerText = `${queue.length} ${plural} queued. Fill in the setup fields, then run the primary action.`;
+  }
+}
+
+function populatePlatformSelect(selectEl, platforms) {
+  if (!selectEl || !Array.isArray(platforms) || platforms.length === 0) return;
+
+  const selectedValue = selectEl.value;
+  selectEl.innerHTML = '';
+
+  platforms.forEach(({ key, label }) => {
+    const option = document.createElement('option');
+    option.value = key;
+    option.textContent = label;
+    selectEl.appendChild(option);
+  });
+
+  if (selectedValue && platforms.some(({ key }) => key === selectedValue)) {
+    selectEl.value = selectedValue;
+  }
+}
+
+const DEFAULT_SELECTOR_FIELD_OPTIONS = Object.freeze([
+  'account_handle',
+  'account_menu_trigger',
+  'buttons.add_video',
+  'buttons.next',
+  'buttons.save',
+  'candidate_anchors',
+  'candidate_channel_links',
+  'channel_handle',
+  'channel_link',
+  'clip_views',
+  'copyright_reason',
+  'fields.additional_links_checkbox',
+  'fields.confirm_email',
+  'fields.content_type_post',
+  'fields.content_type_story',
+  'fields.content_urls',
+  'fields.copyrighted_work_description',
+  'fields.country_select',
+  'fields.email',
+  'fields.full_name',
+  'fields.infringement_explanation',
+  'fields.relationship_radio',
+  'fields.rights_owner_name',
+  'fields.send_button',
+  'fields.signature',
+  'fields.source_url',
+  'fields.work_type_select',
+  'handle',
+  'handle_links',
+  'json_scripts',
+  'live_indicators',
+  'live_viewers',
+  'menu_button',
+  'meta_description',
+  'profile_links',
+  'report_button',
+  'submit_button',
+  'success_indicators',
+  'url_match',
+  'views',
+  'views_shorts',
+  'views_std',
+  'vod_views'
+]);
+
+function isPlainObject(value) {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isSelectorPatchLeaf(pathSegments, value) {
+  if (pathSegments.some((segment) => segment.startsWith('_COMMENT'))) return false;
+
+  const topLevelGroup = pathSegments[0];
+  const leafKey = pathSegments[pathSegments.length - 1];
+  if (['defaults', 'templates'].includes(topLevelGroup)) return false;
+  if (['authorized_handles', 'authorized_channel_ids', 'authorized_studio_manager_ids', 'success_text'].includes(leafKey)) return false;
+
+  return typeof value === 'string' ||
+    Array.isArray(value) ||
+    (isPlainObject(value) && typeof value.selector === 'string');
+}
+
+function collectSelectorPatchFieldOptions(node, pathSegments = [], results = []) {
+  if (!isPlainObject(node)) return results;
+
+  Object.entries(node).forEach(([key, value]) => {
+    const nextPath = [...pathSegments, key];
+
+    if (isPlainObject(value) && typeof value.selector !== 'string') {
+      collectSelectorPatchFieldOptions(value, nextPath, results);
+      return;
+    }
+
+    if (isSelectorPatchLeaf(nextPath, value)) {
+      results.push(nextPath.join('.'));
+    }
+  });
+
+  return results;
+}
 // --- SECURITY LOCK OVERLAY (Duplicated for Side Panel context) ---
 document.addEventListener('DOMContentLoaded', async () => {
+  setupSidepanelTabs();
+
   const loadingEl = document.getElementById('loading');
   const verticalSelect = document.getElementById('verticalSelect');
   const eventInput = document.getElementById('eventInput');
@@ -447,10 +606,42 @@ document.addEventListener('DOMContentLoaded', async () => {
   const recordingBadge = document.getElementById('recording-badge');
   const selectorPatchUI = document.getElementById('selectorPatchUI');
   const capturedSelectorRaw = document.getElementById('capturedSelectorRaw');
+  const selectorSectionMap = document.getElementById('selectorSectionMap');
   const selectorFieldMap = document.getElementById('selectorFieldMap');
+  const selectorFieldOptions = document.getElementById('selectorFieldOptions');
   const saveSelectorBtn = document.getElementById('saveSelectorBtn');
   const patchStatus = document.getElementById('patchStatus');
   let currentCapturedPlatform = null;
+
+  const supportedPlatforms = getSupportedPlatforms();
+  populatePlatformSelect(platformScanSelect, [
+      ...supportedPlatforms,
+      { key: 'other', label: 'Other' }
+  ]);
+  populatePlatformSelect(repairPlatformSelect, supportedPlatforms);
+
+  const updateSelectorFieldOptions = () => {
+      if (!selectorFieldOptions) return;
+
+      const platform = repairPlatformSelect?.value || 'tiktok';
+      const section = selectorSectionMap?.value || 'scraper';
+      const sectionConfig = configData?.platform_selectors?.[platform]?.[section];
+      const fieldOptions = new Set([
+          ...collectSelectorPatchFieldOptions(sectionConfig),
+          ...DEFAULT_SELECTOR_FIELD_OPTIONS
+      ]);
+
+      selectorFieldOptions.innerHTML = '';
+      Array.from(fieldOptions).forEach((value) => {
+          const option = document.createElement('option');
+          option.value = value;
+          selectorFieldOptions.appendChild(option);
+      });
+  };
+
+  repairPlatformSelect?.addEventListener('change', updateSelectorFieldOptions);
+  selectorSectionMap?.addEventListener('change', updateSelectorFieldOptions);
+  updateSelectorFieldOptions();
   
   const clippyBubble = document.getElementById('clippy-process-bubble');
   const clippyFeedbackEl = document.getElementById('clippy-feedback-text');
@@ -531,17 +722,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   setupGoalCelebrationOverlay();
 
-  // 🚨 CRITICAL FIX: Escaping unclosed HTML tags 🚨
-  // sidepanel.html is missing a few closing </div> tags, causing the Walkthrough UI to get trapped 
-  // inside the mainUiContainer. When the main container hides, it takes the walkthrough down with it.
-  // Reparenting these elements to the body prevents the blank screen issue.
-  if (rogueWalkthrough) document.body.appendChild(rogueWalkthrough);
-  if (nukeBtn) document.body.appendChild(nukeBtn);
-  if (nukeStatus) document.body.appendChild(nukeStatus);
+  // Keep the takedown walkthrough outside the tab container so it can replace
+  // the main panel view during rogue-site capture.
+  if (rogueWalkthrough && rogueWalkthrough.closest('.container')) {
+      document.body.appendChild(rogueWalkthrough);
+  }
 
   // Toggle Elements
   const closerToggle = document.getElementById('closerToggle');
   const closerToggleLabel = document.getElementById('closerToggleLabel');
+  const closerDurationSelect = document.getElementById('closerDurationSelect');
   const closerStatusEl = document.getElementById('closerStatus'); 
 
   // --- VERSION RELEASE NOTES ---
@@ -607,6 +797,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                          closerToggleLabel.style.color = "#666";
                      }
                  }
+                 chrome.storage.local.set({ closer_enabled: false });
             }
         }
         return; 
@@ -634,6 +825,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Helper to show error
   const showInitError = (msg) => {
       if (loadingEl) {
+          loadingEl.classList.add('init-error');
           loadingEl.innerHTML = `⚠️ <strong>Connection Failed</strong><br>${msg}<br>
           <div class="flex-row" style="justify-content:center; margin-top:10px;">
             <button id="retryInitBtn" class="btn btn-info" style="width:auto; padding:5px 15px;">Retry</button>
@@ -666,6 +858,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (response && response.success) {
       configData = response.config;
       populateVerticals(verticalSelect);
+      updateSelectorFieldOptions();
       if (loadingEl) loadingEl.style.display = 'none';
       if (startBtn) startBtn.disabled = false;
     } else {
@@ -703,7 +896,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
   });
   // PATCH: Trigger initial UI evaluation to set the proper button text on load
-  chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
+  chrome.storage.local.get('piracy_cart', (res) => {
+      renderQueueSummary(res.piracy_cart || []);
+      evaluateWorkflowFocus(res.piracy_cart?.length || 0);
+  });
 
   chrome.storage.local.get(['rogue_target_data'], (rogueRes) => {
       if (rogueRes.rogue_target_data) {
@@ -1138,7 +1334,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (closerToggle) {
       closerToggle.addEventListener('change', async (e) => {
           const isChecked = e.target.checked;
-          chrome.storage.local.set({ closer_enabled: isChecked });
+          const durationValue = closerDurationSelect ? closerDurationSelect.value : 'on';
+          const durationMinutes = durationValue === 'on' ? null : parseInt(durationValue, 10);
+          chrome.storage.local.set({
+              closer_enabled: isChecked,
+              closer_duration_minutes: isChecked ? durationMinutes : null
+          });
           
           if (closerToggleLabel) {
               closerToggleLabel.innerText = isChecked ? "On" : "Off";
@@ -1146,22 +1347,21 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
 
           if (isChecked) {
-                  const startVal = startRowInput ? startRowInput.value : 1;
-                  const startRow = parseInt(startVal) || 1;
-                  
-                  // Grab the dropdown value or default to 4
-                  const tabsSelect = document.getElementById('closerTabsSelect');
-                  const maxTabs = tabsSelect ? parseInt(tabsSelect.value) : 4;
-                  
-                  if (closerStatusEl) {
-                      closerStatusEl.style.display = 'block';
-                      closerStatusEl.innerText = "Initializing Scanner...";
-                  }
+              const startVal = startRowInput ? startRowInput.value : 1;
+              const startRow = parseInt(startVal) || 1;
 
-                  chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow, maxTabs: maxTabs }, (res) => {
-                      if (chrome.runtime.lastError) {
-                          // Revert toggle if error
-                          closerToggle.checked = false;
+              if (closerStatusEl) {
+                  closerStatusEl.style.display = 'block';
+                  closerStatusEl.innerText = durationMinutes
+                      ? `Initializing Scanner for ${durationMinutes} minute${durationMinutes === 1 ? '' : 's'}...`
+                      : "Initializing Scanner...";
+              }
+
+              chrome.runtime.sendMessage({ action: 'triggerCloser', startRow: startRow, durationMinutes }, () => {
+                  if (chrome.runtime.lastError) {
+                      // Revert toggle if error
+                      closerToggle.checked = false;
+                      chrome.storage.local.set({ closer_enabled: false });
                       if (closerToggleLabel) {
                           closerToggleLabel.innerText = "Off";
                           closerToggleLabel.style.color = "#666";
@@ -1319,7 +1519,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
       });
   }
-if (selectorPatchUI) selectorPatchUI.style.display = 'block';
+if (selectorPatchUI) selectorPatchUI.style.display = 'none';
   const startMacroBtn = document.getElementById('startMacroBtn');
 const stopMacroBtn = document.getElementById('stopMacroBtn');
 // Reuse the same platform select dropdown for macro recording
@@ -1468,6 +1668,7 @@ if (startMacroBtn && stopMacroBtn) {
   // Triggered when items are added to cart (Listener for processNewItem or similar)
   chrome.storage.onChanged.addListener((changes, namespace) => {
       if (namespace === 'local' && changes.piracy_cart) {
+          renderQueueSummary(changes.piracy_cart.newValue || []);
           evaluateWorkflowFocus(changes.piracy_cart.newValue?.length || 0);
       }
       if (namespace === 'local' && changes.rogue_target_data && changes.rogue_target_data.newValue) {
@@ -1475,6 +1676,7 @@ if (startMacroBtn && stopMacroBtn) {
       }
       // Listen for real-time changes to the report_mode from the options page
       if (namespace === 'sync' && changes.report_mode) {
+          updateModeChip(changes.report_mode.newValue || 'scout');
           requestWorkflowFocusRefresh();
       }
       if (namespace === 'sync' && SIDEPANEL_SETUP_KEYS.some((key) => changes[key])) {
@@ -1496,6 +1698,7 @@ function evaluateWorkflowFocus(cartSize) {
       // PATCH: Fetch mode first and set button text BEFORE any early returns
       chrome.storage.sync.get(['report_mode', ...SIDEPANEL_SETUP_KEYS], (syncRes) => {
           const isScout = (syncRes.report_mode || 'scout') === 'scout';
+          updateModeChip(syncRes.report_mode || 'scout');
           const startBtn = document.getElementById('startBtn');
           if (startBtn) startBtn.innerText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
 

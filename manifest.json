@@ -25,6 +25,7 @@
     "https://twitter.com/*",
     "https://x.com/*",
     "https://www.twitch.tv/*",
+    "https://clips.twitch.tv/*",
     "https://discord.com/*",
     "https://ipr.tiktokforbusiness.com/*",
     "https://www.googleapis.com/*"
@@ -66,6 +67,7 @@
         "*://twitter.com/*",
         "*://x.com/*",
         "*://www.twitch.tv/*",
+        "*://clips.twitch.tv/*",
         "*://discord.com/*",
         "*://timstreams.net/*",
         "*://rumble.com/*",
@@ -87,6 +89,7 @@
         "*://*.rumble.com/*",
         "*://help.instagram.com/*",
         "*://help.x.com/*",
+        "*://www.twitch.tv/copyright-claims*",
         "*://www.facebook.com/help/contact/*"
       ],
       "js": ["content_autofill.js"],

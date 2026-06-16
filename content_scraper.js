@@ -107,6 +107,38 @@
         '[class*="live"]'
       ]
     },
+    twitch: {
+      handle_links: [
+        '[data-test-selector="metadata-layout__split-top"] a[href^="/"]',
+        '[class*="metadata-layout__split-top"] a[href^="/"]',
+        '#live-channel-stream-information a[href^="/"]',
+        'a[href^="/"][class*="CoreLink"]',
+        'h1 a[href^="/"]',
+        'a[href^="/"] h1'
+      ],
+      live_indicators: [
+        '[data-a-target="stream-live-indicator"]',
+        '[data-a-target="channel-status-text-indicator"]',
+        '[class*="tw-channel-status-text-indicator"]',
+        '[class*="ScChannelStatusTextIndicator"]'
+      ],
+      live_viewers: [
+        '[data-a-target="animated-channel-viewers-count"]',
+        '[data-a-target="channel-viewers-count"]',
+        '[class*="ScAnimatedNumber"]',
+        'strong[aria-hidden="true"] span'
+      ],
+      vod_views: [
+        '[data-test-selector="metadata-layout__split-top"] p',
+        '[class*="metadata-layout__split-top"] p',
+        'p[class*="CoreText"]'
+      ],
+      clip_views: [
+        '[data-test-selector="metadata-layout__split-top"] p',
+        '[class*="metadata-layout__split-top"] p',
+        'p[class*="CoreText"]'
+      ]
+    },
     discord: {
      handle: 'div[class*="username"]'
     }
@@ -119,11 +151,13 @@
       if (response && response.success && response.config && response.config.platform_selectors) {
         console.log("✅ PIRATE AI: Remote Selectors Loaded");
         const remote = response.config.platform_selectors;
-        if (remote.tiktok && remote.tiktok.scraper) SCRAPER_CONFIG.tiktok = { ...SCRAPER_CONFIG.tiktok, ...remote.tiktok.scraper };
-        if (remote.youtube && remote.youtube.scraper) SCRAPER_CONFIG.youtube = { ...SCRAPER_CONFIG.youtube, ...remote.youtube.scraper };
-        if (remote.instagram && remote.instagram.scraper) SCRAPER_CONFIG.instagram = { ...SCRAPER_CONFIG.instagram, ...remote.instagram.scraper };
-        if (remote.twitter && remote.twitter.scraper) SCRAPER_CONFIG.twitter = { ...SCRAPER_CONFIG.twitter, ...remote.twitter.scraper };
-        if (remote.rumble && remote.rumble.scraper) SCRAPER_CONFIG.rumble = { ...SCRAPER_CONFIG.rumble, ...remote.rumble.scraper };
+        Object.entries(remote).forEach(([platform, platformConfig]) => {
+          if (!platformConfig?.scraper) return;
+          SCRAPER_CONFIG[platform] = {
+            ...(SCRAPER_CONFIG[platform] || {}),
+            ...platformConfig.scraper
+          };
+        });
       }
     } catch (e) {
       // Suppress heavy logging
@@ -448,6 +482,88 @@
       return '';
   }
 
+  function extractTwitchHandleFromHref(href) {
+      if (!href) return '';
+
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          const pathParts = parsed.pathname.split('/').filter(Boolean);
+          const reservedSegments = new Set([
+              'about',
+              'activate',
+              'bits',
+              'clip',
+              'clips',
+              'collections',
+              'directory',
+              'downloads',
+              'friends',
+              'jobs',
+              'login',
+              'p',
+              'settings',
+              'store',
+              'subscriptions',
+              'videos'
+          ]);
+
+          const candidate = pathParts.find((segment) => {
+              const normalized = segment.toLowerCase();
+              return normalized && !reservedSegments.has(normalized);
+          });
+
+          return normalizeScrapedHandle(candidate || '');
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function getTwitchHandle(twitchConfig, pathParts) {
+      for (const element of getElementsFromSelectorList(twitchConfig.handle_links)) {
+          const anchor = element.matches?.('a[href]')
+              ? element
+              : element.closest?.('a[href]') || element.querySelector?.('a[href]');
+          const handle = extractTwitchHandleFromHref(anchor?.href || element.getAttribute?.('href') || '');
+          if (handle) return handle;
+      }
+
+      const pathHandle = extractTwitchHandleFromHref(`/${(pathParts || []).join('/')}`);
+      return pathHandle || 'TwitchUser';
+  }
+
+  function getTwitchViewCount(selectors) {
+      for (const element of getElementsFromSelectorList(selectors)) {
+          const text = [
+              element.innerText,
+              element.textContent,
+              element.getAttribute?.('aria-label'),
+              element.getAttribute?.('title')
+          ].filter(Boolean).join(' ');
+          const views = extractReadableViewCount(text);
+          if (views) return views;
+      }
+      return '';
+  }
+
+  function hasTwitchLiveSignal(twitchConfig) {
+      const visibleLiveIndicator = toSelectorList(twitchConfig.live_indicators).some((selector) => {
+          const element = findElement(selector);
+          if (!element) return false;
+          const text = element.innerText || element.textContent || element.getAttribute?.('aria-label') || '';
+          return !text || /\blive\b/i.test(text);
+      });
+
+      if (visibleLiveIndicator) return true;
+
+      const contextText = [
+          document.title,
+          document.querySelector('meta[property="og:title"]')?.content || '',
+          document.querySelector('meta[name="description"]')?.content || ''
+      ].join(' ');
+
+      return /\blive\b/i.test(contextText);
+  }
+
   // ==========================================
   // 1. THE STRATEGY SCRAPER
   // ==========================================
@@ -651,14 +767,31 @@
 
     // --- TWITCH ---
     else if (host.includes('twitch.tv')) {
-      const pathParts = new URL(url).pathname.split('/');
-      const handle = pathParts[1] || "TwitchUser";
+      const parsedUrl = new URL(url);
+      const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+      const lowerPathParts = pathParts.map((part) => part.toLowerCase());
+      const firstSegment = lowerPathParts[0] || '';
+      const twitchConfig = SCRAPER_CONFIG.twitch || {};
+      const isClip = parsedUrl.hostname.toLowerCase().includes('clips.twitch.tv') ||
+        firstSegment === 'clip' ||
+        lowerPathParts.includes('clip');
+      const isVod = !isClip && (firstSegment === 'videos' || firstSegment === 'collections');
+      const nonVideoSegments = new Set(['copyright-claims', 'directory', 'downloads', 'jobs', 'login', 'p', 'settings']);
+      if (!isClip && !isVod && nonVideoSegments.has(firstSegment)) return null;
+
+      const isLive = !isClip && !isVod && hasTwitchLiveSignal(twitchConfig);
+      const handle = getTwitchHandle(twitchConfig, pathParts);
+      const liveViews = getTwitchViewCount(twitchConfig.live_viewers);
+      const vodViews = getTwitchViewCount(twitchConfig.vod_views);
+      const clipViews = getTwitchViewCount(twitchConfig.clip_views);
 
       return { 
         platform: "Twitch", 
         url, 
-        handle, 
-        views: "N/A", 
+        handle,
+        views: (isClip ? clipViews : (isVod ? vodViews : liveViews)) || liveViews || vodViews || clipViews || "N/A",
+        contentType: isClip ? 'clip' : (isLive ? 'live' : 'vod'),
+        isLive,
         timestamp 
       };
     }
@@ -914,12 +1047,12 @@ function generateStableSelector(el) {
           <textarea id="flo-patch-selector-input" style="width: 100%; height: 80px; padding: 8px; margin-bottom: 6px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px; resize: vertical;">${initialSelector}</textarea>
           <button id="flo-patch-test" style="background: #0288d1; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 12px;">${isMacroData ? 'Verify Macro Replay' : 'Test Selection'}</button>
   
-          <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section in Config:</label>
-          <select id="flo-patch-section" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
-              <option value="autofill" ${isMacroData ? 'selected' : ''}>Autofill (Wizard Steps)</option>
-              <option value="buttons">Buttons (Next, Send)</option>
-              <option value="scraper">Scraper (Views, Handles)</option>
-          </select>
+	          <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section in Config:</label>
+	          <select id="flo-patch-section" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+	              <option value="scraper" ${isMacroData ? '' : 'selected'}>Scraper (Views, Handles)</option>
+	              <option value="autofill" ${isMacroData ? 'selected' : ''}>Autofill (Wizard Steps)</option>
+	              <option value="session">Session (Account Checks)</option>
+	          </select>
   
           <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Field Name:</label>
           <input type="text" id="flo-patch-field" placeholder="e.g., loginSequence, checkboxGroup" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
@@ -968,7 +1101,7 @@ function generateStableSelector(el) {
       document.getElementById('flo-patch-save').addEventListener('click', () => {
           const section = document.getElementById('flo-patch-section').value;
             const field = document.getElementById('flo-patch-field').value.trim();
-            const actionType = document.getElementById('flo-patch-action').value;
+            const actionType = document.getElementById('flo-patch-action')?.value || '';
             const finalSelector = document.getElementById('flo-patch-selector-input').value.trim();
   
             if (!field) {
@@ -1127,17 +1260,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 2. MESSAGE LISTENER
   // ==========================================
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    void sender;
+    if (request.action !== 'getCurrentPirateScrape') return false;
+
+    try {
+      sendResponse({ success: true, data: scrapePageStrategy() });
+    } catch (error) {
+      sendResponse({ success: false, error: error.message });
+    }
+
+    return true;
+  });
+
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'startSelectorTraining') {
-        isTrainingMode = true;
-        trainingPlatform = request.platform;
-        const handler = (e) => {
-            e.preventDefault(); e.stopPropagation();
-            document.removeEventListener('click', handler, true);
-            isTrainingMode = false;
-            const selectors = generateStableSelector(e.target);
-            showPatchUI(trainingPlatform, selectors);
-        };
-        document.addEventListener('click', handler, true);
+        startSelectorTraining(request.platform);
         sendResponse({ success: true });
     } else if (request.action === 'startMacroTraining') {
         startMacroTraining(request.platform);

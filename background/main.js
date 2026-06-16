@@ -122,9 +122,12 @@ function setupBrowserEventListeners() {
 
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name !== ALARM_NAME) return;
-    const { closer_enabled } = await chrome.storage.local.get('closer_enabled');
+    const { closer_enabled, closer_duration_minutes } = await chrome.storage.local.get([
+      'closer_enabled',
+      'closer_duration_minutes'
+    ]);
     if (closer_enabled) {
-      await sheetScanner.run(1);
+      await sheetScanner.run(1, { durationMinutes: closer_duration_minutes });
     }
   });
 
@@ -377,7 +380,7 @@ function createActionHandlers() {
     },
 
     async triggerCloser(request) {
-      await sheetScanner.run(request.startRow || 1, request.maxTabs || 4);
+      await sheetScanner.run(request.startRow || 1, { durationMinutes: request.durationMinutes });
       return { success: true };
     },
 
