@@ -159,8 +159,44 @@ function getEnforcerAccessConfig() {
   };
 }
 
+let gamificationStatsInFlight = false;
+
+function createUnavailableGamificationStats(errorMessage = '') {
+  return {
+    error: true,
+    errorMessage: String(errorMessage || ''),
+    stale: false,
+    scoutPoints: 0,
+    enforcerPoints: 0,
+    scoutRank: 'Offline',
+    enforcerRank: 'Offline',
+    teamTotal: 0,
+    topScouts: [],
+    topEnforcers: [],
+    overallLeaderboard: [],
+    mvp: { name: 'TBD', points: 0 },
+    isCurrentMvp: false
+  };
+}
+
 function refreshGamificationStats() {
+  if (gamificationStatsInFlight) return;
+
+  gamificationStatsInFlight = true;
   chrome.runtime.sendMessage({ action: 'getGamificationStats' }, (stats) => {
+    gamificationStatsInFlight = false;
+
+    if (chrome.runtime.lastError) {
+      console.warn('Leaderboard refresh failed:', chrome.runtime.lastError.message);
+      renderGamificationStats(createUnavailableGamificationStats(chrome.runtime.lastError.message));
+      return;
+    }
+
+    if (!stats || stats.success === false) {
+      renderGamificationStats(createUnavailableGamificationStats(stats?.error || 'Leaderboard unavailable.'));
+      return;
+    }
+
     renderGamificationStats(stats);
   });
 }
@@ -512,6 +548,7 @@ const DEFAULT_SELECTOR_FIELD_OPTIONS = Object.freeze([
   'handle',
   'handle_links',
   'json_scripts',
+  'likes',
   'live_indicators',
   'live_viewers',
   'menu_button',
@@ -801,6 +838,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         return; 
+    }
+
+    if (msg.action === 'progressComplete') {
+        refreshGamificationStats();
+        return;
     }
 
     if (!isCrawling) return;

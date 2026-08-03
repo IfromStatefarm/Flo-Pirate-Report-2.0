@@ -33,6 +33,7 @@ import { createRumbleWorkflow } from './services/rumble_workflow.js';
 import { createSearchWorkflow } from './services/search_workflow.js';
 
 const ALARM_NAME = 'theCloser';
+const GAMIFICATION_STATS_CACHE_KEY = 'gamification_stats_cache';
 
 const sheetScanner = createSheetScanner({
   getColumnHDataWithFormatting,
@@ -158,21 +159,76 @@ function setupBrowserEventListeners() {
 async function handleGamificationStats() {
   try {
     const email = await getUserEmail();
-    if (!email) return null;
-    return await fetchLeaderboardData(email);
+    const stats = await fetchLeaderboardData(email || '');
+    const hydratedStats = {
+      ...createEmptyGamificationStats(),
+      ...stats,
+      error: Boolean(stats?.error),
+      stale: false,
+      lastUpdated: Date.now()
+    };
+    if (hydratedStats.error) {
+      hydratedStats.scoutRank = 'Offline';
+      hydratedStats.enforcerRank = 'Offline';
+    }
+
+    if (!hydratedStats.error) {
+      await chrome.storage.local.set({
+        [GAMIFICATION_STATS_CACHE_KEY]: {
+          stats: hydratedStats,
+          fetchedAt: hydratedStats.lastUpdated
+        }
+      });
+    }
+
+    return hydratedStats;
   } catch (error) {
     console.error('Leaderboard fetch error:', error);
+    return getCachedGamificationStats(error.message);
+  }
+}
+
+function createEmptyGamificationStats(overrides = {}) {
+  return {
+    error: false,
+    errorMessage: '',
+    stale: false,
+    lastUpdated: null,
+    scoutPoints: 0,
+    enforcerPoints: 0,
+    scoutRank: 'Level 1 Scout Reporter',
+    enforcerRank: 'Level 1 Enforcer',
+    teamTotal: 0,
+    topScouts: [],
+    topEnforcers: [],
+    overallLeaderboard: [],
+    mvp: { name: 'TBD', points: 0 },
+    isCurrentMvp: false,
+    ...overrides
+  };
+}
+
+async function getCachedGamificationStats(errorMessage = '') {
+  const normalizedErrorMessage = String(errorMessage || '');
+  const cache = await chrome.storage.local.get(GAMIFICATION_STATS_CACHE_KEY);
+  const cachedStats = cache[GAMIFICATION_STATS_CACHE_KEY]?.stats;
+
+  if (cachedStats) {
     return {
+      ...createEmptyGamificationStats(),
+      ...cachedStats,
       error: true,
-      scoutPoints: '-',
-      enforcerPoints: '-',
-      scoutRank: 'Offline',
-      enforcerRank: 'Offline',
-      teamTotal: '-',
-      topScouts: [{ name: 'Network Disconnected', points: 0 }],
-      topEnforcers: [{ name: 'Retrying...', points: 0 }]
+      errorMessage: normalizedErrorMessage,
+      stale: true
     };
   }
+
+  return createEmptyGamificationStats({
+    error: true,
+    errorMessage: normalizedErrorMessage,
+    scoutRank: 'Offline',
+    enforcerRank: 'Offline'
+  });
 }
 
 async function handleGenerateIntelligenceReport(request) {

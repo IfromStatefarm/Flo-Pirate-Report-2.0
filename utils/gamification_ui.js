@@ -1,10 +1,25 @@
-function renderLeaderboard(listEl, users = []) {
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderLeaderboard(listEl, users = [], emptyCopy = 'No scores yet.') {
   if (!listEl || !Array.isArray(users)) return;
 
-  listEl.innerHTML = users
+  const visibleUsers = users.filter(Boolean);
+  if (visibleUsers.length === 0) {
+    listEl.innerHTML = `<li>${escapeHtml(emptyCopy)}</li>`;
+    return;
+  }
+
+  listEl.innerHTML = visibleUsers
     .map(
       (user, index) =>
-        `<li><strong>#${index + 1}</strong> <span style="text-transform:capitalize">${user.name}</span> - ${user.points} pts</li>`
+        `<li><strong>#${index + 1}</strong> <span style="text-transform:capitalize">${escapeHtml(user.name)}</span> - ${escapeHtml(user.points)} pts</li>`
     )
     .join('');
 }
@@ -34,7 +49,7 @@ function getCompactRankLabel(rank, fallback = 'Level 1') {
 
 function getNextLevelCopy(points) {
   const numericPoints = toFiniteNumber(points);
-  if (numericPoints === null) return 'Progress syncing...';
+  if (numericPoints === null) return 'Score unavailable.';
   if (numericPoints > 1000) return 'Max level reached';
 
   const nextLevel = numericPoints > 500 ? 'Level 3' : 'Level 2';
@@ -46,12 +61,14 @@ function getNextLevelCopy(points) {
 }
 
 function getMvpGapCopy(stats) {
+  if (stats.error && !stats.stale) return stats.errorMessage || 'Leaderboard unavailable.';
+  if (stats.stale) return 'Showing last synced leaderboard.';
   if (stats.isCurrentMvp) return 'You are the current MVP.';
 
   const myTotal = (toFiniteNumber(stats.scoutPoints) || 0) + (toFiniteNumber(stats.enforcerPoints) || 0);
   const mvpPoints = toFiniteNumber(stats.mvp?.points);
 
-  if (mvpPoints === null) return 'Leaderboard syncing.';
+  if (mvpPoints === null) return 'Leaderboard unavailable.';
   if (mvpPoints <= 0 && myTotal <= 0) return 'First report sets the pace.';
   if (myTotal >= mvpPoints) return 'You are at the MVP pace.';
 
@@ -75,7 +92,8 @@ export function renderGamificationStats(stats, { doc = document } = {}) {
   const enforcerPointsValue = toFiniteNumber(stats.enforcerPoints);
   const teamTotalValue = toFiniteNumber(stats.teamTotal);
   const teamTotalDisplay = teamTotalValue === null ? String(stats.teamTotal ?? '-') : String(teamTotalValue);
-  const mvpNameDisplay = stats.mvp?.name || 'TBD';
+  const syncUnavailable = Boolean(stats.error && !stats.stale);
+  const mvpNameDisplay = syncUnavailable ? 'Unavailable' : (stats.mvp?.name || 'TBD');
   const mvpPointsValue = toFiniteNumber(stats.mvp?.points);
   const mvpPointsDisplay = mvpPointsValue === null ? '0' : String(mvpPointsValue);
   const scoutRankDisplay = stats.scoutRank || 'Level 1 Scout Reporter';
@@ -155,13 +173,18 @@ export function renderGamificationStats(stats, { doc = document } = {}) {
     const progressPercent = teamTotalValue === null ? 0 : Math.max(0, Math.min(100, (teamTotalValue / GOAL_TARGET) * 100));
     teamGoalProgress.style.width = `${progressPercent}%`;
   }
-  if (teamGoalRemaining) teamGoalRemaining.innerText = getGoalRemainingCopy(teamTotalValue);
+  if (teamGoalRemaining) {
+    const goalCopy = getGoalRemainingCopy(teamTotalValue);
+    teamGoalRemaining.innerText = stats.stale ? `${goalCopy} Showing last synced scores.` : goalCopy;
+  }
   if (teamGoalVideoBtn) {
     teamGoalVideoBtn.hidden = !goalReached;
     teamGoalVideoBtn.dataset.videoUrl = GOAL_CELEBRATION_VIDEO_URL;
     teamGoalVideoBtn.dataset.videoTitle = 'Team Goal Celebration';
   }
 
-  renderLeaderboard(doc.getElementById('scout-leaderboard'), stats.topScouts || []);
-  renderLeaderboard(doc.getElementById('enforcer-leaderboard'), stats.topEnforcers || []);
+  const scoutEmptyCopy = syncUnavailable ? 'Scout scores unavailable.' : 'No scout scores yet.';
+  const enforcerEmptyCopy = syncUnavailable ? 'Enforcer scores unavailable.' : 'No enforcer scores yet.';
+  renderLeaderboard(doc.getElementById('scout-leaderboard'), stats.topScouts || [], scoutEmptyCopy);
+  renderLeaderboard(doc.getElementById('enforcer-leaderboard'), stats.topEnforcers || [], enforcerEmptyCopy);
 }

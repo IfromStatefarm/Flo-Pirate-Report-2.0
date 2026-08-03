@@ -63,6 +63,22 @@ function normalizeLeaderboardIdentity(value) {
     .replace(/\./g, ' ');
 }
 
+function createEmptyLeaderboardData(overrides = {}) {
+    return {
+        scoutPoints: 0,
+        enforcerPoints: 0,
+        topScouts: [],
+        topEnforcers: [],
+        overallLeaderboard: [],
+        scoutRank: "Level 1 Scout Reporter",
+        enforcerRank: "Level 1 Enforcer",
+        mvp: { name: "TBD", points: 0 },
+        isCurrentMvp: false,
+        teamTotal: 0,
+        ...overrides
+    };
+}
+
 const CHICAGO_MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Chicago',
     year: 'numeric',
@@ -1075,7 +1091,9 @@ export async function bulkAddToCart(items) {
 // ==========================================
 export async function fetchLeaderboardData(userEmail) {
     const { reportSheetId } = await getOptions();
-    if (!reportSheetId) return null;
+    if (!reportSheetId) {
+        return createEmptyLeaderboardData({ error: true, errorMessage: "Report Sheet ID not configured." });
+    }
     
     const token = await getAuthToken();
     const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
@@ -1084,11 +1102,11 @@ export async function fetchLeaderboardData(userEmail) {
     const data = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${reportSheetId}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${token}` } });
     
     const rows = data.values || [];
-    if (rows.length < 2) return { scoutPoints: 0, enforcerPoints: 0, leaderboard: [], rank: "Rookie Spotter" };
+    if (rows.length < 2) return createEmptyLeaderboardData();
 
     const currentChicagoMonth = getChicagoYearMonth(new Date());
     if (!currentChicagoMonth) {
-        return { scoutPoints: 0, enforcerPoints: 0, leaderboard: [], rank: "Rookie Spotter" };
+        return createEmptyLeaderboardData();
     }
 
     const scoutScores = {};
@@ -1124,7 +1142,10 @@ export async function fetchLeaderboardData(userEmail) {
     const localState = await chrome.storage.local.get(['last_reporter']);
     const reporterName = normalizeLeaderboardIdentity(localState.last_reporter);
     const identityMatchesMvp = [emailLower, reporterName].filter(Boolean);
-    const myStats = { s: scoutScores[emailLower] || 0, e: enforcerScores[emailLower] || 0 };
+    const myStats = {
+        s: scoutScores[emailLower] || scoutScores[reporterName] || 0,
+        e: enforcerScores[emailLower] || enforcerScores[reporterName] || 0
+    };
     
     let scoutRank = "Level 1 Scout Reporter";
     if (myStats.s > 1000) scoutRank = "Level 3 Scout Reporter";
@@ -1146,7 +1167,7 @@ export async function fetchLeaderboardData(userEmail) {
     const topEnforcers = sortDesc(enforcerScores).slice(0, 5);
     const overallLeaderboard = sortDesc(overallScores);
     
-    const mvp = overallLeaderboard.length > 0 ? overallLeaderboard[0] : null;
+    const mvp = overallLeaderboard.length > 0 ? overallLeaderboard[0] : { name: "TBD", points: 0 };
     const isCurrentMvp = !!mvp && identityMatchesMvp.includes(mvp.name);
     const teamTotal = Object.values(enforcerScores).reduce((sum, pts) => sum + Math.floor(pts / 20), 0);
 

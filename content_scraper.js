@@ -58,6 +58,11 @@
         'meta[property="og:description"]',
         'meta[name="description"]'
       ],
+      likes: [
+        'a[href*="/liked_by/"]',
+        '//article//*[contains(translate(normalize-space(.), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " likes")][1]',
+        '//*[contains(translate(normalize-space(.), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " likes")][1]'
+      ],
       json_scripts: [
         'script[type="application/json"]'
       ],
@@ -71,6 +76,11 @@
           '"video_view_count"\\s*:\\s*(\\d+)',
           '"play_count"\\s*:\\s*(\\d+)',
           '"view_count"\\s*:\\s*(\\d+)'
+        ],
+        like_count: [
+          '"edge_media_preview_like"\\s*:\\s*\\{[^{}]*?"count"\\s*:\\s*(\\d+)',
+          '"edge_liked_by"\\s*:\\s*\\{[^{}]*?"count"\\s*:\\s*(\\d+)',
+          '"like_count"\\s*:\\s*(\\d+)'
         ]
       }
     },
@@ -337,13 +347,13 @@
           instagramConfig.json_scripts || ['script[type="application/json"]']
       )
           .map((element) => element?.textContent || '')
-          .filter((text) => /username|video_view_count|play_count|xdt_shortcode_media/i.test(text));
+          .filter((text) => /username|video_view_count|play_count|view_count|like_count|edge_media_preview_like|edge_liked_by|xdt_shortcode_media/i.test(text));
 
-      const prioritizedTexts = rawTexts.filter((text) => /xdt_shortcode_media|video_view_count|play_count/i.test(text));
+      const prioritizedTexts = rawTexts.filter((text) => /xdt_shortcode_media|video_view_count|play_count|view_count|like_count|edge_media_preview_like|edge_liked_by/i.test(text));
       const candidateTexts = prioritizedTexts.length > 0 ? prioritizedTexts : rawTexts;
 
       if (candidateTexts.length === 0) {
-          return { handle: '', views: '' };
+          return { handle: '', views: '', likes: '' };
       }
 
       const joinedText = candidateTexts.join('\n');
@@ -357,11 +367,25 @@
           '"play_count"\\s*:\\s*(\\d+)',
           '"view_count"\\s*:\\s*(\\d+)'
       ];
+      const likePatterns = instagramConfig.json_patterns?.like_count || [
+          '"edge_media_preview_like"\\s*:\\s*\\{[^{}]*?"count"\\s*:\\s*(\\d+)',
+          '"edge_liked_by"\\s*:\\s*\\{[^{}]*?"count"\\s*:\\s*(\\d+)',
+          '"like_count"\\s*:\\s*(\\d+)'
+      ];
 
       return {
           handle: normalizeScrapedHandle(extractFirstPatternMatch(joinedText, handlePatterns)),
-          views: extractReadableViewCount(extractFirstPatternMatch(joinedText, viewPatterns))
+          views: extractReadableViewCount(extractFirstPatternMatch(joinedText, viewPatterns)),
+          likes: extractReadableLikeCount(extractFirstPatternMatch(joinedText, likePatterns), true)
       };
+  }
+
+  function getInstagramLikeCountFromTextCandidates(textCandidates, allowBareNumber = false) {
+      for (const text of textCandidates) {
+          const count = extractReadableLikeCount(text, allowBareNumber);
+          if (count) return count;
+      }
+      return '';
   }
 
   function getInstagramViewCountFromSemanticDom() {
@@ -390,6 +414,88 @@
                   if (count) return count;
               }
           }
+      }
+
+      return '';
+  }
+
+  function getInstagramLikeCountFromDom(instagramConfig) {
+      const configuredLikes = getElementsFromSelectorList(instagramConfig.likes);
+
+      for (const element of configuredLikes) {
+          const containers = [
+              element,
+              element.closest?.('a'),
+              element.closest?.('section'),
+              element.parentElement,
+              element.parentElement?.parentElement
+          ].filter(Boolean);
+
+          for (const container of containers) {
+              const count = getInstagramLikeCountFromTextCandidates([
+                  container.innerText,
+                  container.textContent,
+                  container.getAttribute?.('aria-label'),
+                  container.getAttribute?.('title')
+              ].filter(Boolean), true);
+              if (count) return count;
+          }
+      }
+
+      const roots = [
+          document.querySelector('article'),
+          document.querySelector('main'),
+          document.body
+      ].filter(Boolean);
+      const seenRoots = new Set();
+
+      for (const root of roots) {
+          if (seenRoots.has(root)) continue;
+          seenRoots.add(root);
+
+          const sections = Array.from(root.querySelectorAll?.('section') || []);
+          for (const section of sections) {
+              const count = getInstagramLikeCountFromTextCandidates([
+                  section.innerText,
+                  section.textContent
+              ].filter(Boolean));
+              if (count) return count;
+          }
+      }
+
+      const root = roots[0];
+      if (!root || !document.createTreeWalker || typeof NodeFilter === 'undefined') return '';
+
+      const rejectedTags = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT']);
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+              const text = String(node.textContent || '');
+              const parent = node.parentElement;
+              if (!/\blikes?\b/i.test(text) || !parent || rejectedTags.has(parent.tagName)) {
+                  return NodeFilter.FILTER_REJECT;
+              }
+              return NodeFilter.FILTER_ACCEPT;
+          }
+      });
+
+      let node = walker.nextNode();
+      let scanned = 0;
+      while (node && scanned < 200) {
+          scanned += 1;
+          let element = node.parentElement;
+
+          for (let depth = 0; element && depth < 5; depth += 1) {
+              if (rejectedTags.has(element.tagName)) break;
+              const count = getInstagramLikeCountFromTextCandidates([
+                  element.innerText,
+                  element.textContent
+              ].filter(Boolean));
+              if (count) return count;
+              if (element.tagName === 'ARTICLE') break;
+              element = element.parentElement;
+          }
+
+          node = walker.nextNode();
       }
 
       return '';
@@ -479,6 +585,27 @@
       }
 
       if (/^\d+$/.test(text)) return text;
+      return '';
+  }
+
+  function extractReadableLikeCount(value, allowBareNumber = false) {
+      const text = String(value || '').trim();
+      if (!text) return '';
+
+      const descriptiveMatch = text.match(/([\d.,]+(?:\s*[KMB])?)(?=\s*(?:likes?)\b)/i);
+      if (descriptiveMatch) {
+          return descriptiveMatch[1].replace(/\s+/g, '');
+      }
+
+      if (allowBareNumber) {
+          const compactOnlyMatch = text.match(/^([\d.,]+(?:\s*[KMB])?)$/i);
+          if (compactOnlyMatch) {
+              return compactOnlyMatch[1].replace(/\s+/g, '');
+          }
+
+          if (/^\d+$/.test(text)) return text;
+      }
+
       return '';
   }
 
@@ -716,6 +843,7 @@
       const metaDescription = getAttributeFromSelectorList(instagramConfig.meta_description, 'content');
       const metaViews = extractReadableViewCount(metaDescription);
       const semanticViews = getInstagramViewCountFromSemanticDom();
+      const viewCount = embeddedData.views || metaViews || semanticViews;
 
       let handle = embeddedData.handle || profileHrefHandle || headerHandle || "InstagramUser";
 
@@ -731,7 +859,10 @@
       }
 
       if (!isStoryUrl) {
-          views = embeddedData.views || metaViews || semanticViews || "N/A";
+          const likeCount = viewCount
+              ? ''
+              : (embeddedData.likes || extractReadableLikeCount(metaDescription) || getInstagramLikeCountFromDom(instagramConfig));
+          views = viewCount || likeCount || "N/A";
       }
       
       return { 

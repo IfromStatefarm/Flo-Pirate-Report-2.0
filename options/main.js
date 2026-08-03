@@ -86,9 +86,11 @@ const SELECTOR_HELP_TEXT = Object.freeze({
             handle: 'Instagram scraper: finds the visible account handle on posts, reels, or stories.',
             profile_links: 'Instagram scraper: fallback profile links used to derive the creator username from the page URL structure.',
             meta_description: 'Instagram scraper: meta tags used as a backup source for views or page text when DOM selectors shift.',
+            likes: 'Instagram scraper: fallback paths searched for visible like counts when video views are unavailable.',
             json_scripts: 'Instagram scraper: JSON script blocks searched for creator and reel view data.',
             'json_patterns.handle': 'Instagram scraper: regex patterns used to pull the reel/post owner username out of embedded page JSON.',
-            'json_patterns.view_count': 'Instagram scraper: regex patterns used to pull the reel view count out of embedded page JSON.'
+            'json_patterns.view_count': 'Instagram scraper: regex patterns used to pull the reel view count out of embedded page JSON.',
+            'json_patterns.like_count': 'Instagram scraper: regex patterns used to pull the reel/post like count out of embedded page JSON.'
         },
         autofill: {
             'fields.relationship_radio': 'Instagram report form: chooses the relationship-to-rights-owner answer.',

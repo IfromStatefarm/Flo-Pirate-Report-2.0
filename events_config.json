@@ -197,6 +197,11 @@
           "meta[property=\"og:description\"]",
           "meta[name=\"description\"]"
         ],
+        "likes": [
+          "a[href*=\"/liked_by/\"]",
+          "//article//*[contains(translate(normalize-space(.), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \" likes\")][1]",
+          "//*[contains(translate(normalize-space(.), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \" likes\")][1]"
+        ],
         "json_scripts": [
           "script[type=\"application/json\"]"
         ],
@@ -210,6 +215,11 @@
             "\"video_view_count\"\\s*:\\s*(\\d+)",
             "\"play_count\"\\s*:\\s*(\\d+)",
             "\"view_count\"\\s*:\\s*(\\d+)"
+          ],
+          "like_count": [
+            "\"edge_media_preview_like\"\\s*:\\s*\\{[^{}]*?\"count\"\\s*:\\s*(\\d+)",
+            "\"edge_liked_by\"\\s*:\\s*\\{[^{}]*?\"count\"\\s*:\\s*(\\d+)",
+            "\"like_count\"\\s*:\\s*(\\d+)"
           ]
         }
       },
