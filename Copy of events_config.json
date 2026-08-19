@@ -1,0 +1,838 @@
+{
+  "_IMPORTANT_INSTRUCTIONS_": "Only edit the text inside the quotes on the right side of the colon (:). Be careful not to delete any commas or quote marks!",
+  "_CHEAT_SHEET_FOR_MAPPING_TOOL_": "👇 EXACT WORDS TO CHOOSE IN THE ON-SCREEN MAPPING TOOL 👇",
+  "_TIKTOK_SCRAPER_": "views, handle, url_match",
+  "_TIKTOK_AUTOFILL_": "email, name, company, phone, address, urls, signature, agreement, next_btn, send_btn",
+  "_YOUTUBE_SCRAPER_": "channel_link, views_std, views_shorts",
+  "_YOUTUBE_AUTOFILL_": "source_url, video_title, infringing_url, claimant_name, phone, secondary_email, authority, street, city, state, zip, signature, add_video_btn, save_btn",
+  "_COMMENT_VERTICALS_": "This is the list of sports categories in the extension drop-down. To add a new one, simply copy an existing line and change the name.",
+  "_INSTRUCTIONS_FOR_TEAM": "To make an event Double XP, add { \"eventName\": \"Exact Event Name\", \"double_xp\": true } inside the [ ] brackets of the correct vertical.",
+  "community_highlights": {
+    "highlight_of_the_week": {
+      "user": "Connor Pita",
+      "achievement": "For being consistent week in and week out with piracy.",
+      "bonus_awarded": "+100 XP"
+    },
+    "lab_instructions": "Welcome to The Lab! This is where we test experimental scrapers for non-standard platforms like Rumble and Discord. By opting in, you help the team verify selector stability in real-world scenarios. Successful testing earns you the 'Pioneer' badge on the global leaderboard."
+  },
+  "verticals": [
+    {
+      "name": "Varsity TV",
+      "events": []
+    },
+    {
+      "name": "FloRacing",
+      "events": [
+        {
+          "eventName": "2025 AMsoil Championship Off-Road",
+          "double_xp": false
+        },
+        {
+          "eventName": "2026 Shakedown XXIII",
+          "double_xp": false
+        }
+      ]
+    },
+    {
+      "name": "FloCollege",
+      "events": []
+    },
+    {
+      "name": "FloTrack",
+      "events": []
+    },
+    {
+      "name": "MileSplit",
+      "events": []
+    },
+    {
+      "name": "FloMarching",
+      "events": []
+    },
+    {
+      "name": "FloBaseball",
+      "events": []
+    },
+    {
+      "name": "FloRugby",
+      "events": []
+    },
+    {
+      "name": "FloBikes",
+      "events": []
+    },
+    {
+      "name": "FloFootball",
+      "events": []
+    },
+    {
+      "name": "FloFC",
+      "events": []
+    },
+    {
+      "name": "FloHoops",
+      "events": []
+    },
+    {
+      "name": "FloHockey",
+      "events": []
+    },
+    {
+      "name": "FloSoftball",
+      "events": []
+    },
+    {
+      "name": "FloVolleyball",
+      "events": []
+    },
+    {
+      "name": "FloSwimming",
+      "events": []
+    },
+    {
+      "name": "FloLive",
+      "events": []
+    },
+    {
+      "name": "FloCheer",
+      "events": []
+    },
+    {
+      "name": "FloWrestling",
+      "events": [
+        {
+          "eventName": "2026 Men's U23 Nationals and U20 World Team Trials",
+          "double_xp": false
+        },
+        {
+          "eventName": "2026 Sr, Jr & Cadet Canadian Wrestling Champs",
+          "double_xp": false
+        }
+      ]
+    },
+    {
+      "name": "FloGrappling",
+      "events": [
+        {
+          "eventName": "2026 World Jiu-Jitsu IBJJF Championship",
+          "double_xp": false
+        }
+      ]
+    }
+  ],
+  "_COMMENT_PLATFORM_SELECTORS_": "This section contains the rules for how the extension interacts with specific websites like TikTok and YouTube.",
+  "_COMMENT_SESSION_GLOBAL_": "SESSION blocks control which logged-in social accounts are allowed to unlock full Enforcer mode.",
+  "platform_selectors": {
+    "tiktok": {
+      "_COMMENT_SESSION_": "SESSION: Tells the extension which logged-in TikTok accounts are allowed to unlock full Enforcer mode.",
+      "session": {
+        "_COMMENT_SESSION_AUTHORIZED_HANDLES_": "Add approved TikTok handles here exactly as they appear on the platform, including the @ symbol.",
+        "authorized_handles": [
+          "@flosocial3"
+        ],
+        "_COMMENT_SESSION_ACCOUNT_HANDLE_": "These selectors help the extension find the currently signed-in TikTok account handle on the page.",
+        "account_handle": [
+          "a[data-e2e=\"nav-profile\"]",
+          "[data-e2e=\"nav-profile\"] a[href]",
+          "header a[href^=\"/@\"]",
+          "nav a[href^=\"/@\"]",
+          "[data-e2e*=\"profile\"] a[href^=\"/@\"]"
+        ]
+      },
+      "_COMMENT_SCRAPER_": "SCRAPER: Tells the extension how to read data (like view counts and usernames) from the TikTok video page.",
+      "scraper": {
+        "_COMMENT_VIEWS_": "If TikTok changes how they display views, add the new CSS identifier here.",
+        "views": [
+          "[data-e2e=\"video-views\"]",
+          "strong[data-e2e=\"video-views\"]",
+          "//strong[contains(text(), 'views')]"
+        ],
+        "url_match": "@([^/]+)\\/video\\/(\\d+)|@([^/]+)\\/photo\\/(\\d+)",
+        "json_data": {
+          "script_ids": [
+            "__UNIVERSAL_DATA_FOR_REHYDRATION__",
+            "SIGI_STATE"
+          ],
+          "fields": {
+            "handle": [
+              "author.uniqueId",
+              "author",
+              "nickname"
+            ],
+            "views": [
+              "stats.playCount",
+              "statsV2.playCount",
+              "playCount"
+            ]
+          }
+        }
+      },
+      "_COMMENT_AUTOFILL_": "AUTOFILL: Tells the extension what to type and where to click on the TikTok copyright reporting form.",
+      "autofill": {
+        "_COMMENT_DEFAULTS_": "Your personal/company information that gets automatically typed into the form.",
+        "defaults": {
+          "company": "FloSports",
+          "phone": "5122702356",
+          "address": "301 Congress Ave #1500 Austin TX 78701",
+          "email": "Social@FloSports.TV"
+        },
+        "_COMMENT_LABELS_": "The exact text of the dropdowns and wizard steps the extension needs to click.",
+        "dropdown_labels": [
+          "What issue are you having",
+          "Please verify who is being affected"
+        ],
+        "wizard_steps": [
+          "I’d like to report a possible copyright infringement",
+          "I am the copyright owner"
+        ],
+        "radio_options": [
+          "Video",
+          "Outside of TikTok"
+        ],
+        "_COMMENT_AGREEMENTS_": "Keywords next to the checkboxes that the extension must automatically check.",
+        "agreement_terms": [
+          "I declare",
+          "good faith",
+          "perjury",
+          "accurate"
+        ],
+        "_COMMENT_BUTTONS_": "The code identifiers for the 'Next' and 'Send' buttons at the bottom of the form.",
+        "buttons": {
+          "next": [
+            "button.submit-button:not(.disabled)",
+            "//button[text()='Next' and not(@disabled)]",
+            "button.submit-button",
+            "Next",
+            "Continue"
+          ],
+          "send": [
+            "Send",
+            "Submit",
+            "class*=\"submit\""
+          ]
+        },
+        "_COMMENT_FIELDS_": "The code identifiers for the text boxes where info is typed. Add to these lists if TikTok changes their text box code.",
+        "field_strategies": {
+          "email": [
+            "input[placeholder='Enter your email address']",
+            "input[id^='tux-'][placeholder*='email']",
+            "input[name='i.EP.email']",
+            "input[id^=\"tux-\"]",
+            "input[placeholder*=\"email\"]",
+            "#email input"
+          ],
+          "name": [
+            "input[name='i.EP.name']",
+            "input[placeholder*='Full name']",
+            "input[placeholder*='Signature']",
+            "//input[@aria-label='Signature']",
+            "#name input"
+          ],
+          "company": [
+            "input[name='i.EP.nameOfOwner']",
+            "#nameOfOwner input",
+            "input[name=\"copyright_owner\"]",
+            "//div[contains(text(),'Copyright owner')]/following-sibling::input"
+          ],
+          "phone": [
+            "input[name='i.EP.phoneNumber']",
+            "#phoneNumber input",
+            "input[type=\"tel\"]",
+            "//div[contains(text(),'Phone')]/following-sibling::input"
+          ],
+          "address": [
+            "input[name='i.EP.address']",
+            "#address input",
+            "input[name=\"address\"]",
+            "//div[contains(text(),'Address')]/following-sibling::input"
+          ],
+          "urls": [
+            "textarea[name='i.EP.link']",
+            "textarea[name='i.EP.originalTikTokAccountURL']",
+            "textarea[name='i.EP.originalCopyrightedWorkURLs']",
+            "textarea",
+            "//textarea[contains(@placeholder, 'http')]",
+            "//div[contains(text(),'Content to report')]/following-sibling::textarea"
+          ],
+          "signature": [
+            "input[name='i.EP.signature']"
+          ]
+        },
+        "radios": {
+          "typeCopyRight": {
+            "value": "Video",
+            "selector": "input[name='i.EP.typeCopyRight'][value='Video']"
+          },
+          "copyrightedWorkSource": {
+            "value": "From outside of TikTok",
+            "selector": "input[name='i.EP.copyrightedWorkSource'][value='From outside of TikTok']"
+          }
+        },
+        "toggles": {
+          "needAddSeed": "input[name='i.EP.needAddSeed']"
+        },
+        "checkboxes": {
+          "agreement": "input[name='i.EP.agreement']"
+        },
+        "agreement": "div#agreement > div > div > div > div > input"
+      }
+    },
+    "youtube": {
+      "_COMMENT_SESSION_": "SESSION: Tells the extension which logged-in YouTube accounts are allowed to unlock full Enforcer mode and where to read the signed-in channel handle.",
+      "session": {
+        "_COMMENT_SESSION_AUTHORIZED_HANDLES_": "Approved YouTube handles. Keep the @ symbol. If a user is logged into one of these accounts, Enforcer mode can unlock.",
+        "authorized_handles": [
+          "@flosocial4531",
+          "@floelite",
+          "@flocollegevolleyball",
+          "@florugby",
+          "@flocollegebasketball",
+          "@floflomarching",
+          "@florodeo",
+          "@floracingwk4fk",
+          "@flogrppling",
+          "@floswimming",
+          "@milesplit",
+          "@flovoice",
+          "@floclimbing1847",
+          "@flobowling",
+          "@flodance",
+          "@flodragracing",
+          "@flosports"
+        ],
+        "_COMMENT_SESSION_AUTHORIZED_CHANNEL_IDS_": "Approved public YouTube channel IDs. These are useful when the handle is not visible but the session still exposes the channel ID.",
+        "authorized_channel_ids": [
+          "UCI1KHGC-GuvaOej1qPY7sBA",
+          "UCJeMIYjZLELFf1xMFUZEmzQ",
+          "UCjl8UhCmj3gFmtDe5_MiGgg",
+          "UC3Mj0nm-7grOYZuqgo-LhmQ",
+          "UCjfcsyEFS4g-rJHxzOba9ng",
+          "UCbcJDshcWmYzvYofmqFOT8Q",
+          "UCAnzXT5pmV8phtMsnavN7Qg",
+          "UCX7MXflg3DxDJTZi5mJRiOw",
+          "UCngVN3LC9pNOOvjSq9X-lDQ",
+          "UCrrOH-g-Vdcl57U-AgY3YMQ",
+          "UC80xBT9ErxjJDLvmTER1ToQ",
+          "UCj8-BAD2gi7Cn4ZuAns8QJg",
+          "UC4QLqyxFieBF-XUxrHRbjfg",
+          "UCfjGrUg4Y7T3Zf6fy38mAuw"
+        ],
+        "_COMMENT_SESSION_AUTHORIZED_STUDIO_IDS_": "Approved YouTube Studio / Content Manager IDs. Add more here if the team uses additional Studio manager accounts.",
+        "authorized_studio_manager_ids": [
+          "VCBDhoYo0l5sZyPRZC85IA",
+          "aN9WOtYZUy413s3J75rs0A"
+        ],
+        "_COMMENT_SESSION_CHANNEL_HANDLE_": "These selectors help the extension read the signed-in channel handle from the account menu. Your inspected element is yt-formatted-string#channel-handle.",
+        "channel_handle": [
+          "yt-formatted-string#channel-handle",
+          "ytd-active-account-header-renderer yt-formatted-string#channel-handle"
+        ],
+        "_COMMENT_SESSION_ACCOUNT_MENU_TRIGGER_": "These selectors tell the extension which YouTube button to click to briefly open the account menu if the handle is not already visible.",
+        "account_menu_trigger": [
+          "button#avatar-btn",
+          "#avatar-btn",
+          "button[aria-label*=\"account\" i]",
+          "button[aria-label*=\"channel\" i]"
+        ],
+        "_COMMENT_SESSION_CANDIDATE_ANCHORS_": "These are fallback areas the extension scans for approved handles, IDs, or account links when checking a YouTube session.",
+        "candidate_anchors": [
+          "ytd-guide-renderer a[href]",
+          "ytd-mini-guide-renderer a[href]",
+          "ytd-popup-container a[href]",
+          "ytd-masthead a[href]",
+          "tp-yt-paper-dialog a[href]"
+        ]
+      },
+      "_COMMENT_YOUTUBE_SCRAPER_": "YOUTUBE SCRAPER: Tells the extension how to read data from a YouTube video page.",
+      "scraper": {
+        "channel_link": "#channel-name a",
+        "views_std": "span.view-count",
+        "views_shorts": "span[role=\"text\"][aria-label*=\"views\"]"
+      },
+      "_COMMENT_YOUTUBE_AUTOFILL_": "YOUTUBE AUTOFILL: Rules for filling out the YouTube copyright complaint form.",
+      "autofill": {
+        "wizard_steps": [
+          "Videos requested for removal",
+          "Copyright owner",
+          "Removal options and legal agreements"
+        ],
+        "defaults": {
+          "company": "FloSports",
+          "authority": "Authorized Representative",
+          "phone": "512-270-2356",
+          "secondary_email": "copyright@flosports.tv",
+          "street": "301 Congress Ave #1500",
+          "city": "Austin",
+          "state": "TX",
+          "zip": "78701",
+          "source_url": "https://www.flosports.tv"
+        },
+        "buttons": {
+          "add_video": [
+            "#add-new-entry:not([style*=\"display: none\"]) button",
+            "ytcp-button:not([style*=\"display: none\"]) button",
+            "//div[contains(text(), 'Add a video')]/ancestor::button",
+            "Add a video"
+          ],
+          "save": [
+            "#save-button button",
+            "#save-button",
+            "Save"
+          ]
+        },
+        "inputs": {
+          "source_url": "ytcp-form-textarea#videoLink textarea, textarea[aria-label=\"My video URL\"], #videoLink textarea, #videoLink input",
+          "video_title": "ytcp-form-textarea#videoTitle textarea, textarea[aria-label=\"Title\"], #videoTitle textarea, #videoTitle input",
+          "infringing_url": "ytcp-form-textarea#targetVideo textarea, textarea[aria-label=\"YouTube URL of video to be removed\"], #targetVideo textarea, #targetVideo input",
+          "claimant_name": "ytcp-form-textarea#claimant-name textarea, textarea[aria-label*=\"Copyright owner\"], #claimant-name textarea, ytcp-form-input-container#claimant-name input, input[aria-label*=\"Copyright owner\"], #claimant-name input",
+          "phone": "ytcp-form-textarea#phone textarea, #phone textarea, ytcp-form-textarea textarea[aria-label*=\"Phone\"], textarea[aria-label*=\"Phone\"], ytcp-form-input-container input[type='tel'], input[aria-label*=\"Phone\"], input[name='phone']",
+          "secondary_email": "ytcp-form-textarea#secondary-email textarea, #secondary-email textarea, ytcp-form-textarea textarea[aria-label*=\"Secondary email\"], textarea[aria-label=\"Secondary email\"], ytcp-form-input-container input[name='secondaryEmail'], input[aria-label=\"Secondary email\"]",
+          "authority": "ytcp-form-textarea#requester-authority textarea, #requester-authority textarea, ytcp-form-textarea textarea[aria-label*=\"Relationship\"], textarea[aria-label*=\"Relationship\"], ytcp-form-input-container#requester-authority input, input[aria-label*=\"Authority\"], #requester-authority input",
+          "street": "ytcp-form-textarea textarea[name='address'], textarea[aria-label*=\"Street address\"], input[aria-label=\"Street address\"], input[name='address']",
+          "city": "[aria-label=\"City\"]",
+          "state": "#state",
+          "zip": [
+            "[aria-label=\"Zip code\"]",
+            "[aria-label=\"Código postal\"]",
+            "input[name*=\"zip\"]"
+          ],
+          "signature": [
+            "[aria-label=\"Signature\"]",
+            "[aria-label=\"Firma\"]",
+            "input[name*=\"signature\"]",
+            "#signature"
+          ]
+        },
+        "dropdowns": {
+          "type_work": {
+            "label": "Type of work",
+            "selector": "#mainIssueType",
+            "trigger": "#mainIssueType #trigger",
+            "value": "Video"
+          },
+          "subcategory": {
+            "label": "Subcategory",
+            "selector": "#subcategory",
+            "trigger": "#subcategory #trigger",
+            "value": "Internet video"
+          },
+          "source": {
+            "label": "Source",
+            "selector": "#source",
+            "trigger": "#source #trigger",
+            "value": "From outside of YouTube"
+          },
+          "location": {
+            "label": "Location of infringing content",
+            "selector": "#location",
+            "trigger": "#location #trigger",
+            "value": "Entire video"
+          },
+          "affected_party": {
+            "label": "Affected party",
+            "selector": "#affected-party",
+            "trigger": "#affected-party #trigger",
+            "value": "My company, organization, or client"
+          },
+          "country": {
+            "label": "Country",
+            "selector": "#country-select",
+            "trigger": "#country-select #trigger",
+            "value": "United States"
+          }
+        },
+        "radios": {
+          "standard_timing": "tp-yt-paper-radio-button#immediate-takedown-radio-button, tp-yt-paper-radio-button[name=\"immediate\"]"
+        },
+        "checkboxes": {
+          "prevent_copies": "ytcp-checkbox-lit[aria-label*=\"Prevent future copies\"]",
+          "agreements": [
+            "worldwide exclusive rights",
+            "good faith",
+            "accurate",
+            "abuse"
+          ]
+        }
+      }
+    },
+    "instagram": {
+      "_COMMENT_INSTA_": "Rules for Instagram (Work in Progress)",
+      "scraper": {
+        "handle": [
+          "header a[href^=\"/\"]",
+          "main header a[href^=\"/\"]",
+          "a[role=\"link\"][href^=\"/\"]"
+        ],
+        "profile_links": [
+          "header a[href^=\"/\"]",
+          "main header a[href^=\"/\"]",
+          "a[role=\"link\"][href^=\"/\"]"
+        ],
+        "meta_description": [
+          "meta[property=\"og:description\"]",
+          "meta[name=\"description\"]"
+        ],
+        "json_scripts": [
+          "script[type=\"application/json\"]"
+        ],
+        "json_patterns": {
+          "handle": [
+            "\"owner\"\\s*:\\s*\\{[^{}]*?\"username\"\\s*:\\s*\"([^\"]+)\"",
+            "\"user\"\\s*:\\s*\\{[^{}]*?\"username\"\\s*:\\s*\"([^\"]+)\"",
+            "\"username\"\\s*:\\s*\"([^\"]+)\""
+          ],
+          "view_count": [
+            "\"video_view_count\"\\s*:\\s*(\\d+)",
+            "\"play_count\"\\s*:\\s*(\\d+)",
+            "\"view_count\"\\s*:\\s*(\\d+)"
+          ]
+        }
+      },
+      "autofill": {
+        "defaults": {
+          "contact_email": "social@flosports.tv",
+          "rights_owner_name": "FloSports",
+          "relationship": "I am reporting on behalf of my organization or client.",
+          "country": "United States",
+          "work_type": "Video",
+          "content_type_post": "Photo, video or post",
+          "content_type_story": "Story"
+        },
+        "templates": {
+          "infringement_explanation": "Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]). FloSports owns the exclusive copyright. Infringement is visually verifiable via our proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account."
+        },
+        "fields": {
+          "relationship_radio": [
+            "input[type=\"radio\"][name=\"copyright_owner\"][value=\"I am reporting on behalf of my organization or client.\"]"
+          ],
+          "full_name": [
+            "input[name=\"your_name\"]"
+          ],
+          "email": [
+            "input[name=\"email\"]"
+          ],
+          "confirm_email": [
+            "input[name=\"confirm_email\"]",
+            "input[name=\"confirm_email_address\"]",
+            "input[aria-label*=\"Confirm your email\"]"
+          ],
+          "rights_owner_name": [
+            "input[name=\"rights_owner_name\"]",
+            "input[name=\"name_of_the_rights_owner\"]",
+            "input[name=\"name_of_rights_owner\"]"
+          ],
+          "country_select": [
+            "select[name=\"where_are_you_asserting_rights\"]",
+            "select[aria-label*=\"Where are you asserting rights\"]"
+          ],
+          "work_type_select": [
+            "select[name=\"describe_copyrighted_work_me\"]",
+            "select[aria-label*=\"Which of these best describes the copyrighted work\"]"
+          ],
+          "source_url": [
+            "textarea[name=\"copyrighted_work_url\"]",
+            "textarea[name=\"link_to_original\"]"
+          ],
+          "copyrighted_work_description": [
+            "textarea[name=\"copyrighted_work_description\"]",
+            "textarea[name=\"describe_copyrighted_work\"]"
+          ],
+          "content_type_post": [
+            "input[type=\"checkbox\"][value=\"Photo, video or post\"]"
+          ],
+          "content_type_story": [
+            "input[type=\"checkbox\"][value=\"Story\"]"
+          ],
+          "content_urls": [
+            "textarea[name=\"content_urls\"]",
+            "textarea[name^=\"content_urls\"]"
+          ],
+          "additional_links_checkbox": [
+            "input[type=\"checkbox\"][name=\"additional_links\"]"
+          ],
+          "infringement_explanation": [
+            "textarea[name=\"infringement_explanation\"]",
+            "textarea[name=\"additional_information\"]"
+          ],
+          "signature": [
+            "input[name=\"electronic_signature\"]",
+            "input[name=\"signature\"]"
+          ],
+          "send_button": [
+            "button[type=\"submit\"]",
+            "input[type=\"submit\"]"
+          ]
+        }
+      }
+    },
+    "twitter": {
+      "scraper": {
+        "handle_links": [
+          "article[data-testid=\"tweet\"] [data-testid=\"User-Name\"] a[href^=\"/\"]",
+          "[data-testid=\"tweet\"] [data-testid=\"User-Name\"] a[href^=\"/\"]",
+          "[data-testid=\"User-Name\"] a[href^=\"/\"]"
+        ],
+        "handle": [
+          "article[data-testid=\"tweet\"] [data-testid=\"User-Name\"] a[href^=\"/\"] span",
+          "[data-testid=\"tweet\"] [data-testid=\"User-Name\"] a[href^=\"/\"] span",
+          "[data-testid=\"User-Name\"] a[href^=\"/\"] span"
+        ],
+        "views": [
+          "article[data-testid=\"tweet\"] a[href*=\"/analytics\"] span",
+          "[data-testid=\"tweet\"] a[href*=\"/analytics\"] span",
+          "a[href*=\"/analytics\"] span",
+          "a[aria-label*=\"View post analytics\" i] span",
+          "[data-testid=\"app-text-transition-container\"] span"
+        ],
+        "views_analytics": [
+          "article[data-testid=\"tweet\"] a[href*=\"/analytics\"]",
+          "[data-testid=\"tweet\"] a[href*=\"/analytics\"]",
+          "a[href*=\"/analytics\"]",
+          "a[aria-label*=\"View post analytics\" i]"
+        ],
+        "takedown_messages": [
+          "[data-testid=\"tweetText\"] span",
+          "[data-testid=\"tweetText\"]",
+          "[data-testid=\"videoPlayer\"] span",
+          "article[data-testid=\"tweet\"] span"
+        ],
+        "takedown_patterns": [
+          "this media has been disabled",
+          "disabled in response to a report by the copyright owner",
+          "this post has been deleted",
+          "tweet has been deleted",
+          "this page doesn't exist",
+          "account suspended"
+        ],
+        "active_media": [
+          "[data-testid=\"videoPlayer\"] video",
+          "[data-testid=\"videoPlayer\"]",
+          "video[aria-label=\"Embedded video\"]",
+          "article[data-testid=\"tweet\"] video",
+          "video"
+        ]
+      },
+      "autofill": {
+        "defaults": {
+          "copyright_owner_name": "Flosports",
+          "company": "Flosports",
+          "job_title": "Stream Operations",
+          "street_address": "301 Congress ave #1500",
+          "city": "Austin",
+          "state": "Tx",
+          "postal_code": "78701",
+          "country": "United States",
+          "phone": "5122702356",
+          "infringement_platform": "X",
+          "work_type": "Video/Audiovisual Recording"
+        },
+        "fields": {
+          "copyright_owner_name": "input[name$=\"Content_Owner_Name__c\"]",
+          "full_name": "input[name$=\"Form_Name__c\"]",
+          "company": "input[name$=\"company\"]",
+          "job_title": "input[name$=\"jobTitle\"]",
+          "street_address": "input[name$=\"streetAddress\"]",
+          "city": "input[name$=\"city\"]",
+          "state": "input[name$=\"state\"]",
+          "postal_code": "input[name$=\"postalCode\"]",
+          "country": "select[name$=\"country\"]",
+          "phone": [
+            "input[name=\"phone_number\"]",
+            "input[name$=\"phone_number\"]",
+            "input[name$=\"form_number__c\"]",
+            "input[name*=\"phone\" i]",
+            "input[type=\"tel\"]"
+          ],
+          "description": "textarea[name$=\"DescriptionText\"]",
+          "original_work_url": "input[name*=\"OriginalWork\"][name$=\".value\"]",
+          "infringing_urls": [
+            "input[name*=\"Infringing_Urls__c\"][name$=\".value\"]",
+            "input[name*=\"infringing_urls\" i][name$=\".value\"]",
+            "//input[contains(@name, \"Infringing_Urls__c\") and substring(@name, string-length(@name) - 5) = \".value\"]"
+          ],
+          "add_link": [
+            "ul.f206__form-field:has(input[name*=\"Infringing_Urls__c\"]) button.f206__add-button",
+            "//input[contains(@name, \"Infringing_Urls__c\")]/ancestor::ul[contains(@class, \"f206__form-field\")][1]//button[contains(@class, \"f206__add-button\") or contains(normalize-space(.), \"Add another link\")]"
+          ],
+          "infringement_description": "textarea[name$=\"describeInfringement\"]"
+        },
+        "signature": [
+          "input[name=\"signature\"]",
+          "input[name$=\"signature\"]"
+        ]
+      },
+      "radios": {
+        "infringement_platform": [
+          "input[type=\"radio\"][value=\"X\"]",
+          "input[type=\"radio\"][name$=\"type_of_issue__c\"][value=\"X\"]",
+          "input[type=\"radio\"][name*=\"type_of_issue\" i][value=\"X\"]",
+          "//input[@type=\"radio\" and @value=\"X\"]"
+        ],
+        "work_type": [
+          "input[type=\"radio\"][value=\"Video/Audiovisual Recording\"]",
+          "input[type=\"radio\"][name$=\"@type\"][value=\"Video/Audiovisual Recording\"]",
+          "//input[@type=\"radio\" and @value=\"Video/Audiovisual Recording\"]"
+        ]
+      },
+      "buttons": {
+        "add_link": [
+          "button.f206__add-button",
+          "//button[contains(normalize-space(.), \"Add another link\")]"
+        ]
+      },
+      "checkboxes": {
+        "acknowledgements": [
+          "input[type=\"checkbox\"][name=\"acknowledgement\"]",
+          "input[type=\"checkbox\"][name=\"good-faith-belief\"]",
+          "input[type=\"checkbox\"][name=\"authority-to-act\"]",
+          "input[type=\"checkbox\"][value*=\"17 U.S.C.\"]",
+          "input[type=\"checkbox\"][value*=\"good faith belief\"]",
+          "input[type=\"checkbox\"][value*=\"authorized to act\"]"
+        ]
+      }
+    },
+    "facebook": {
+      "scraper": {
+        "profile_links": [
+          "[data-ad-rendering-role=\"profile_name\"] a[role=\"link\"][href]",
+          "h2 a[role=\"link\"][href*=\"facebook.com\"]",
+          "strong a[role=\"link\"][href*=\"facebook.com\"]",
+          "a[role=\"link\"][href*=\"facebook.com/\"] span"
+        ],
+        "profile_name": [
+          "[data-ad-rendering-role=\"profile_name\"] a[role=\"link\"] span",
+          "[data-ad-rendering-role=\"profile_name\"] span",
+          "h2 a[role=\"link\"] span",
+          "strong a[role=\"link\"] span"
+        ],
+        "views": [
+          "//span[contains(translate(normalize-space(.), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \" views\")]",
+          "//span[contains(translate(normalize-space(.), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \" viewers\")]"
+        ]
+      }
+    },
+    "kick": {
+      "scraper": {
+        "handle_links": [
+          "a[href^=\"/\"] img[alt]",
+          "a[href^=\"/\"][data-testid]",
+          "a[href^=\"/\"]"
+        ],
+        "handle_name": [
+          "a[href^=\"/\"] img[alt]",
+          "img#channel-avatar",
+          "img[alt]"
+        ],
+        "live_badge": [
+          "button span[class*=\"bg-green-500\"]",
+          "span[class*=\"bg-green-500\"][class*=\"text-neutral-900\"]",
+          "span.text-green-500",
+          "[data-testid=\"live-badge\"]",
+          "button span"
+        ],
+        "live_viewer_count": [
+          "[data-testid=\"viewer-count\"]",
+          "[data-testid=\"viewer-count\"] [style*=\"translateY\"]"
+        ],
+        "live_viewer_digit_columns": [
+          "[data-testid=\"viewer-count\"] .flex.overflow-hidden > div[style*=\"height: 20px\"]",
+          "[data-testid=\"viewer-count\"] div[style*=\"height: 20px\"][style*=\"width:\"]"
+        ],
+        "archived_views": [
+          "span[title]",
+          ".text-primary-base[title]"
+        ],
+        "archived_view_labels": [
+          "views",
+          "watching"
+        ]
+      },
+      "autofill": {
+        "defaults": {
+          "recipient_email": "dmca@kick.com",
+          "contact_email": "social@flosports.tv",
+          "phone": "5122702356",
+          "address": "301 Congress ave #1500\nAustin Tx 78701",
+          "title": "Authorized user"
+        },
+        "labels": {
+          "overlay_title": "Kick DMCA Composer ✥",
+          "platform_intro": "Kick uses an email-based DMCA process. Copy the fields below, send the email, then use Log to Sheet to capture evidence and finish the report.",
+          "queued_urls_label": "Queued URLs:",
+          "recipient_title": "Send To",
+          "recipient_help": "Copy this email address into the To field in your email client.",
+          "subject_title": "Email Subject",
+          "subject_help": "Copy this subject line into the Subject field so the Kick notice is easy to identify.",
+          "body_title": "DMCA Notice Body",
+          "body_help": "Copy this full notice into the body of your email to Kick. The rendered box below shows the numbered sections and the original FloSports URL in bold.",
+          "copy_button": "Copy",
+          "copy_body_button": "Copy Email",
+          "copy_full_button": "Copy Full Notice",
+          "log_reminder": "Send the email manually, then log below.",
+          "log_button": "Log to Sheet",
+          "loading_title": "Kick logging in progress",
+          "loading_help": "We are revisiting each queued Kick URL, capturing fresh evidence screenshots, and then logging the batch to the sheet.",
+          "loading_steps_title": "What happens next"
+        },
+        "templates": {
+          "greeting": "To Whom It May Concern at Kick,",
+          "submission_intro": "I am submitting this DMCA takedown notice on behalf of FloSports.",
+          "subject": "DMCA Takedown Notice - FloSports - [Event Name]",
+          "infringing_material_description": "Unauthorized Kick-hosted or Kick-linked distribution of FloSports material appearing at the URLs listed below.",
+          "ownership_evidence": "The infringing material often includes FloSports, MileSplit, or Varsity TV watermarks and proprietary broadcast graphics, all of which evidence FloSports ownership.",
+          "source_url_label": "Original FloSports URL being pirated:",
+          "reported_urls_label": "Reported Kick URLs:"
+        }
+      }
+    },
+    "rumble": {
+      "autofill": {
+        "menu_button": [
+          "[data-js=\"video_action_sub_menu_button\"]",
+          ".media-by-actions-button-menu[data-js=\"video_action_sub_menu_button\"]"
+        ],
+        "direct_report_button": [
+          "[data-type=\"report\"] button[hx-get=\"/htmx/web-services/report-content\"]",
+          "button[hx-get=\"/htmx/web-services/report-content\"][hx-ext=\"modal\"]",
+          "button.media-by-actions-button[hx-get*=\"/report-content\"]",
+          "button[hx-get*=\"/report-content\"]"
+        ],
+        "report_button": [
+          "[data-type=\"report\"] [data-js=\"video_action_sub_menu_button\"]",
+          "[data-type=\"report\"] button[hx-get=\"/htmx/web-services/report-content\"]",
+          "button[hx-get=\"/htmx/web-services/report-content\"][hx-ext=\"modal\"]",
+          "button.media-by-actions-button[hx-get*=\"/report-content\"]"
+        ],
+        "copyright_reason": [
+          "input[type=\"radio\"][name=\"reason\"][value=\"It violates copyright\"]"
+        ],
+        "submit_button": [
+          "button[type=\"button\"][hx-post=\"/htmx/web-services/report-content\"][hx-include=\"[name='reason']\"]",
+          "button[hx-post=\"/htmx/web-services/report-content\"][hx-include=\"[name='reason']\"]",
+          "#modal_body button[hx-post=\"/htmx/web-services/report-content\"]",
+          "[data-js=\"modal_content\"] button[hx-post*=\"/report-content\"]",
+          "button.font-semibold[hx-post*=\"/report-content\"]",
+          "button[hx-post*=\"/report-content\"]",
+          "//button[contains(normalize-space(.), \"Submit\") and contains(@hx-post, \"/report-content\")]"
+        ]
+      },
+      "scraper": {
+        "handle": [
+          ".media-heading-name",
+          ".media-by-heading .ellipsis-1",
+          "a.media-by--a"
+        ],
+        "views": [
+          "[data-js=\"media_description_info_views\"]",
+          ".media-description-info-views"
+        ],
+        "live_viewer_count": [
+          ".live-video-view-count-status-count[title*=\"users watching now\" i]"
+        ]
+      }
+    },
+    "discord": {
+      "scraper": {}
+    }
+  }
+}
