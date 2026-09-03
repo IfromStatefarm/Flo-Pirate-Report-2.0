@@ -19,6 +19,28 @@
       --shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
     }
 
+<<<<<<< Updated upstream
+=======
+    [hidden] { display: none !important; }
+
+    .access-state {
+      margin: 14px 14px 0;
+      padding: 16px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 13px;
+      line-height: 1.45;
+      text-align: center;
+    }
+
+    .access-state strong { display: block; margin-bottom: 5px; color: #111827; }
+    .access-state.is-error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+    .access-state.is-pending { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+    .access-state button { margin-top: 10px; width: auto; }
+
+>>>>>>> Stashed changes
     * { box-sizing: border-box; }
 
     body {
@@ -618,7 +640,11 @@
           </div>
         </div>
 
+<<<<<<< Updated upstream
         <button id="openOptionsGearBtn" class="icon-btn" type="button" title="Open Settings" aria-label="Open Settings">
+=======
+        <button id="openOptionsGearBtn" class="icon-btn" type="button" title="Open Settings" aria-label="Open Settings" hidden>
+>>>>>>> Stashed changes
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.23.65.23 1H21a2 2 0 0 1 0 4h-1.37c0 .35-.09.69-.23 1z"></path>
@@ -633,7 +659,16 @@
       </div>
     </header>
 
+<<<<<<< Updated upstream
     <div id="clippy-process-bubble" class="assistant-strip">
+=======
+    <div id="sidepanel-access-state" class="access-state" role="status">
+      <strong>Verifying access</strong>
+      Checking your extension login and assigned role…
+    </div>
+
+    <div id="clippy-process-bubble" class="assistant-strip" hidden>
+>>>>>>> Stashed changes
       <span id="close-clippy-btn" title="Dismiss">x</span>
       <img id="clippy-state-icon" src="images/clippy starting postion.png" alt="Assistant">
       <div class="assistant-copy">
@@ -642,7 +677,11 @@
       </div>
     </div>
 
+<<<<<<< Updated upstream
     <details id="gamification-header" class="gamification-card">
+=======
+    <details id="gamification-header" class="gamification-card" hidden>
+>>>>>>> Stashed changes
       <summary class="gamification-toggle">
         <div class="gamification-toggle-copy">
           <div class="gamification-eyebrow">Squad Snapshot</div>
@@ -706,7 +745,11 @@
       <div class="goal-video-close">Click anywhere to close</div>
     </div>
 
+<<<<<<< Updated upstream
     <nav class="tabbar" aria-label="Side panel sections">
+=======
+    <nav class="tabbar" aria-label="Side panel sections" hidden>
+>>>>>>> Stashed changes
       <button class="tab-button active" type="button" data-tab-target="report">Report</button>
       <button class="tab-button" type="button" data-tab-target="automate">Automate</button>
       <button class="tab-button" type="button" data-tab-target="intel">Intel</button>
@@ -714,7 +757,11 @@
       <button class="tab-button" type="button" data-tab-target="repair">Repair</button>
     </nav>
 
+<<<<<<< Updated upstream
     <main class="container">
+=======
+    <main class="container" hidden>
+>>>>>>> Stashed changes
       <section id="tab-report" class="tab-panel active" data-tab-panel="report">
         <div class="panel">
           <div class="panel-heading">
@@ -766,6 +813,7 @@
             <button id="copyEventNameBtn" class="link-btn" type="button">Copy Event Name</button>
             <button id="copyUrlBtn" class="link-btn" type="button">Copy Stolen From URL</button>
           </div>
+<<<<<<< Updated upstream
 
           <ol class="workflow-list">
             <li>Select vertical and event.</li>
@@ -868,6 +916,105 @@
             <button id="doubleTapBtn" class="btn btn-warning btn-small" type="button">Scan</button>
           </div>
 
+=======
+
+          <ol class="workflow-list">
+            <li>Select vertical and event.</li>
+            <li>Save or copy the official source URL.</li>
+            <li>Add pirated videos from the page overlay.</li>
+          </ol>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading">
+            <h2 class="panel-title">Queue + Action</h2>
+          </div>
+
+          <div class="queue-summary">
+            <div class="metric">
+              <div class="metric-label">Queued URLs</div>
+              <div id="queueCount" class="metric-value">0</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Detected Platform</div>
+              <div id="queuePlatform" class="metric-value">-</div>
+            </div>
+          </div>
+          <div id="queueHint" class="hint">Use the page overlay Add button to queue pirated links.</div>
+          <button id="startBtn" class="btn btn-primary" type="button" disabled>Start Report</button>
+        </div>
+
+        <div class="panel danger-zone">
+          <div class="panel-heading">
+            <h2 class="panel-title">Rogue Site Tools</h2>
+          </div>
+          <p class="panel-kicker">Use safety mode by default. Turn on the page overlay only when you are working a third-party stream.</p>
+
+          <button id="nukeStreamBtn" class="btn btn-dark" type="button">3rd Party Safety: ON</button>
+          <div class="flex-row" style="margin-top: 8px;">
+            <button id="nukeBtn" class="btn btn-danger" type="button">Capture Rogue Evidence</button>
+          </div>
+          <div id="nukeStatus"></div>
+
+          <div class="toggle-row">
+            <label for="rogueToggle">Show Nuke button on video page</label>
+            <label class="switch">
+              <input type="checkbox" id="rogueToggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-automate" class="tab-panel" data-tab-panel="automate">
+        <div class="panel subtle">
+          <div class="panel-heading">
+            <h2 class="panel-title">Automation Tools</h2>
+          </div>
+          <p class="panel-kicker">Automate work from the connected <a href="#" id="automationSheetLink" target="_blank">Google Sheet</a>. Run only one tool at a time.</p>
+
+          <label>The Closer</label>
+          <div class="hint">Scans Column H for live links, then updates each row as Resolved or Investigating.</div>
+          <div class="flex-row">
+            <label for="startRowInput" style="margin:0; white-space:nowrap;">Start Row</label>
+            <input type="number" id="startRowInput" placeholder="2" min="1" value="2" style="max-width: 72px;">
+            <label for="closerTabsSelect" style="margin:0; white-space:nowrap;">Tabs</label>
+            <select id="closerTabsSelect" style="max-width: 60px;">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4" selected>4</option>
+            </select>
+            <label class="switch">
+              <input type="checkbox" id="closerToggle">
+              <span class="slider"></span>
+            </label>
+            <span id="closerToggleLabel" style="font-size: 12px; font-weight: 800; color: #64748b; width: 24px; text-align: right;">Off</span>
+          </div>
+          <div id="closerStatus">Waiting to start...</div>
+        </div>
+
+        <div class="panel subtle">
+          <div class="panel-heading">
+            <h2 class="panel-title">Double Tap</h2>
+          </div>
+          <div class="hint">Finds active platform links in the sheet and queues them for bulk reporting.</div>
+          <div class="flex-row">
+            <select id="platformScanSelect" style="max-width: 104px;">
+              <option value="tiktok">TikTok</option>
+              <option value="youtube">YouTube</option>
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Facebook</option>
+              <option value="rumble">Rumble</option>
+              <option value="discord">Discord</option>
+              <option value="other">Other</option>
+            </select>
+            <label for="doubleTapStartRow" style="margin:0; white-space:nowrap;">Start Row</label>
+            <input type="number" id="doubleTapStartRow" min="1" value="2" title="Start Row" style="max-width: 72px;">
+            <button id="doubleTapBtn" class="btn btn-warning btn-small" type="button">Scan</button>
+          </div>
+
+>>>>>>> Stashed changes
           <div class="flex-row">
             <button id="reportFromSheetBtn" class="btn btn-success" type="button" style="display: none; flex: 1;">Report Queued</button>
             <button id="stopScanBtn" class="btn btn-danger" type="button" style="display: none; flex: 1;">Stop Scan</button>
@@ -929,7 +1076,10 @@
           <label for="repairPlatformSelect">Platform</label>
           <select id="repairPlatformSelect">
             <option value="tiktok">TikTok</option>
+<<<<<<< Updated upstream
             <option value="instagram">Instagram</option>
+=======
+>>>>>>> Stashed changes
             <option value="youtube">YouTube</option>
             <option value="twitter">Twitter</option>
             <option value="twitch">Twitch</option>
@@ -977,6 +1127,7 @@
           <label for="selectorFieldMap">Field Name</label>
           <input id="selectorFieldMap" list="selectorFieldOptions" placeholder="e.g. submit_button">
           <datalist id="selectorFieldOptions">
+<<<<<<< Updated upstream
             <option value="account_handle">
             <option value="account_menu_trigger">
             <option value="buttons.next">
@@ -1001,6 +1152,17 @@
             <option value="views_shorts">
             <option value="views_std">
             <option value="vod_views">
+=======
+            <option value="menu_button">
+            <option value="report_button">
+            <option value="submit_button">
+            <option value="copyright_reason">
+            <option value="success_indicators">
+            <option value="handle">
+            <option value="candidate_channel_links">
+            <option value="account_handle">
+            <option value="account_menu_trigger">
+>>>>>>> Stashed changes
           </datalist>
 
           <button id="saveSelectorBtn" class="btn btn-primary" type="button">Patch Cloud Config</button>

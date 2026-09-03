@@ -85,8 +85,17 @@
         "*://ipr.tiktokforbusiness.com/*",
         "*://www.tiktok.com/legal/report/*",
         "*://www.youtube.com/copyright_complaint_form*",
+<<<<<<< Updated upstream
         "*://rumble.com/*",
         "*://*.rumble.com/*",
+=======
+        "*://kick.com/*",
+        "*://*.kick.com/*",
+        "*://rumble.com/*",
+        "*://*.rumble.com/*",
+        "*://www.twitch.tv/copyright-claims*",
+        "*://*.twitch.tv/copyright-claims*",
+>>>>>>> Stashed changes
         "*://help.instagram.com/*",
         "*://help.x.com/*",
         "*://www.twitch.tv/copyright-claims*",
@@ -99,25 +108,14 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["lib/jspdf.umd.min.js", 
-      "style.css", 
-      "images/foundationsheet.jpg", 
-      "images/captainslog.png", 
-      "images/compass.png",
-      "images/firefly.png",
-      "images/floorplanks.png",
-      "images/nauticalchart.png",
-      "images/rivet.png",
-      "images/RootIdchest.png",
-      "images/treasurechest.png",
-      "images/waxseal.png",
-      "images/eventconfig.jpg", 
-      "images/clippy.gif",
+      "resources": [
+        "lib/jspdf.umd.min.js",
+        "images/clippy.gif",
         "images/clippy smrik.gif",
         "images/clippy looking.gif",
         "images/clippy starting postion.png",
-       "jingle.mp3", 
-        "images/clippy.png"],
+        "jingle.mp3"
+      ],
 
       "matches": [
         "*://*.tiktok.com/*", 

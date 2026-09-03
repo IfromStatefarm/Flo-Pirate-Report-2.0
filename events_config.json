@@ -92,7 +92,13 @@
           "nav a[href^=\"/@\"]",
           "[data-e2e*=\"profile\"] a[href^=\"/@\"]"
         ]
+<<<<<<< Updated upstream
       }
+=======
+      },
+      "scraper": {},
+      "autofill": {}
+>>>>>>> Stashed changes
     },
     "rumble": {
       "autofill": {
@@ -299,6 +305,737 @@
           ]
         }
       }
+<<<<<<< Updated upstream
+=======
+    },
+    "twitter": {
+      "scraper": {
+        "handle_links": [
+          "article[data-testid=\"tweet\"] [data-testid=\"User-Name\"] a[href^=\"/\"]",
+          "[data-testid=\"tweet\"] [data-testid=\"User-Name\"] a[href^=\"/\"]",
+          "[data-testid=\"User-Name\"] a[href^=\"/\"]"
+        ],
+        "handle": [
+          "article[data-testid=\"tweet\"] [data-testid=\"User-Name\"] a[href^=\"/\"] span",
+          "[data-testid=\"tweet\"] [data-testid=\"User-Name\"] a[href^=\"/\"] span",
+          "[data-testid=\"User-Name\"] a[href^=\"/\"] span"
+        ],
+        "views": [
+          "article[data-testid=\"tweet\"] a[href*=\"/analytics\"] span",
+          "[data-testid=\"tweet\"] a[href*=\"/analytics\"] span",
+          "a[href*=\"/analytics\"] span",
+          "a[aria-label*=\"View post analytics\" i] span",
+          "[data-testid=\"app-text-transition-container\"] span"
+        ],
+        "views_analytics": [
+          "article[data-testid=\"tweet\"] a[href*=\"/analytics\"]",
+          "[data-testid=\"tweet\"] a[href*=\"/analytics\"]",
+          "a[href*=\"/analytics\"]",
+          "a[aria-label*=\"View post analytics\" i]"
+        ],
+        "takedown_messages": [
+          "[data-testid=\"tweetText\"] span",
+          "[data-testid=\"tweetText\"]",
+          "[data-testid=\"videoPlayer\"] span",
+          "article[data-testid=\"tweet\"] span"
+        ],
+        "takedown_patterns": [
+          "this media has been disabled",
+          "disabled in response to a report by the copyright owner",
+          "this post has been deleted",
+          "tweet has been deleted",
+          "this page doesn't exist",
+          "account suspended"
+        ],
+        "active_media": [
+          "[data-testid=\"videoPlayer\"] video",
+          "[data-testid=\"videoPlayer\"]",
+          "video[aria-label=\"Embedded video\"]",
+          "article[data-testid=\"tweet\"] video",
+          "video"
+        ]
+      },
+      "autofill": {
+        "wizard_steps": [
+          "I need to report possible copyright infringement",
+          "I am the copyright owner"
+        ],
+        "dropdowns": {
+          "issue_type": {
+            "label": "What issue are you having?",
+            "selector": "fieldset.FormSelect select",
+            "trigger": "fieldset.FormSelect button.FormInput",
+            "value": "I need to report possible copyright infringement",
+            "option_value": "/en/forms/ipi/dmca"
+          },
+          "affected_party": {
+            "label": "Please verify who is being affected by this",
+            "selector": "fieldset.FormSelect select",
+            "trigger": "fieldset.FormSelect button.FormInput",
+            "value": "I am the copyright owner",
+            "option_value": "/en/forms/ipi/dmca/copyright-owner"
+          }
+        },
+        "defaults": {
+          "copyright_owner_name": "FloSports",
+          "company": "FloSports",
+          "job_title": "Stream Operations",
+          "street_address": "301 Congress ave #1500",
+          "city": "Austin",
+          "state": "Tx",
+          "postal_code": "78701",
+          "country": "United States",
+          "phone": "5122702356",
+          "original_work_url": "https://www.flosports.tv/",
+          "infringement_platform": "X",
+          "work_type": "Video/Audiovisual Recording"
+        },
+        "fields": {
+          "copyright_owner_name": [
+            "input[name$=\"Content_Owner_Name__c\"]"
+          ],
+          "full_name": [
+            "input[name$=\"Form_Name__c\"]"
+          ],
+          "company": [
+            "input[name$=\"company\"]"
+          ],
+          "job_title": [
+            "input[name$=\"jobTitle\"]"
+          ],
+          "street_address": [
+            "input[name$=\"streetAddress\"]"
+          ],
+          "city": [
+            "input[name$=\"city\"]"
+          ],
+          "state": [
+            "input[name$=\"state\"]"
+          ],
+          "postal_code": [
+            "input[name$=\"postalCode\"]"
+          ],
+          "country": [
+            "select[name$=\"country\"]"
+          ],
+          "phone": [
+            "input[name=\"phone_number\"]",
+            "input[name$=\"phone_number\"]",
+            "input[name$=\"form_number__c\"]",
+            "input[name*=\"phone\" i]",
+            "input[type=\"tel\"]"
+          ],
+          "description": [
+            "textarea[name$=\"DescriptionText\"]"
+          ],
+          "original_work_url": [
+            "input[name*=\"originalWork\"][name$=\".value\"]",
+            "input[name*=\"OriginalWork\"][name$=\".value\"]",
+            "//input[contains(@name, \"originalWork\") and substring(@name, string-length(@name) - 5) = \".value\"]",
+            "//input[contains(@name, \"OriginalWork\") and substring(@name, string-length(@name) - 5) = \".value\"]"
+          ],
+          "infringing_urls": [
+            "input[name*=\"Infringing_Urls__c\"][name$=\".value\"]",
+            "input[name*=\"infringing_urls\" i][name$=\".value\"]",
+            "//input[contains(@name, \"Infringing_Urls__c\") and substring(@name, string-length(@name) - 5) = \".value\"]"
+          ],
+          "infringement_description": [
+            "textarea[name$=\"describeInfringement\"]"
+          ],
+          "signature": [
+            "input[name=\"signature\"]",
+            "input[name$=\"signature\"]"
+          ]
+        },
+        "radios": {
+          "infringement_platform": [
+            "input[type=\"radio\"][value=\"X\"]",
+            "input[type=\"radio\"][name$=\"type_of_issue__c\"][value=\"X\"]",
+            "input[type=\"radio\"][name*=\"type_of_issue\" i][value=\"X\"]",
+            "input[type=\"radio\"][name$=\"Type_of_Issue__c\"][value=\"X\"]",
+            "//input[@type=\"radio\" and @value=\"X\"]"
+          ],
+          "work_type": [
+            "input[type=\"radio\"][value=\"Video/Audiovisual Recording\"]",
+            "input[type=\"radio\"][name$=\"@type\"][value=\"Video/Audiovisual Recording\"]",
+            "input[type=\"radio\"][name$=\"type\"][value=\"Video/Audiovisual Recording\"]",
+            "//input[@type=\"radio\" and @value=\"Video/Audiovisual Recording\"]"
+          ]
+        },
+        "buttons": {
+          "add_link": [
+            "ul.f206__form-field:has(input[name*=\"Infringing_Urls__c\"]) button.f206__add-button",
+            "//input[contains(@name, \"Infringing_Urls__c\")]/ancestor::ul[contains(@class, \"f206__form-field\")][1]//button[contains(@class, \"f206__add-button\") or contains(normalize-space(.), \"Add another link\")]",
+            "button.f206__add-button",
+            "//button[contains(normalize-space(.), \"Add another link\")]"
+          ]
+        },
+        "checkboxes": {
+          "acknowledgements": [
+            "input[type=\"checkbox\"][name=\"acknowledgement\"]",
+            "input[type=\"checkbox\"][name=\"good-faith-belief\"]",
+            "input[type=\"checkbox\"][name=\"authority-to-act\"]",
+            "input[type=\"checkbox\"][value*=\"17 U.S.C.\"]",
+            "input[type=\"checkbox\"][value*=\"good faith belief\"]",
+            "input[type=\"checkbox\"][value*=\"authorized to act\"]"
+          ]
+        }
+      }
+    },
+    "facebook": {
+      "scraper": {
+        "profile_links": [
+          "[data-ad-rendering-role=\"profile_name\"] a[role=\"link\"][href]",
+          "h2 a[role=\"link\"][href*=\"facebook.com\"]",
+          "strong a[role=\"link\"][href*=\"facebook.com\"]",
+          "a[role=\"link\"][href*=\"facebook.com/\"] span"
+        ],
+        "profile_name": [
+          "[data-ad-rendering-role=\"profile_name\"] a[role=\"link\"] span",
+          "[data-ad-rendering-role=\"profile_name\"] span",
+          "h2 a[role=\"link\"] span",
+          "strong a[role=\"link\"] span"
+        ],
+        "views": [
+          "//span[contains(translate(normalize-space(.), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \" views\")]",
+          "//span[contains(translate(normalize-space(.), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \" viewers\")]"
+        ]
+      },
+      "autofill": {
+        "defaults": {
+          "contact_email": "social@flosports.tv",
+          "rights_owner_name": "FloSports",
+          "relationship": "I am reporting on behalf of my organization or client.",
+          "country": "United States",
+          "work_type": "Video",
+          "content_type_post": "Photo, video or post"
+        },
+        "templates": {
+          "infringement_explanation": "Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]) on Facebook. FloSports owns the exclusive copyright. Infringement is visually verifiable via FloSports proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account."
+        },
+        "fields": {
+          "relationship_radio": [
+            "input[type=\"radio\"][name=\"copyright_owner\"][value=\"I am reporting on behalf of my organization or client.\"]"
+          ],
+          "full_name": [
+            "input[name=\"your_name\"]"
+          ],
+          "email": [
+            "input[name=\"email\"]"
+          ],
+          "confirm_email": [
+            "input[name=\"confirm_email\"]"
+          ],
+          "country_select": [
+            "select[name=\"rights_owner_country_routing\"]",
+            "select[aria-label*=\"Where are you asserting rights\"]"
+          ],
+          "work_type_select": [
+            "select[name=\"describe_copyrighted_work_me\"]",
+            "select[aria-label*=\"Which of these best describes the copyrighted work\"]"
+          ],
+          "rights_owner_name": [
+            "input[name=\"reporter_name\"]",
+            "input[name=\"rights_owner_name\"]",
+            "input[name=\"name_of_the_rights_owner\"]"
+          ],
+          "source_url": [
+            "input[name=\"copyright_url\"]",
+            "input[aria-label*=\"Provide a link to the copyrighted work\"]",
+            "textarea[name=\"content_urls\"]",
+            "textarea[title*=\"facebook.com\"][name=\"content_urls\"]"
+          ],
+          "copyrighted_work_description": [
+            "textarea[name=\"describe_copyrighted_work_me_URLs\"]",
+            "textarea[name=\"copyrighted_work_description\"]",
+            "textarea[name=\"describe_copyrighted_work\"]",
+            "textarea[name=\"description_of_copyrighted_work\"]",
+            "textarea[aria-label*=\"Describe your copyrighted work\"]"
+          ],
+          "content_type_post": [
+            "input[type=\"checkbox\"][value=\"Photo, video or post\"]",
+            "input[type=\"checkbox\"][name=\"content_type[]\"][value=\"Photo, video or post\"]"
+          ],
+          "content_urls": [
+            "textarea[name=\"content_urls\"]",
+            "textarea[name^=\"content_urls\"]",
+            "textarea[title*=\"facebook.com\"][name^=\"content_urls\"]"
+          ],
+          "additional_links_checkbox": [
+            "input[type=\"checkbox\"][name=\"additionalLinks[]\"]",
+            "input[type=\"checkbox\"][name=\"additional_links\"]"
+          ],
+          "infringement_explanation": [
+            "textarea[name=\"why_reporting_other\"]",
+            "textarea[name=\"copyright_explanation\"]",
+            "textarea[name=\"infringement_explanation\"]",
+            "textarea[name=\"additional_information\"]"
+          ],
+          "signature": [
+            "input[name=\"Electronic_sig\"]",
+            "input[name=\"electronic_signature\"]",
+            "input[name=\"signature\"]"
+          ],
+          "send_button": [
+            "button[type=\"submit\"]",
+            "input[type=\"submit\"]"
+          ]
+        }
+      }
+    },
+    "kick": {
+      "scraper": {
+        "handle_links": [
+          "a[href^=\"/\"] img[alt]",
+          "a[href^=\"/\"][data-testid]",
+          "a[href^=\"/\"]"
+        ],
+        "handle_name": [
+          "a[href^=\"/\"] img[alt]",
+          "img#channel-avatar",
+          "img[alt]"
+        ],
+        "live_badge": [
+          "button span[class*=\"bg-green-500\"]",
+          "span[class*=\"bg-green-500\"][class*=\"text-neutral-900\"]",
+          "span.text-green-500",
+          "[data-testid=\"live-badge\"]",
+          "button span"
+        ],
+        "live_viewer_count": [
+          "[data-testid=\"viewer-count\"]",
+          "[data-testid=\"viewer-count\"] [style*=\"translateY\"]"
+        ],
+        "live_viewer_digit_columns": [
+          "[data-testid=\"viewer-count\"] .flex.overflow-hidden > div[style*=\"height: 20px\"]",
+          "[data-testid=\"viewer-count\"] div[style*=\"height: 20px\"][style*=\"width:\"]"
+        ],
+        "archived_views": [
+          "span[title]",
+          ".text-primary-base[title]"
+        ],
+        "archived_view_labels": [
+          "views",
+          "watching"
+        ]
+      },
+      "autofill": {
+        "defaults": {
+          "recipient_email": "dmca@kick.com",
+          "contact_email": "social@flosports.tv",
+          "phone": "5122702356",
+          "address": "301 Congress ave #1500\nAustin Tx 78701",
+          "title": "Authorized user"
+        },
+        "labels": {
+          "overlay_title": "Kick DMCA Composer ✥",
+          "platform_intro": "Kick uses an email-based DMCA process. Copy the fields below, send the email, then use Log to Sheet to capture evidence and finish the report.",
+          "queued_urls_label": "Queued URLs:",
+          "recipient_title": "Send To",
+          "recipient_help": "Copy this email address into the To field in your email client.",
+          "subject_title": "Email Subject",
+          "subject_help": "Copy this subject line into the Subject field so the Kick notice is easy to identify.",
+          "body_title": "DMCA Notice Body",
+          "body_help": "Copy this full notice into the body of your email to Kick. The rendered box below shows the numbered sections and the original FloSports URL in bold.",
+          "copy_button": "Copy",
+          "copy_body_button": "Copy Email",
+          "copy_full_button": "Copy Full Notice",
+          "log_reminder": "Send the email manually, then log below.",
+          "log_button": "Log to Sheet",
+          "loading_title": "Kick logging in progress",
+          "loading_help": "We are revisiting each queued Kick URL, capturing fresh evidence screenshots, and then logging the batch to the sheet.",
+          "loading_steps_title": "What happens next"
+        },
+        "templates": {
+          "greeting": "To Whom It May Concern at Kick,",
+          "submission_intro": "I am submitting this DMCA takedown notice on behalf of FloSports.",
+          "subject": "DMCA Takedown Notice - FloSports - [Event Name]",
+          "infringing_material_description": "Unauthorized Kick-hosted or Kick-linked distribution of FloSports material appearing at the URLs listed below.",
+          "ownership_evidence": "The infringing material often includes FloSports, MileSplit, or Varsity TV watermarks and proprietary broadcast graphics, all of which evidence FloSports ownership.",
+          "source_url_label": "Original FloSports URL being pirated:",
+          "reported_urls_label": "Reported Kick URLs:"
+        }
+      }
+    },
+    "twitch": {
+      "scraper": {
+        "live_indicators": [
+          "[data-a-target=\"stream-live-indicator\"]",
+          "[data-a-target=\"channel-status-text-indicator\"]",
+          "[class*=\"tw-channel-status-text-indicator\"]",
+          "[class*=\"ScChannelStatusTextIndicator\"]",
+          "#live-channel-stream-information [class*=\"channel-status-text-indicator\"]",
+          "[aria-label=\"LIVE\"]"
+        ],
+        "viewer_count": [
+          "[data-a-target=\"animated-channel-viewers-count\"]",
+          "[data-a-target=\"channel-viewers-count\"]",
+          "[class*=\"ScAnimatedNumber\"]",
+          "strong[aria-hidden=\"true\"] span"
+        ],
+        "vod_indicators": [
+          "[data-a-target=\"video-info-game-boxart-link\"]",
+          "[data-test-selector=\"metadata-layout__split-top\"]",
+          "[class*=\"metadata-layout__split-top\"]",
+          "[class*=\"timestamp-metadata__bar\"]"
+        ],
+        "vod_views": [
+          "[data-a-target=\"video-info-game-boxart-link\"] ~ p",
+          "[data-test-selector=\"metadata-layout__split-top\"] p",
+          "[class*=\"metadata-layout__split-top\"] p"
+        ],
+        "clip_indicators": [
+          "a[href*=\"/clip/\"]",
+          "a[href*=\"clips.twitch.tv\"]",
+          "[data-test-selector=\"metadata-layout__split-top\"] a[href*=\"/clip/\"]",
+          "[class*=\"metadata-layout__split-top\"] a[href*=\"/clip/\"]"
+        ],
+        "clip_views": [
+          "[data-test-selector=\"metadata-layout__split-top\"] p",
+          "[class*=\"metadata-layout__split-top\"] p",
+          "p[class*=\"CoreText\"]"
+        ],
+        "handle_links": [
+          "[data-test-selector=\"metadata-layout__split-top\"] a[href^=\"/\"]",
+          "[class*=\"metadata-layout__split-top\"] a[href^=\"/\"]",
+          "a[href^=\"/\"][class*=\"CoreLink\"]",
+          "h1 a[href^=\"/\"]",
+          "a[href^=\"/\"][data-a-target*=\"channel\" i]",
+          "a[href^=\"/\"] h1"
+        ]
+      },
+      "autofill": {
+        "defaults": {
+          "work_type": "Video",
+          "relationship": "Authorized Agent",
+          "contact_email": "Social@flosports.tv",
+          "country": "United States",
+          "city": "Austin",
+          "copyright_owner": "FloSports",
+          "phone": "5122702356",
+          "street": "301 Congress ave #1500",
+          "state": "Texas",
+          "zip": "78745"
+        },
+        "fields": {
+          "copyrighted_work_description": [
+            "textarea[name=\"copyrightWorkAllegedlyInfringed\"]",
+            "textarea[data-test-selector=\"copyrightWorkAllegedlyInfringed\"]",
+            "textarea[aria-label*=\"Describe the copyrighted work\" i]",
+            "textarea[aria-labelledby*=\"copyrightWorkAllegedlyInfringed\" i]",
+            "input[name=\"copyrightWorkAllegedlyInfringed\"]",
+            "input[aria-label*=\"Describe the copyrighted work\" i]"
+          ],
+          "work_type_select": [
+            "select[aria-label*=\"best describes the copyrighted work\" i]"
+          ],
+          "source_url": [
+            "input[name=\"copyrightWorkUrl\"]",
+            "input[data-test-selector=\"copyrightWorkUrl\"]",
+            "input[aria-labelledby*=\"copyrightWorkUrl\" i]",
+            "input[aria-label*=\"example of the copyrighted work\" i]",
+            "input[placeholder*=\"http\" i][name*=\"copyright\" i]"
+          ],
+          "content_type_select": [
+            "select[aria-label=\"Select allegedly infringing content type\"]",
+            "select[aria-label*=\"infringing content type\" i]"
+          ],
+          "full_name": [
+            "input[data-test-selector=\"claimantName\"]",
+            "input[name=\"claimantName\"]"
+          ],
+          "relationship": [
+            "input[data-test-selector=\"relationship\"]",
+            "input[name=\"relationship\"]"
+          ],
+          "email": [
+            "input[data-test-selector=\"email\"]",
+            "input[name=\"email\"]",
+            "input[type=\"email\"]"
+          ],
+          "country": [
+            "select[data-test-selector=\"country\"]",
+            "select[name=\"country\"]"
+          ],
+          "city": [
+            "input[data-test-selector=\"city\"]",
+            "input[name=\"city\"]"
+          ],
+          "copyright_owner": [
+            "input[data-test-selector=\"ownerName\"]",
+            "input[name=\"ownerName\"]"
+          ],
+          "phone": [
+            "input[data-test-selector=\"phoneNumber\"]",
+            "input[name=\"phoneNumber\"]"
+          ],
+          "street": [
+            "input[data-test-selector=\"streetAddress\"]",
+            "input[name=\"streetAddress\"]"
+          ],
+          "state": [
+            "select[data-test-selector=\"stateOrProvince\"]",
+            "select[name=\"stateOrProvince\"]"
+          ],
+          "zip": [
+            "input[data-test-selector=\"postalCode\"]",
+            "input[data-test-selector=\"zipCode\"]",
+            "input[data-test-selector=\"zipPostalCode\"]",
+            "input[name=\"postalCode\"]",
+            "input[name=\"zipCode\"]",
+            "input[name=\"zipPostalCode\"]"
+          ],
+          "signature": [
+            "input[data-test-selector=\"signature\"]",
+            "input[name=\"signature\"]"
+          ],
+          "acknowledgements": [
+            "input[name=\"goodFaithCheckBox\"]",
+            "input[data-test-selector=\"goodFaithCheckBox\"]",
+            "input[name=\"notificationAccurateCheckBox\"]",
+            "input[data-test-selector=\"notificationAccurateCheckBox\"]",
+            "input[name=\"underPenaltyCheckBox\"]",
+            "input[data-test-selector=\"underPenaltyCheckBox\"]"
+          ]
+        }
+      }
+    },
+    "trovo": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "dlive": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "sooplive": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "chzzk": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "bigolive": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "nimotv": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "huya": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "douyu": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "younow": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "twitcasting": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "tango": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "mildom": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "mirrativ": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "nonolive": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "rooter": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "snapchat": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "threads": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "linkedin": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "pinterest": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "bluesky": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "truthsocial": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "likee": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "triller": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "tumblr": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "gab": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "gettr": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "vk": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "ok": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "bilibili": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "kuaishou": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "niconico": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "navertv": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "kakaotv": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "rutube": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "wechatchannels": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "moj": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "yandexvideo": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "reddit": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "telegram": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "discord": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "whatsapp": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "signal": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "line": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "mastodon": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "viber": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "band": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "dailymotion": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "vimeo": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "streamable": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "odysee": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "bitchute": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "locals": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "veoh": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "mega": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "googledrive": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "archiveorg": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "peertube": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "dtube": {
+      "scraper": {},
+      "autofill": {}
+    },
+    "mediafire": {
+      "scraper": {},
+      "autofill": {}
+>>>>>>> Stashed changes
     }
   }
 }

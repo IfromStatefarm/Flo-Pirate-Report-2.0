@@ -1,17 +1,22 @@
 import { getUserEmail } from '../utils/auth.js';
-import { ALLOWED_EMAIL_DOMAIN, SIDEPANEL_CLIPPY_PHRASES } from '../utils/extension_constants.js';
+import { SIDEPANEL_CLIPPY_PHRASES } from '../utils/extension_constants.js';
 import { renderGamificationStats } from '../utils/gamification_ui.js';
 import { detectPlatformDetails, getSupportedPlatforms } from '../utils/platforms.js';
 import {
-  renderAccessRestrictedNotice,
-  requestVerifiedRuntimeIdentity
-} from '../utils/runtime_identity.js';
+  PERMISSIONS,
+  hasPermission,
+  hasPlatformAccess,
+  normalizeAccessPlatform,
+  roleLabel
+} from '../utils/access_control.js';
 import { populateVerticalSelect } from '../utils/select_options.js';
 
 let isCrawling = false;
 let consecutiveFailures = 0;
 let crawlQueue = [];
 let configData = null;
+let currentAccessProfile = null;
+let sidepanelAccessRefreshScheduled = false;
 const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
 const ENFORCER_ALLOWED_EMAILS = ['social@flosports.tv', 'copyright@flosports.tv', 'copyrights@flosports.tv'];
 const ENFORCER_PLATFORM_DEFAULTS = Object.freeze({
@@ -63,7 +68,23 @@ const ENFORCER_PLATFORM_DEFAULTS = Object.freeze({
   }
 });
 
+<<<<<<< Updated upstream
 const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSports platform account session.";
+=======
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  void sender;
+  if (message.action !== 'refreshSidepanelAccessView') return false;
+
+  sendResponse({ success: true });
+  if (!sidepanelAccessRefreshScheduled) {
+    sidepanelAccessRefreshScheduled = true;
+    setTimeout(() => window.location.reload(), 0);
+  }
+  return false;
+});
+
+const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, ivan.mcclay@flosports.tv, or an approved FloSports platform account session.";
+>>>>>>> Stashed changes
 const ENFORCER_SESSION_SELECTOR_DEFAULTS = Object.freeze({
   youtube: {
     channelHandle: [
@@ -159,6 +180,7 @@ function getEnforcerAccessConfig() {
   };
 }
 
+<<<<<<< Updated upstream
 let gamificationStatsInFlight = false;
 
 function createUnavailableGamificationStats(errorMessage = '') {
@@ -177,6 +199,10 @@ function createUnavailableGamificationStats(errorMessage = '') {
     mvp: { name: 'TBD', points: 0 },
     isCurrentMvp: false
   };
+=======
+function canUseScoutMode() {
+  return hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_REPORT);
+>>>>>>> Stashed changes
 }
 
 function refreshGamificationStats() {
@@ -466,6 +492,114 @@ function setupSidepanelTabs() {
   });
 }
 
+<<<<<<< Updated upstream
+=======
+const TAB_PERMISSIONS = Object.freeze({
+  report: PERMISSIONS.SIDEPANEL_REPORT,
+  automate: PERMISSIONS.SIDEPANEL_AUTOMATE,
+  intel: PERMISSIONS.SIDEPANEL_INTEL,
+  scoreboard: PERMISSIONS.SIDEPANEL_SCOREBOARD,
+  repair: PERMISSIONS.SIDEPANEL_REPAIR
+});
+
+async function openSettingsWithAccessRefresh() {
+  try {
+    await chrome.runtime.sendMessage({ action: 'refreshAccessProfile' });
+  } catch (error) {
+    console.warn('Access refresh before opening Settings failed:', error);
+  }
+
+  // If Settings is already open, make that existing page rerun its sheet-backed access bootstrap.
+  chrome.runtime.sendMessage({ action: 'refreshSettingsAccessView' }).catch(() => {});
+
+  if (chrome.runtime.openOptionsPage) {
+    await chrome.runtime.openOptionsPage();
+  } else {
+    window.open(chrome.runtime.getURL('options.html'));
+  }
+}
+
+function showSidepanelAccessState({ title, message, state = '', showRetry = false, showSettings = false }) {
+  const accessState = document.getElementById('sidepanel-access-state');
+  if (!accessState) return;
+
+  accessState.replaceChildren();
+  accessState.className = `access-state${state ? ` is-${state}` : ''}`;
+
+  const heading = document.createElement('strong');
+  heading.textContent = title;
+  const copy = document.createElement('div');
+  copy.textContent = message;
+  accessState.append(heading, copy);
+
+  if (showRetry) {
+    const retryButton = document.createElement('button');
+    retryButton.type = 'button';
+    retryButton.className = 'btn btn-info btn-small';
+    retryButton.textContent = 'Retry access check';
+    retryButton.addEventListener('click', () => window.location.reload());
+    accessState.appendChild(retryButton);
+  }
+
+  if (showSettings) {
+    const settingsButton = document.createElement('button');
+    settingsButton.type = 'button';
+    settingsButton.className = 'btn btn-primary btn-small';
+    settingsButton.textContent = 'Open Settings';
+    settingsButton.addEventListener('click', () => void openSettingsWithAccessRefresh());
+    accessState.appendChild(settingsButton);
+  }
+
+  accessState.hidden = false;
+}
+
+function filterPlatformSelect(selectElement, profile) {
+  if (!selectElement) return;
+  Array.from(selectElement.options).forEach((option) => {
+    const allowed = hasPlatformAccess(profile, option.value);
+    option.hidden = !allowed;
+    option.disabled = !allowed;
+  });
+
+  const firstAllowedOption = Array.from(selectElement.options).find((option) => !option.disabled);
+  if (selectElement.selectedOptions[0]?.disabled) {
+    selectElement.value = firstAllowedOption?.value || '';
+  }
+}
+
+function applySidepanelAccess(profile) {
+  const tabButtons = Array.from(document.querySelectorAll('[data-tab-target]'));
+  const tabPanels = Array.from(document.querySelectorAll('[data-tab-panel]'));
+
+  tabButtons.forEach((button) => {
+    button.hidden = !hasPermission(profile, TAB_PERMISSIONS[button.dataset.tabTarget]);
+  });
+  tabPanels.forEach((panel) => {
+    panel.hidden = !hasPermission(profile, TAB_PERMISSIONS[panel.dataset.tabPanel]);
+  });
+
+  const firstAllowedButton = tabButtons.find((button) => !button.hidden);
+  const activeButton = tabButtons.find((button) => button.classList.contains('active') && !button.hidden);
+  const target = activeButton?.dataset.tabTarget || firstAllowedButton?.dataset.tabTarget;
+  tabButtons.forEach((button) => {
+    const active = button.dataset.tabTarget === target;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  tabPanels.forEach((panel) => panel.classList.toggle('active', panel.dataset.tabPanel === target));
+
+  document.querySelector('.tabbar').hidden = false;
+  document.querySelector('.container').hidden = false;
+  document.getElementById('openOptionsGearBtn').hidden = false;
+  document.getElementById('clippy-process-bubble').hidden = false;
+  document.getElementById('gamification-header').hidden = false;
+  document.getElementById('sidepanel-access-state').hidden = true;
+
+  filterPlatformSelect(document.getElementById('platformScanSelect'), profile);
+  filterPlatformSelect(document.getElementById('repairPlatformSelect'), profile);
+}
+
+>>>>>>> Stashed changes
 function updateModeChip(mode = 'scout') {
   const modeChip = document.getElementById('modeChip');
   if (!modeChip) return;
@@ -499,6 +633,7 @@ function renderQueueSummary(cart = []) {
   }
 }
 
+<<<<<<< Updated upstream
 function populatePlatformSelect(selectEl, platforms) {
   if (!selectEl || !Array.isArray(platforms) || platforms.length === 0) return;
 
@@ -600,6 +735,25 @@ function collectSelectorPatchFieldOptions(node, pathSegments = [], results = [])
   return results;
 }
 // --- SECURITY LOCK OVERLAY (Duplicated for Side Panel context) ---
+=======
+function findUnassignedCartPlatform(cart, profile) {
+  for (const item of Array.isArray(cart) ? cart : []) {
+    const detectedPlatform = detectPlatformDetails(item?.url || '');
+    const requestedPlatforms = new Set([
+      normalizeAccessPlatform(item?.platform),
+      detectedPlatform.key
+    ].filter((platform) => platform && platform !== 'all'));
+
+    for (const platform of requestedPlatforms) {
+      if (!hasPlatformAccess(profile, platform)) {
+        return platform === detectedPlatform.key ? detectedPlatform.label : platform;
+      }
+    }
+  }
+  return '';
+}
+// --- TIERED ACCESS BOOTSTRAP ---
+>>>>>>> Stashed changes
 document.addEventListener('DOMContentLoaded', async () => {
   setupSidepanelTabs();
 
@@ -621,6 +775,258 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
+<<<<<<< Updated upstream
+=======
+  let rumbleProgressActive = false;
+  let rumbleDefaultStartText = 'Start Report';
+  let bulkReportActive = false;
+  const bulkReportDefaultText = reportFromSheetBtn?.innerText || 'Report Queued';
+
+  try {
+    const accessResponse = await Promise.race([
+      chrome.runtime.sendMessage({ action: 'getAccessProfile', forceRefresh: true }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Access check timed out.')), 12000))
+    ]);
+
+    if (!accessResponse?.success || !accessResponse.profile) {
+      throw new Error(accessResponse?.error || 'The access registry did not return a profile.');
+    }
+
+    currentAccessProfile = accessResponse.profile;
+    if (currentAccessProfile.status === 'logged_out') {
+      showSidepanelAccessState({
+        title: 'Extension login required',
+        message: 'Open Settings to log in or create a user account.',
+        showSettings: true
+      });
+      if (loadingEl) loadingEl.textContent = 'Signed out';
+      return;
+    }
+
+    if (currentAccessProfile.status === 'identity_error') {
+      showSidepanelAccessState({
+        title: 'Google account mismatch',
+        message: 'Open Settings, log out, and sign in with the Google account connected to this extension user.',
+        state: 'error',
+        showRetry: true,
+        showSettings: true
+      });
+      if (loadingEl) loadingEl.textContent = 'Identity unavailable';
+      return;
+    }
+
+    if (currentAccessProfile.status !== 'ready') {
+      showSidepanelAccessState({
+        title: 'Waiting for approval',
+        message: `${currentAccessProfile.name || currentAccessProfile.email || 'This account'} is waiting for an administrator to assign an access level and platforms.`,
+        state: 'pending',
+        showRetry: true,
+        showSettings: true
+      });
+      if (loadingEl) loadingEl.textContent = 'Approval pending';
+      return;
+    }
+
+    applySidepanelAccess(currentAccessProfile);
+    if (loadingEl) loadingEl.textContent = `${roleLabel(currentAccessProfile.role)} access`;
+    if (reporterInput && currentAccessProfile.name) reporterInput.value = currentAccessProfile.name;
+  } catch (error) {
+    console.error('Access initialization failed:', error);
+    showSidepanelAccessState({
+      title: 'Access could not be verified',
+      message: error.message || 'Check your Google sign-in and access to the user registry.',
+      state: 'error',
+      showRetry: true,
+      showSettings: true
+    });
+    if (loadingEl) loadingEl.textContent = 'Access check failed';
+    return;
+  }
+
+  function getRumbleWorkflowModal() {
+    let modal = document.getElementById('rumble-workflow-modal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'rumble-workflow-modal';
+    modal.style.cssText = `
+      position: fixed; inset: 0; z-index: 2147483647; display: none;
+      align-items: center; justify-content: center; padding: 18px;
+      background: rgba(17, 24, 39, 0.48); font-family: sans-serif;
+    `;
+    modal.innerHTML = `
+      <div style="width: min(440px, 100%); max-height: 92vh; overflow:auto; background:#fff; border-radius:8px; border:2px solid #2f855a; box-shadow:0 18px 45px rgba(0,0,0,0.28); padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; border-bottom:1px solid #e5e7eb; padding-bottom:10px; margin-bottom:12px;">
+          <h3 id="rumble-workflow-title" style="margin:0; color:#166534; font-size:16px;">Rumble Reporter</h3>
+          <button id="rumble-workflow-close" type="button" style="border:none; background:transparent; color:#6b7280; font-size:22px; line-height:1; cursor:pointer;">×</button>
+        </div>
+        <div id="rumble-workflow-copy" style="font-size:13px; line-height:1.45; color:#374151;"></div>
+        <ol id="rumble-workflow-steps" style="margin:12px 0 12px 18px; padding:0; font-size:12px; line-height:1.55; color:#1f2937;">
+          <li>Open each queued Rumble URL in a background tab.</li>
+          <li>Submit the Rumble copyright report on each page.</li>
+          <li>Revisit each URL to scrape views, handle, live/VOD status, and evidence screenshots.</li>
+          <li>Log the final batch to the report sheet.</li>
+        </ol>
+        <div id="rumble-workflow-url-shell" style="display:none; margin:12px 0; padding:10px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
+          <div id="rumble-workflow-url-heading" style="font-size:12px; font-weight:700; color:#111827; margin-bottom:6px;"></div>
+          <div id="rumble-workflow-url-list" style="max-height:96px; overflow:auto; font-size:11px; line-height:1.45; color:#4b5563; word-break:break-word;"></div>
+        </div>
+        <div id="rumble-workflow-progress-shell" style="display:none; margin-top:12px;">
+          <div style="height:10px; background:#e5e7eb; border-radius:999px; overflow:hidden;">
+            <div id="rumble-workflow-progress-bar" style="height:100%; width:0%; background:linear-gradient(90deg, #166534, #53fc18); transition:width .25s ease;"></div>
+          </div>
+          <div id="rumble-workflow-progress-status" style="margin-top:10px; color:#111827; font-size:13px; font-weight:700;">Preparing...</div>
+          <div id="rumble-workflow-progress-meta" style="margin-top:3px; color:#6b7280; font-size:11px;">0% complete</div>
+        </div>
+        <div id="rumble-workflow-actions" style="display:flex; gap:8px; margin-top:14px;">
+          <button id="rumble-workflow-cancel" type="button" style="flex:1; border:1px solid #d1d5db; background:#fff; color:#374151; border-radius:6px; padding:10px; font-weight:700; cursor:pointer;">Cancel</button>
+          <button id="rumble-workflow-confirm" type="button" style="flex:1; border:none; background:#166534; color:#fff; border-radius:6px; padding:10px; font-weight:800; cursor:pointer;">Confirm</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function setRumbleWorkflowUrls(cart) {
+    const modal = getRumbleWorkflowModal();
+    const shell = modal.querySelector('#rumble-workflow-url-shell');
+    const heading = modal.querySelector('#rumble-workflow-url-heading');
+    const list = modal.querySelector('#rumble-workflow-url-list');
+    const urls = cart.map((item) => item.url).filter(Boolean);
+
+    shell.style.display = urls.length > 0 ? 'block' : 'none';
+    heading.textContent = `${urls.length} queued URL${urls.length === 1 ? '' : 's'}`;
+    list.replaceChildren();
+    urls.slice(0, 6).forEach((url) => {
+      const row = document.createElement('div');
+      row.textContent = url;
+      list.appendChild(row);
+    });
+    if (urls.length > 6) {
+      const more = document.createElement('div');
+      more.textContent = `...and ${urls.length - 6} more`;
+      more.style.marginTop = '4px';
+      more.style.fontWeight = '700';
+      list.appendChild(more);
+    }
+  }
+
+  function showRumbleConfirmDialog(cart) {
+    return new Promise((resolve) => {
+      const modal = getRumbleWorkflowModal();
+      const count = cart.length;
+      modal.querySelector('#rumble-workflow-title').textContent = 'Confirm Rumble Report';
+      modal.querySelector('#rumble-workflow-copy').textContent =
+        `You are about to report ${count} Rumble URL${count === 1 ? '' : 's'}. Pirate AI will run the queue in background tabs so you can stay on this page.`;
+      modal.querySelector('#rumble-workflow-progress-shell').style.display = 'none';
+      modal.querySelector('#rumble-workflow-actions').style.display = 'flex';
+      modal.querySelector('#rumble-workflow-confirm').textContent = `Report ${count} URL${count === 1 ? '' : 's'}`;
+      modal.querySelector('#rumble-workflow-cancel').textContent = 'Cancel';
+      setRumbleWorkflowUrls(cart);
+
+      const closeBtn = modal.querySelector('#rumble-workflow-close');
+      const cancelBtn = modal.querySelector('#rumble-workflow-cancel');
+      const confirmBtn = modal.querySelector('#rumble-workflow-confirm');
+      const finish = (confirmed) => {
+        modal.style.display = 'none';
+        closeBtn.onclick = null;
+        cancelBtn.onclick = null;
+        confirmBtn.onclick = null;
+        resolve(confirmed);
+      };
+
+      closeBtn.style.display = 'block';
+      closeBtn.onclick = () => finish(false);
+      cancelBtn.onclick = () => finish(false);
+      confirmBtn.onclick = () => finish(true);
+      modal.style.display = 'flex';
+    });
+  }
+
+  function showRumbleProgressWindow(total) {
+    const modal = getRumbleWorkflowModal();
+    rumbleProgressActive = true;
+    modal.querySelector('#rumble-workflow-title').textContent = 'Rumble Reporting Progress';
+    modal.querySelector('#rumble-workflow-copy').textContent =
+      `Reporting ${total} Rumble URL${total === 1 ? '' : 's'} in background tabs. Keep this panel open to watch progress.`;
+    modal.querySelector('#rumble-workflow-url-shell').style.display = 'none';
+    modal.querySelector('#rumble-workflow-progress-shell').style.display = 'block';
+    modal.querySelector('#rumble-workflow-actions').style.display = 'none';
+    modal.querySelector('#rumble-workflow-close').style.display = 'none';
+    updateRumbleProgressWindow('Starting Rumble queue...', 3);
+    modal.style.display = 'flex';
+  }
+
+  function updateRumbleProgressWindow(status, percent, metaText) {
+    const modal = getRumbleWorkflowModal();
+    const safePercent = Number.isFinite(Number(percent)) ? Math.max(0, Math.min(100, Math.round(Number(percent)))) : null;
+    const bar = modal.querySelector('#rumble-workflow-progress-bar');
+    const statusEl = modal.querySelector('#rumble-workflow-progress-status');
+    const metaEl = modal.querySelector('#rumble-workflow-progress-meta');
+
+    if (statusEl && status) statusEl.textContent = status;
+    if (bar && safePercent !== null) bar.style.width = `${safePercent}%`;
+    if (metaEl) metaEl.textContent = metaText || (safePercent !== null ? `${safePercent}% complete` : '');
+  }
+
+  function finishRumbleProgressWindow(status, isError = false) {
+    const modal = getRumbleWorkflowModal();
+    rumbleProgressActive = false;
+    updateRumbleProgressWindow(status, isError ? 100 : 100, isError ? 'Needs attention' : '100% complete');
+    const actions = modal.querySelector('#rumble-workflow-actions');
+    const closeBtn = modal.querySelector('#rumble-workflow-close');
+    const cancelBtn = modal.querySelector('#rumble-workflow-cancel');
+    const confirmBtn = modal.querySelector('#rumble-workflow-confirm');
+    const statusEl = modal.querySelector('#rumble-workflow-progress-status');
+
+    if (statusEl) statusEl.style.color = isError ? '#ce0e2d' : '#166534';
+    actions.style.display = 'flex';
+    cancelBtn.style.display = 'none';
+    confirmBtn.textContent = 'Close';
+    confirmBtn.style.background = isError ? '#ce0e2d' : '#166534';
+    closeBtn.style.display = 'block';
+
+    const close = () => {
+      modal.style.display = 'none';
+      cancelBtn.style.display = '';
+      closeBtn.onclick = null;
+      confirmBtn.onclick = null;
+      if (statusEl) statusEl.style.color = '#111827';
+    };
+    closeBtn.onclick = close;
+    confirmBtn.onclick = close;
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.innerText = rumbleDefaultStartText;
+    }
+  }
+
+  async function minimizeActivePirateOverlay() {
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!activeTab?.id) return;
+
+      await chrome.tabs.sendMessage(activeTab.id, { action: 'minimizePirateOverlay' }).catch(() => {});
+    } catch (error) {
+      // Some active tabs do not run the page overlay content script. That is fine.
+    }
+  }
+
+  async function minimizePirateOverlayInTab(tabId, attempts = 8) {
+    if (!tabId) return;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const response = await chrome.tabs.sendMessage(tabId, { action: 'minimizePirateOverlay' });
+        if (response?.success || response?.minimized) return;
+      } catch (error) {
+        // The content script may still be starting on the newly opened tab.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+>>>>>>> Stashed changes
   
   // Rogue Site Elements
   const nukeStreamBtn = document.getElementById('nukeStreamBtn');
@@ -735,7 +1141,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   const requestWorkflowFocusRefresh = () => {
-      chrome.storage.local.get('piracy_cart', (res) => evaluateWorkflowFocus(res.piracy_cart?.length || 0));
+      chrome.storage.local.get('piracy_cart', (res) => {
+          renderQueueSummary(res.piracy_cart || []);
+          evaluateWorkflowFocus(res.piracy_cart?.length || 0);
+      });
   };
 
   if (clippyFeedbackEl) {
@@ -782,15 +1191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- SETTINGS GEAR LOGIC (MV3 Compliant) ---
   const optionsGearBtn = document.getElementById('openOptionsGearBtn');
   if (optionsGearBtn) {
-      optionsGearBtn.addEventListener('click', () => {
-          if (chrome.runtime.openOptionsPage) {
-              // This natively handles focusing the options tab if it's already open
-              chrome.runtime.openOptionsPage(); 
-          } else {
-              // Fallback just in case
-              window.open(chrome.runtime.getURL('options.html'));
-          }
-      });
+      optionsGearBtn.addEventListener('click', () => void openSettingsWithAccessRefresh());
   }
   // --- Message Listener for Crawler & Closer ---
   // Accept heartbeat connections to prevent Service Worker zombification
@@ -875,24 +1276,12 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>`;
           loadingEl.style.color = "red";
           document.getElementById('retryInitBtn')?.addEventListener('click', () => window.location.reload());
-          document.getElementById('openOptionsBtn')?.addEventListener('click', () => chrome.runtime.openOptionsPage());
+          document.getElementById('openOptionsBtn')?.addEventListener('click', () => void openSettingsWithAccessRefresh());
       }
   };
 
   // 1. Load Config & Init
   try {
-    const identity = await requestVerifiedRuntimeIdentity({ timeoutMs: 5000 });
-
-    if (!identity) {
-      showInitError('Background script unresponsive.');
-      return;
-    }
-
-    if (!identity.allowed) {
-      renderAccessRestrictedNotice(loadingEl, identity.email, ALLOWED_EMAIL_DOMAIN);
-      return;
-    }
-
     refreshGamificationStats();
 
     // Load Config
@@ -920,9 +1309,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load Saved State
   chrome.storage.local.get(['last_reporter', 'last_vertical'], (res) => {
-      if (res.last_reporter && reporterInput) reporterInput.value = res.last_reporter;
-
-      if (res.last_reporter && reporterInput) reporterInput.value = res.last_reporter;
+      if (reporterInput) {
+          reporterInput.value = currentAccessProfile?.name || res.last_reporter || '';
+      }
       if (res.last_vertical && verticalSelect) {
           verticalSelect.value = res.last_vertical;
           // Trigger change logic manually to load events
@@ -1211,9 +1600,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const defaultBtnText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
                 
                 // --- NEW: SCOUT / ENFORCER ACCESS FILTER ---
+<<<<<<< Updated upstream
                 const currentUserEmail = await getUserEmail();
                 if (isScout && (!currentUserEmail || !currentUserEmail.endsWith('@flosports.tv'))) {
                     alert("Access Denied: Scout mode requires a @flosports.tv email address.");
+=======
+                if (isScout && !canUseScoutMode()) {
+                    alert("Access Denied: Your assigned access level does not include reporting.");
+>>>>>>> Stashed changes
                     return;
                 }
                 // -------------------------------------------
@@ -1240,12 +1634,30 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
 
+          const unassignedCartPlatform = findUnassignedCartPlatform(cart, currentAccessProfile);
+          if (unassignedCartPlatform) {
+              alert(`Access Denied: ${unassignedCartPlatform} is not assigned to your account. Remove those queued items or ask an administrator for access.`);
+              startBtn.disabled = false;
+              startBtn.innerText = defaultBtnText;
+              return;
+          }
+
            // 2. Determine Platform & URL
           const firstUrl = cart[0].url;
           const platformDetails = detectPlatformDetails(firstUrl);
           const platform = platformDetails.label;
           const reportUrl = platformDetails.reportUrl;
 
+<<<<<<< Updated upstream
+=======
+          if (!hasPlatformAccess(currentAccessProfile, platformDetails.key)) {
+              alert(`Access Denied: ${platformDetails.label} is not assigned to your account.`);
+              startBtn.disabled = false;
+              startBtn.innerText = defaultBtnText;
+              return;
+          }
+
+>>>>>>> Stashed changes
           if (!isScout && !isEnforcerAllowlistExemptPlatform(platformDetails.key) && !(await canUseEnforcerMode())) {
               alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
               startBtn.disabled = false;
@@ -1283,7 +1695,43 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
 
+<<<<<<< Updated upstream
           if (platformDetails.key === 'rumble') {
+=======
+		          if (platformDetails.key === 'rumble') {
+	              rumbleDefaultStartText = defaultBtnText;
+	              const confirmed = await showRumbleConfirmDialog(cart);
+	              if (!confirmed) {
+	                  startBtn.innerText = defaultBtnText;
+	                  startBtn.disabled = false;
+	                  return;
+	              }
+
+	              showRumbleProgressWindow(cart.length);
+		              startBtn.innerText = `Reporting ${cart.length} Rumble URL${cart.length === 1 ? '' : 's'}...`;
+		              const payload = { reporterName, vertical, eventName, mode: 'enforcer', uploadScreenshots: true };
+		              chrome.runtime.sendMessage({ action: 'startRumbleQueue', data: payload }, (response) => {
+		                  if (chrome.runtime.lastError) {
+		                      finishRumbleProgressWindow(chrome.runtime.lastError.message || "Failed to start the Rumble report queue.", true);
+		                      startBtn.innerText = defaultBtnText;
+		                      startBtn.disabled = false;
+		                      return;
+		                  }
+
+		                  if (response && response.success) {
+		                      updateRumbleProgressWindow('Rumble queue started in background tabs.', 4);
+		                      return;
+		                  }
+
+	                  finishRumbleProgressWindow(response?.error || "Failed to start the Rumble report queue.", true);
+	                  startBtn.innerText = defaultBtnText;
+	                  startBtn.disabled = false;
+	              });
+	              return;
+	          }
+
+          if (platformDetails.key === 'kick') {
+>>>>>>> Stashed changes
               startBtn.innerText = `Opening ${platform}...`;
               const payload = { reporterName, vertical, eventName, mode: 'enforcer', uploadScreenshots: true };
               chrome.runtime.sendMessage({ action: 'startRumbleQueue', data: payload }, (response) => {
@@ -1545,6 +1993,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (startTrainingBtn) {
       startTrainingBtn.addEventListener('click', async () => {
           const platform = repairPlatformSelect ? repairPlatformSelect.value : 'tiktok';
+          const accessCheck = await chrome.runtime.sendMessage({
+              action: 'checkAccess',
+              permission: PERMISSIONS.SIDEPANEL_REPAIR,
+              platform
+          });
+          if (!accessCheck?.allowed) {
+              alert(accessCheck?.error || `Access Denied: ${platform} is not assigned to your account.`);
+              return;
+          }
           startTrainingBtn.innerText = "Recording...";
           startTrainingBtn.disabled = true;
           
@@ -1568,6 +2025,15 @@ const stopMacroBtn = document.getElementById('stopMacroBtn');
 if (startMacroBtn && stopMacroBtn) {
     startMacroBtn.addEventListener('click', async () => {
         const platform = repairPlatformSelect ? repairPlatformSelect.value : 'tiktok';
+        const accessCheck = await chrome.runtime.sendMessage({
+            action: 'checkAccess',
+            permission: PERMISSIONS.SIDEPANEL_REPAIR,
+            platform
+        });
+        if (!accessCheck?.allowed) {
+            alert(accessCheck?.error || `Access Denied: ${platform} is not assigned to your account.`);
+            return;
+        }
         
         // Enter UI Recording State
           startMacroBtn.style.display = 'none';

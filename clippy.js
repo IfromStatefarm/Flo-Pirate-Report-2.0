@@ -18,6 +18,7 @@
     let optionsClippyHidden = false;
     let optionsBubbleHidden = false;
     let useLiveOptionsInputs = false;
+    let optionsAccessConfigReady = !isOptionsPage;
 
     const idlePhrases = [
         "Alright, let's make the internet a better place one report at a time.",
@@ -347,6 +348,7 @@
     async function evaluateState() {
         try {
             await stateReady;
+            if (isOptionsPage && !optionsAccessConfigReady) return;
 
             const syncData = await chrome.storage.sync.get([
                 'piracy_folder_id',
@@ -396,6 +398,12 @@
 
             field.addEventListener('input', recheckOptionsState);
             field.addEventListener('change', recheckOptionsState);
+        });
+
+        window.addEventListener('floAccessConfigReady', () => {
+            optionsAccessConfigReady = true;
+            useLiveOptionsInputs = true;
+            evaluateState();
         });
     }
 

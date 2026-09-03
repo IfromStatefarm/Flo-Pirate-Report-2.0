@@ -18,6 +18,7 @@ import {
   updateRowStatus,
   setColumnKRichText,
   addEnforcerBonusPoints,
+  updateConfigSections,
   uploadToDrive,
   ensureYearlyReportFolder,
   ensureDailyScreenshotFolder
@@ -31,9 +32,129 @@ import { createReportingWorkflow } from './services/reporting_workflow.js';
 import { createRogueWorkflow } from './services/rogue_workflow.js';
 import { createRumbleWorkflow } from './services/rumble_workflow.js';
 import { createSearchWorkflow } from './services/search_workflow.js';
+import { createAccessRegistry } from '../services/access_registry.js';
+import { createCustomerConfigService } from '../services/customer_config_service.js';
+import {
+  PERMISSIONS,
+  hasPermission,
+  hasPlatformAccess,
+  normalizeAccessPlatform
+} from '../utils/access_control.js';
+import { detectPlatformDetails } from '../utils/platforms.js';
 
 const ALARM_NAME = 'theCloser';
+<<<<<<< Updated upstream
 const GAMIFICATION_STATS_CACHE_KEY = 'gamification_stats_cache';
+=======
+const ACCESS_CONTEXT = Symbol('accessContext');
+
+const accessRegistry = createAccessRegistry({ getAuthToken, getUserEmail });
+const customerConfigService = createCustomerConfigService();
+
+const ACTION_ACCESS_POLICIES = Object.freeze({
+  checkWhitelist: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  findEventUrl: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  getVerticalData: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  botSearchComplete: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  botSearchFailed: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  processNewItem: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  logToSheet: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  processQueue: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true, includeCart: true },
+  processKickLog: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  processFacebookLog: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  processTwitchLog: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  startRumbleQueue: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true, includeCart: true },
+  advanceRumbleQueue: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  cancelRumbleQueue: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  getConfig: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  saveEventUrl: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true, ignoreUrls: true },
+  appendEventToSheet: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  addToCart: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  clearCart: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  undoCart: { permission: PERMISSIONS.SIDEPANEL_REPORT },
+  initRogueTakedown: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  logRogueToSheet: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  getGamificationStats: { permission: PERMISSIONS.SIDEPANEL_SCOREBOARD },
+  getRecommendedStartRow: { permission: PERMISSIONS.SIDEPANEL_AUTOMATE },
+  scanSheetForActiveLinks: { permission: PERMISSIONS.SIDEPANEL_AUTOMATE, platformScoped: true },
+  triggerCloser: { permission: PERMISSIONS.SIDEPANEL_AUTOMATE },
+  stopSheetScanner: { permission: PERMISSIONS.SIDEPANEL_AUTOMATE },
+  generateIntelligenceReport: { permission: PERMISSIONS.SIDEPANEL_INTEL },
+  updateSharedConfig: { permission: PERMISSIONS.SETTINGS_INTELLIGENCE_TOOLS },
+  submitSuggestion: { permission: PERMISSIONS.SETTINGS_FEEDBACK_COMMS },
+  patchSelectorConfig: { permission: PERMISSIONS.SIDEPANEL_REPAIR, platformScoped: true },
+  startMacroSession: { permission: PERMISSIONS.SIDEPANEL_REPAIR, platformScoped: true },
+  compileMacro: { permission: PERMISSIONS.SIDEPANEL_REPAIR },
+  recordMacroStep: { permission: PERMISSIONS.SIDEPANEL_REPAIR },
+  listAccessUsers: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
+  updateAccessUser: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS }
+});
+
+function platformKeyFromUrl(url) {
+  const normalizedUrl = String(url || '').trim();
+  if (!/^https?:\/\//i.test(normalizedUrl)) return '';
+  return detectPlatformDetails(normalizedUrl).key;
+}
+
+function addPlatformCandidate(platforms, value) {
+  const normalized = normalizeAccessPlatform(value);
+  if (normalized && normalized !== 'all') platforms.add(normalized);
+}
+
+function addUrlCandidate(platforms, value) {
+  const platform = platformKeyFromUrl(value);
+  if (platform) platforms.add(platform);
+}
+
+async function getRequestPlatforms(request, { includeCart = false, ignoreUrls = false } = {}) {
+  const platforms = new Set();
+  const data = request?.data || {};
+
+  [request?.platform, request?.platformKey, data.platform, data.platformKey, data.reportPlatform]
+    .forEach((value) => addPlatformCandidate(platforms, value));
+
+  if (!ignoreUrls) {
+    [request?.currentUrl, request?.url, data.url, data.currentUrl]
+      .forEach((value) => addUrlCandidate(platforms, value));
+
+    const urlCollections = [request?.urls, data.urls, data.items];
+    urlCollections.forEach((collection) => {
+      if (!Array.isArray(collection)) return;
+      collection.forEach((item) => addUrlCandidate(platforms, typeof item === 'string' ? item : item?.url));
+    });
+  }
+
+  if (includeCart) {
+    const storage = await chrome.storage.local.get('piracy_cart');
+    const cart = Array.isArray(storage.piracy_cart) ? storage.piracy_cart : [];
+    cart.forEach((item) => {
+      addPlatformCandidate(platforms, item?.platform);
+      addUrlCandidate(platforms, item?.url);
+    });
+  }
+
+  return [...platforms];
+}
+
+async function authorizeAction(action, request) {
+  const policy = ACTION_ACCESS_POLICIES[action];
+  if (!policy) return null;
+
+  const profile = await accessRegistry.requirePermission(policy.permission);
+  if (policy.platformScoped) {
+    const requestedPlatforms = await getRequestPlatforms(request, policy);
+    if (requestedPlatforms.length === 0) {
+      throw new Error('Access denied: A recognized platform is required for this action.');
+    }
+    for (const platform of requestedPlatforms) {
+      await accessRegistry.requirePlatform(profile, platform);
+    }
+  }
+
+  request[ACCESS_CONTEXT] = profile;
+  return profile;
+}
+>>>>>>> Stashed changes
 
 const sheetScanner = createSheetScanner({
   getColumnHDataWithFormatting,
@@ -128,7 +249,17 @@ function setupBrowserEventListeners() {
       'closer_duration_minutes'
     ]);
     if (closer_enabled) {
+<<<<<<< Updated upstream
       await sheetScanner.run(1, { durationMinutes: closer_duration_minutes });
+=======
+      try {
+        const profile = await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_AUTOMATE);
+        const allowedPlatforms = profile.platforms.includes('all') ? null : profile.platforms;
+        await sheetScanner.run(1, 4, allowedPlatforms);
+      } catch (error) {
+        console.warn('Scheduled Closer skipped:', error.message);
+      }
+>>>>>>> Stashed changes
     }
   });
 
@@ -232,8 +363,10 @@ async function getCachedGamificationStats(errorMessage = '') {
 }
 
 async function handleGenerateIntelligenceReport(request) {
+  const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_INTEL);
   const token = await getAuthToken();
-  const stats = await fetchIntelligenceData(request.startDate, request.endDate);
+  const allowedPlatforms = profile.platforms.includes('all') ? null : profile.platforms;
+  const stats = await fetchIntelligenceData(request.startDate, request.endDate, allowedPlatforms);
   if (!stats) {
     throw new Error('No data available for this timeframe.');
   }
@@ -292,6 +425,68 @@ async function openSidePanelForSender(sender) {
 
 function createActionHandlers() {
   return {
+    async getCustomerConfig() {
+      const resolved = await customerConfigService.getCurrentConfig();
+      return { success: true, ...resolved };
+    },
+
+    async getAccessProfile(request) {
+      const profile = await accessRegistry.getCurrentProfile({
+        forceRefresh: request.forceRefresh === true
+      });
+      return { success: true, profile };
+    },
+
+    async createAccessUser(request) {
+      const result = await accessRegistry.createAccount(request.credentials || {});
+      return result?.challenge
+        ? { success: true, ...result }
+        : { success: true, profile: result };
+    },
+
+    async loginAccessUser(request) {
+      const result = await accessRegistry.login(request.credentials || {});
+      return result?.challenge
+        ? { success: true, ...result }
+        : { success: true, profile: result };
+    },
+
+    async logoutAccessUser() {
+      await accessRegistry.logout();
+      return { success: true };
+    },
+
+    async refreshAccessProfile() {
+      await accessRegistry.clearProfileCache();
+      const profile = await accessRegistry.getCurrentProfile({ forceRefresh: true });
+      return { success: true, profile };
+    },
+
+    async checkAccess(request) {
+      const allowedPermissions = new Set(Object.values(PERMISSIONS));
+      if (!allowedPermissions.has(request.permission)) {
+        return { success: false, allowed: false, error: 'Unknown permission.' };
+      }
+
+      const profile = await accessRegistry.getCurrentProfile({ forceRefresh: request.forceRefresh === true });
+      let allowed = hasPermission(profile, request.permission);
+      const platforms = new Set();
+      addPlatformCandidate(platforms, request.platform);
+      addUrlCandidate(platforms, request.url);
+      if (allowed && platforms.size > 0) {
+        allowed = [...platforms].every((platform) => hasPlatformAccess(profile, platform));
+      }
+      return { success: true, allowed, platforms: [...platforms], profile };
+    },
+
+    async listAccessUsers(request) {
+      return { success: true, users: await accessRegistry.listUsers(request.query) };
+    },
+
+    async updateAccessUser(request) {
+      return { success: true, user: await accessRegistry.updateUser(request.user || {}) };
+    },
+
     async checkUserIdentity() {
       return { email: await getUserEmail() };
     },
@@ -338,6 +533,71 @@ function createActionHandlers() {
       return response;
     },
 
+<<<<<<< Updated upstream
+=======
+    async processFacebookLog(request, sender) {
+      try {
+        const response = await reportingWorkflow.handleFacebookBatchReport(request.data, {
+          composerTabId: sender?.tab?.id,
+          windowId: sender?.tab?.windowId
+        });
+        if (response.success) {
+          chrome.runtime.sendMessage({
+            action: 'progressComplete',
+            workflow: 'facebook',
+            reportedCount: response.reportedCount || 0,
+            remainingCount: response.remainingCount || 0
+          }).catch(() => {});
+        } else {
+          chrome.runtime.sendMessage({
+            action: 'progressError',
+            workflow: 'facebook',
+            error: response.error
+          }).catch(() => {});
+        }
+        return response;
+      } catch (error) {
+        chrome.runtime.sendMessage({
+          action: 'progressError',
+          workflow: 'facebook',
+          error: error.message || 'Facebook logging failed.'
+        }).catch(() => {});
+        return { success: false, error: error.message };
+      }
+    },
+
+    async processTwitchLog(request, sender) {
+      try {
+        const response = await reportingWorkflow.handleTwitchBatchReport(request.data, {
+          composerTabId: sender?.tab?.id,
+          windowId: sender?.tab?.windowId
+        });
+        if (response.success) {
+          chrome.runtime.sendMessage({
+            action: 'progressComplete',
+            workflow: 'twitch',
+            reportedCount: response.reportedCount || 0,
+            remainingCount: response.remainingCount || 0
+          }).catch(() => {});
+        } else {
+          chrome.runtime.sendMessage({
+            action: 'progressError',
+            workflow: 'twitch',
+            error: response.error
+          }).catch(() => {});
+        }
+        return response;
+      } catch (error) {
+        chrome.runtime.sendMessage({
+          action: 'progressError',
+          workflow: 'twitch',
+          error: error.message || 'Twitch logging failed.'
+        }).catch(() => {});
+        return { success: false, error: error.message };
+      }
+    },
+
+>>>>>>> Stashed changes
     async startRumbleQueue(request) {
       return rumbleWorkflow.start(request.data);
     },
@@ -360,6 +620,33 @@ function createActionHandlers() {
 
     async getConfig() {
       return { success: true, config: await fetchConfig() };
+    },
+
+    async updateSharedConfig(request) {
+      const sections = request.sections || {};
+      if (sections.platform_selectors) {
+        const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SETTINGS_INTELLIGENCE_TOOLS);
+        if (!hasPermission(profile, PERMISSIONS.SETTINGS_SELECTOR_PATHS)) {
+          throw new Error('Access denied: Selector Path editing is restricted to administrators.');
+        }
+
+        const platform = normalizeAccessPlatform(request.platform);
+        if (!platform || platform === 'all' || !sections.platform_selectors[platform]) {
+          throw new Error('A valid assigned platform is required for selector configuration updates.');
+        }
+
+        await accessRegistry.requirePlatform(profile, platform);
+
+        const currentConfig = await fetchConfig();
+        const mergedPlatformSelectors = {
+          ...(currentConfig.platform_selectors || {}),
+          [platform]: sections.platform_selectors[platform]
+        };
+        const config = await updateConfigSections({ platform_selectors: mergedPlatformSelectors });
+        return { success: true, config };
+      }
+
+      return { success: true, config: await updateConfigSections(sections) };
     },
 
     async getRecommendedStartRow() {
@@ -436,7 +723,13 @@ function createActionHandlers() {
     },
 
     async triggerCloser(request) {
+<<<<<<< Updated upstream
       await sheetScanner.run(request.startRow || 1, { durationMinutes: request.durationMinutes });
+=======
+      const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_AUTOMATE);
+      const allowedPlatforms = profile.platforms.includes('all') ? null : profile.platforms;
+      await sheetScanner.run(request.startRow || 1, request.maxTabs || 4, allowedPlatforms);
+>>>>>>> Stashed changes
       return { success: true };
     },
 
@@ -462,7 +755,8 @@ function registerMessageRouter() {
     const handler = actionHandlers[request.action];
     if (!handler) return false;
 
-    Promise.resolve(handler(request, sender))
+    Promise.resolve(authorizeAction(request.action, request))
+      .then(() => handler(request, sender))
       .then((response) => {
         sendResponse(response ?? { success: true });
       })

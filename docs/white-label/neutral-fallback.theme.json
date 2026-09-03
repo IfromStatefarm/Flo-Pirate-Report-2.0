@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "customerId": "default",
+  "configVersion": 1,
+  "product": {
+    "productName": "Rights Reporter",
+    "displayName": "Rights Reporter",
+    "shortName": "Reporter",
+    "assistantName": "Reporting Assistant",
+    "tagline": "Capture evidence, manage reports, and track outcomes."
+  },
+  "theme": {
+    "logoUrl": "",
+    "logoAltText": "Rights Reporter",
+    "colors": {
+      "primary": "#334155",
+      "primaryHover": "#1F2937",
+      "accent": "#2563EB",
+      "onPrimary": "#FFFFFF",
+      "background": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "text": "#111827",
+      "muted": "#64748B",
+      "border": "#E5E7EB",
+      "success": "#166534",
+      "warning": "#B45309",
+      "danger": "#B91C1C"
+    }
+  },
+  "legal": {
+    "ownerName": "",
+    "companyName": "",
+    "reportingEmail": "",
+    "secondaryEmail": "",
+    "phone": "",
+    "originalWorkUrl": ""
+  },
+  "access": {
+    "allowedEmailDomains": [],
+    "totalUserCap": 0,
+    "enabledRoles": [],
+    "roleSeatCaps": {
+      "employee": 0,
+      "manager": 0,
+      "admin": 0
+    }
+  },
+  "capabilities": {
+    "enabledPlatforms": [],
+    "enabledFeatures": []
+  },
+  "destinations": {
+    "driveRootFolderId": "",
+    "reportSpreadsheetId": "",
+    "eventSpreadsheetId": ""
+  },
+  "stats": {
+    "dashboardId": ""
+  }
+}

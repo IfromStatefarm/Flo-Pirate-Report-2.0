@@ -11,8 +11,7 @@
   if (window.hasFloScraperRun) return;
   window.hasFloScraperRun = true;
 
-  // --- IDENTITY ENFORCEMENT OVERLAY ---
-  // This function checks if the user is logged in with a @flosports.tv email and shows an overlay if not  
+  // --- EXTENSION ACCESS ENFORCEMENT ---
   // Global Exemption List: Prevents overlay from opening and logic from running
   const EXEMPT_WEBSITES = [
     'varsity.com', 'flosports.tv', 'floracing.tv', 'milesplit.com', 'houston.flosports.net', 
@@ -154,6 +153,26 @@
     }
   };
 
+<<<<<<< Updated upstream
+=======
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  let configLoaded = false;
+
+  async function requestContentAccess(permission, platform = '') {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'checkAccess',
+        permission,
+        platform,
+        url: window.location.href
+      });
+      return Boolean(response?.success && response.allowed);
+    } catch (error) {
+      return false;
+    }
+  }
+
+>>>>>>> Stashed changes
   // --- CONFIG LOADER ---
   (async function loadConfig() {
     try {
@@ -161,6 +180,7 @@
       if (response && response.success && response.config && response.config.platform_selectors) {
         console.log("✅ PIRATE AI: Remote Selectors Loaded");
         const remote = response.config.platform_selectors;
+<<<<<<< Updated upstream
         Object.entries(remote).forEach(([platform, platformConfig]) => {
           if (!platformConfig?.scraper) return;
           SCRAPER_CONFIG[platform] = {
@@ -168,6 +188,17 @@
             ...platformConfig.scraper
           };
         });
+=======
+        if (remote.tiktok && remote.tiktok.scraper) SCRAPER_CONFIG.tiktok = { ...SCRAPER_CONFIG.tiktok, ...remote.tiktok.scraper };
+        if (remote.youtube && remote.youtube.scraper) SCRAPER_CONFIG.youtube = { ...SCRAPER_CONFIG.youtube, ...remote.youtube.scraper };
+        if (remote.instagram && remote.instagram.scraper) SCRAPER_CONFIG.instagram = { ...SCRAPER_CONFIG.instagram, ...remote.instagram.scraper };
+        if (remote.twitter && remote.twitter.scraper) SCRAPER_CONFIG.twitter = { ...SCRAPER_CONFIG.twitter, ...remote.twitter.scraper };
+        if (remote.facebook && remote.facebook.scraper) SCRAPER_CONFIG.facebook = { ...SCRAPER_CONFIG.facebook, ...remote.facebook.scraper };
+        if (remote.kick && remote.kick.scraper) SCRAPER_CONFIG.kick = { ...SCRAPER_CONFIG.kick, ...remote.kick.scraper };
+        if (remote.twitch && remote.twitch.scraper) SCRAPER_CONFIG.twitch = { ...SCRAPER_CONFIG.twitch, ...remote.twitch.scraper };
+        if (remote.rumble && remote.rumble.scraper) SCRAPER_CONFIG.rumble = { ...SCRAPER_CONFIG.rumble, ...remote.rumble.scraper };
+        configLoaded = true;
+>>>>>>> Stashed changes
       }
     } catch (e) {
       // Suppress heavy logging
@@ -691,6 +722,125 @@
       return /\blive\b/i.test(contextText);
   }
 
+<<<<<<< Updated upstream
+=======
+  function hasTwitchVodSignal(twitchConfig) {
+      return getElementsFromSelectorList(twitchConfig.vod_indicators).some((element) => {
+          const candidateText = [
+              element.getAttribute?.('href') || '',
+              element.getAttribute?.('title') || '',
+              element.getAttribute?.('aria-label') || '',
+              element.innerText || '',
+              element.textContent || '',
+              element.className || ''
+          ].join(' ');
+          return /video-info-game-boxart-link|metadata-layout__split-top|timestamp-metadata|views?\b|\bago\b/i.test(candidateText);
+      });
+  }
+
+  function extractTwitterHandleFromHref(href) {
+      if (!href) return '';
+      try {
+          const parsed = href.startsWith('http') ? new URL(href) : new URL(href, window.location.origin);
+          const pathParts = parsed.pathname.split('/').filter(Boolean);
+          if (!pathParts.length) return '';
+
+          const reservedSegments = new Set([
+              'account',
+              'compose',
+              'explore',
+              'hashtag',
+              'help',
+              'home',
+              'i',
+              'intent',
+              'login',
+              'logout',
+              'messages',
+              'notifications',
+              'privacy',
+              'search',
+              'settings',
+              'share',
+              'tos'
+          ]);
+          const candidate = pathParts[0];
+          if (reservedSegments.has(candidate.toLowerCase())) return '';
+          return normalizeScrapedHandle(candidate);
+      } catch (error) {
+          return '';
+      }
+  }
+
+  function getTwitterHandle(twitterConfig, currentUrl) {
+      const linkSelectors = twitterConfig.handle_links || twitterConfig.handle;
+      for (const element of getElementsFromSelectorList(linkSelectors)) {
+          const href = element?.href || element?.getAttribute?.('href') || element?.closest?.('a[href]')?.getAttribute?.('href') || '';
+          const handle = extractTwitterHandleFromHref(href);
+          if (handle) return handle;
+      }
+
+      for (const text of getTextsFromSelectorList(twitterConfig.handle)) {
+          const trimmed = String(text || '').trim();
+          if (trimmed.startsWith('@')) return normalizeScrapedHandle(trimmed);
+          if (/^[A-Za-z0-9_]{1,20}$/.test(trimmed)) return normalizeScrapedHandle(trimmed);
+      }
+
+      return extractTwitterHandleFromHref(currentUrl);
+  }
+
+  function hasTwitterViewsContext(element) {
+      let current = element;
+      for (let depth = 0; current && depth < 8; depth += 1) {
+          const href = current.getAttribute?.('href') || '';
+          const ariaLabel = current.getAttribute?.('aria-label') || '';
+          const text = getElementReadableText(current);
+          if (href.includes('/analytics')) return true;
+          if (/view post analytics|views?/i.test(ariaLabel)) return true;
+          if (text.length < 120 && /\bviews?\b/i.test(text) && /\d/.test(text)) return true;
+          current = current.parentElement;
+      }
+      return false;
+  }
+
+  function getTwitterViews(twitterConfig) {
+      for (const container of getElementsFromSelectorList(twitterConfig.views_analytics)) {
+          const containerText = getElementReadableText(container);
+          const countFromContainer = extractReadableViewCount(containerText);
+          if (countFromContainer) return countFromContainer;
+
+          const childTexts = Array.from(container.querySelectorAll?.('span, div') || [])
+              .map((element) => getElementReadableText(element))
+              .filter(Boolean);
+          for (const text of childTexts) {
+              const count = extractReadableViewCount(text);
+              if (count) return count;
+          }
+      }
+
+      for (const element of getElementsFromSelectorList(twitterConfig.views)) {
+          const text = getElementReadableText(element);
+          const count = extractReadableViewCount(text);
+          if (!count) continue;
+          if (hasTwitterViewsContext(element)) return count;
+      }
+
+      return '';
+  }
+
+  function matchFirstRegexPattern(text, patterns) {
+      for (const pattern of toSelectorList(patterns)) {
+          try {
+              const match = String(text || '').match(new RegExp(pattern));
+              if (match) return match;
+          } catch (error) {
+              // Ignore malformed regex patterns and continue.
+          }
+      }
+      return null;
+  }
+
+>>>>>>> Stashed changes
   // ==========================================
   // 1. THE STRATEGY SCRAPER
   // ==========================================
@@ -831,7 +981,11 @@
     }
 
     // --- INSTAGRAM ---
+<<<<<<< Updated upstream
     else if (host.includes('instagram.com')) {
+=======
+    else if (platformKey === 'instagram') {
+>>>>>>> Stashed changes
       const isPostLikeUrl = url.includes('/p/') || url.includes('/reel/') || url.includes('/tv/');
       const isStoryUrl = url.includes('/stories/');
       if (!isPostLikeUrl && !isStoryUrl) return null;
@@ -1377,20 +1531,11 @@ function finishMacroTraining() {
     console.log("PIRATE AI: Macro Recording finished.");
 }
 
-// Add to the message listener in content_scraper.js
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // ... existing logic ...
-    if (request.action === 'stopMacroTraining') {
-        finishMacroTraining();
-        sendResponse({ success: true });
-    }
-});
-  
-
   // ==========================================
   // 2. MESSAGE LISTENER
   // ==========================================
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+<<<<<<< Updated upstream
     void sender;
     if (request.action !== 'getCurrentPirateScrape') return false;
 
@@ -1418,6 +1563,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         showPatchUI(request.platform, JSON.stringify(request.macro, null, 2));
         sendResponse({ success: true });
     }
+=======
+    const repairActions = new Set([
+      'startSelectorTraining',
+      'startMacroTraining',
+      'stopMacroTraining',
+      'showMacroConfirmation'
+    ]);
+    if (!repairActions.has(request.action)) return false;
+
+    void (async () => {
+      const allowed = await requestContentAccess('sidepanel.repair', request.platform || trainingPlatform);
+      if (!allowed) {
+        sendResponse({ success: false, error: 'Access denied for platform repair.' });
+        return;
+      }
+
+      if (request.action === 'startSelectorTraining') {
+          isTrainingMode = true;
+          trainingPlatform = request.platform;
+          const handler = (e) => {
+              e.preventDefault(); e.stopPropagation();
+              document.removeEventListener('click', handler, true);
+              isTrainingMode = false;
+              const selectors = generateStableSelector(e.target);
+              showPatchUI(trainingPlatform, selectors);
+          };
+          document.addEventListener('click', handler, true);
+      } else if (request.action === 'startMacroTraining') {
+          startMacroTraining(request.platform);
+      } else if (request.action === 'stopMacroTraining') {
+          finishMacroTraining();
+      } else if (request.action === 'showMacroConfirmation') {
+          showPatchUI(request.platform, JSON.stringify(request.macro, null, 2));
+      }
+      sendResponse({ success: true });
+    })();
+
+    return true;
+>>>>>>> Stashed changes
   });
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -1570,6 +1754,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   async function initOverlay() {
     if (document.getElementById('flo-overlay')) return;
     if (!isExtensionValid()) return;
+    if (!(await requestContentAccess('sidepanel.report'))) return;
 
     // Auto-minimize if we are on a reporting/legal page
     const currentUrl = window.location.href.toLowerCase();
@@ -1799,6 +1984,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   async function showPirateOverlay(options = {}) {
     const { showNukeButton = false, expand = true } = options;
+
+    if (!(await requestContentAccess('sidepanel.report'))) {
+      document.getElementById('flo-overlay')?.remove();
+      return;
+    }
 
     if (!document.getElementById('flo-overlay')) {
       await initOverlay();

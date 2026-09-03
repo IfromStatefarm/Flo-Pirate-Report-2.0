@@ -1,4 +1,5 @@
 import {
+  detectPlatformDetails,
   extractHandleFromUrl,
   isInternalManagedUrl,
   urlMatchesPlatform
@@ -238,7 +239,17 @@ export function createSheetScanner({
     }
   }
 
+<<<<<<< Updated upstream
   async function run(startRowUI = 1, options = {}) {
+=======
+  async function run(startRowUI = 1, maxConcurrentTabs = 4, allowedPlatforms = null) {
+    void maxConcurrentTabs;
+
+    const allowedPlatformSet = allowedPlatforms === null
+      ? null
+      : new Set((allowedPlatforms || []).map((platform) => String(platform || '').trim().toLowerCase()));
+
+>>>>>>> Stashed changes
     if (isRunning) return;
 
     const durationMs = getDurationMs(options?.durationMinutes);
@@ -342,6 +353,15 @@ export function createSheetScanner({
           continue;
         }
 
+        const externalMatches = matches.filter(({ url }) => !isInternalManagedUrl(url));
+        const hasDisallowedPlatform = allowedPlatformSet && externalMatches.some(({ url }) => (
+          !allowedPlatformSet.has(detectPlatformDetails(url).key)
+        ));
+        if (hasDisallowedPlatform) {
+          sendProgress(`Skipping Row ${rowIndex + 1}`, 'The row contains a platform that is not assigned to your account.');
+          continue;
+        }
+
         sendProgress(`Scanning Row ${rowIndex + 1}`, `Checking ${matches.length} link(s)...`);
 
         let newlyStruck = 0;
@@ -368,13 +388,7 @@ export function createSheetScanner({
 
           sendProgress(`Row ${rowIndex + 1}`, `Link ${matchIndex + 1}/${matches.length}: Checking availability...`);
 
-          let platform = 'unknown';
-          if (url.includes('tiktok')) platform = 'tiktok';
-          else if (url.includes('youtube') || url.includes('youtu.be')) platform = 'youtube';
-          else if (url.includes('twitter') || url.includes('x.com')) platform = 'twitter';
-          else if (url.includes('instagram')) platform = 'instagram';
-          else if (url.includes('facebook')) platform = 'facebook';
-          else if (url.includes('twitch')) platform = 'twitch';
+          const platform = detectPlatformDetails(url).key;
 
           let isDown = false;
           try {

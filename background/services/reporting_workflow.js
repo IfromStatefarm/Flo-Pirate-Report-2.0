@@ -21,6 +21,7 @@ const PLATFORM_BATCH_LIMITS = Object.freeze({
   youtube: 10,
   instagram: 30
 });
+<<<<<<< Updated upstream
 
 const TWITCH_SCRAPE_SETTLE_MS = 1500;
 
@@ -89,6 +90,8 @@ function mergeScrapedTwitchData(item, scrapedData) {
   return merged;
 }
 
+=======
+>>>>>>> Stashed changes
 export function createReportingWorkflow({
   appendToSheet,
   checkIfAuthorized,

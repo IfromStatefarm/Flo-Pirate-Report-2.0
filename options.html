@@ -21,9 +21,101 @@
       --shadow-soft: 0 16px 50px rgba(17, 24, 39, 0.08);
     }
 
+<<<<<<< Updated upstream
     * { box-sizing: border-box; }
 
     body {
+=======
+    [hidden] { display: none !important; }
+
+    .settings-access-state {
+      padding: 16px;
+      margin-bottom: 24px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #f8fafc;
+      color: #334155;
+      text-align: center;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .settings-access-state strong { display: block; color: var(--flo-dark); margin-bottom: 4px; }
+    .settings-access-state.is-error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+    .settings-access-state.is-pending { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+
+    .auth-card {
+      padding: 20px;
+      border: 1px solid var(--flo-border);
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+
+    .auth-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .auth-pane {
+      padding: 16px;
+      border: 1px solid var(--flo-border);
+      border-radius: 10px;
+      background: white;
+    }
+
+    .auth-pane h3 { margin: 0 0 12px; font-size: 15px; }
+    .auth-pane .form-group { margin-bottom: 12px; }
+    .auth-pane button { width: 100%; }
+    .auth-session-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .auth-session-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .auth-session-copy strong, .auth-session-copy span { display: block; }
+    .auth-session-copy span { margin-top: 4px; color: #64748b; font-size: 12px; }
+    .auth-status { min-height: 18px; margin-top: 12px; font-size: 12px; line-height: 1.45; }
+
+    .access-user-results {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 240px;
+      overflow-y: auto;
+      margin: 12px 0 18px;
+    }
+
+    .access-user-result {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--flo-border);
+      border-radius: 8px;
+      background: white;
+      color: var(--flo-dark);
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .access-user-result:hover,
+    .access-user-result.is-selected { border-color: var(--flo-red); background: #fff5f6; }
+    .access-user-result strong { display: block; font-size: 13px; }
+    .access-user-result span { display: block; margin-top: 3px; color: #6b7280; font-size: 11px; }
+
+    .platform-access-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 12px;
+      border: 1px solid var(--flo-border);
+      border-radius: 8px;
+      background: #fafafa;
+    }
+
+    .platform-access-grid label { display: flex; gap: 7px; align-items: center; margin: 0; font-weight: 500; }
+    .platform-access-grid input { width: auto; }
+
+    body { 
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+>>>>>>> Stashed changes
       margin: 0;
       background:
         linear-gradient(180deg, rgba(206, 14, 45, 0.07), rgba(243, 244, 246, 0) 260px),
@@ -246,7 +338,81 @@
       gap: 8px;
     }
 
+<<<<<<< Updated upstream
     label {
+=======
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 13px; color: #374151; }
+    
+    .input-desc { font-size: 12px; color: #6b7280; margin-bottom: 8px; line-height: 1.4; }
+    
+    input[type="text"], input[type="password"], select, textarea {
+      width: 100%; 
+      padding: 12px; 
+      box-sizing: border-box;
+      border: 1.5px solid var(--flo-border); 
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    input:focus, select:focus, textarea:focus { 
+      outline: none; 
+      border-color: var(--flo-red); 
+      box-shadow: 0 0 0 4px rgba(206, 14, 45, 0.1);
+    }
+
+    input[data-managed="true"] {
+      background: #f1f5f9;
+      color: #334155;
+      cursor: default;
+      font-weight: 600;
+    }
+
+    .lab-card { 
+      background-color: var(--pioneer-bg); 
+      border: 1px solid #fcd34d; 
+      padding: 20px; 
+      border-radius: 12px;
+    }
+
+    .highlight-box {
+      background: white;
+      border: 1px solid #e5e7eb;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+
+    .save-bar {
+      position: sticky;
+      bottom: 0;
+      background: white;
+      padding: 20px 0;
+      border-top: 1px solid var(--flo-border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #save {
+      background-color: var(--flo-red);
+      color: white;
+      border: none;
+      padding: 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 700;
+      width: 100%;
+    }
+
+    #save:hover { background-color: #b00c26; transform: translateY(-1px); }
+    #status { text-align: center; font-weight: 700; font-size: 14px; min-height: 20px; }
+
+    .btn-secondary {
+      background-color: #f3f4f6;
+>>>>>>> Stashed changes
       color: #374151;
       font-size: 13px;
       font-weight: 750;
@@ -1030,6 +1196,7 @@
         grid-template-columns: 1fr;
       }
 
+<<<<<<< Updated upstream
       .setup-summary,
       .briefing-summary,
       .save-inner {
@@ -1087,6 +1254,12 @@
       .modal-overlay {
         padding: 10px;
       }
+=======
+      .platform-access-grid { grid-template-columns: 1fr; }
+      .auth-grid { grid-template-columns: 1fr; }
+      .auth-session-row { align-items: stretch; flex-direction: column; }
+      .auth-session-actions { flex-direction: column; }
+>>>>>>> Stashed changes
     }
   </style>
 </head>
@@ -1095,6 +1268,7 @@
     <header class="app-header">
       <img id="clippy-img" src="images/clippy starting postion.png" alt="Clippy">
       <div>
+<<<<<<< Updated upstream
         <p class="eyebrow">FloSports Pirate Reporter</p>
         <h1 title="Enforcement Center">Enforcement Center</h1>
         <p class="subtitle">Connect the Google Workspace assets, choose the reporting protocol, and tune the intelligence briefing modules used across the extension.</p>
@@ -1268,6 +1442,178 @@
         <div id="save_hint" class="input-desc">Changes are stored in Chrome sync for this extension.</div>
       </div>
       <button id="save" type="button">Save Intelligence Settings</button>
+=======
+        <h1 style="cursor: pointer; user-select: none;" title="Enforcement Center">Enforcement Center</h1>
+        <p class="subtitle">Sign in to the extension to load your assigned access.</p>
+      </div>
+    </header>
+
+    <div id="extension-account-section" class="section auth-card">
+      <div class="section-title">🔑 Extension Account</div>
+
+      <div id="auth-logged-out">
+        <div class="auth-grid">
+          <form id="access-login-form" class="auth-pane">
+            <h3>Log in</h3>
+            <p class="input-desc">Enter your first and last name exactly as it appears on your report forms.</p>
+            <div class="form-group">
+              <label for="login_first_name">First Name</label>
+              <input type="text" id="login_first_name" autocomplete="given-name" maxlength="60" required>
+            </div>
+            <div class="form-group">
+              <label for="login_last_name">Last Name</label>
+              <input type="text" id="login_last_name" autocomplete="family-name" maxlength="60" required>
+            </div>
+            <div id="login-middle-name-group" class="form-group" hidden>
+              <label for="login_middle_name">Middle Name or Initial</label>
+              <input type="text" id="login_middle_name" autocomplete="additional-name" maxlength="60">
+              <div class="input-desc">Another user has the same first and last name. Enter the middle name or initial saved with your account.</div>
+            </div>
+            <div id="login-email-group" class="form-group" hidden>
+              <label for="login_email">Select Your Email</label>
+              <select id="login_email">
+                <option value="">Choose your email…</option>
+              </select>
+              <div class="input-desc">More than one account has this exact full name. Select your email before logging in.</div>
+            </div>
+            <div class="form-group">
+              <label for="login_password">Password</label>
+              <input type="password" id="login_password" autocomplete="current-password" maxlength="128" required>
+            </div>
+            <button id="login_access_user" class="btn-secondary" type="submit">Log In</button>
+          </form>
+
+          <form id="access-create-form" class="auth-pane">
+            <h3>Create user</h3>
+            <p class="input-desc">Enter your full first and last name as you want it shown on report forms. Your Google email is saved in column D and new accounts start as Waiting_Approval.</p>
+            <div class="form-group">
+              <label for="create_first_name">First Name</label>
+              <input type="text" id="create_first_name" autocomplete="given-name" maxlength="60" required>
+            </div>
+            <div class="form-group">
+              <label for="create_last_name">Last Name</label>
+              <input type="text" id="create_last_name" autocomplete="family-name" maxlength="60" required>
+            </div>
+            <div id="create-middle-name-group" class="form-group" hidden>
+              <label for="create_middle_name">Middle Name or Initial</label>
+              <input type="text" id="create_middle_name" autocomplete="additional-name" maxlength="60">
+              <div class="input-desc">That first and last name is already in use. Add your middle name or initial; it will be saved in column C.</div>
+            </div>
+            <div class="form-group">
+              <label for="create_password">Password</label>
+              <input type="password" id="create_password" autocomplete="new-password" minlength="12" maxlength="128" required>
+            </div>
+            <div class="form-group">
+              <label for="create_password_confirm">Confirm Password</label>
+              <input type="password" id="create_password_confirm" autocomplete="new-password" minlength="12" maxlength="128" required>
+            </div>
+            <button id="create_access_user" class="btn-secondary" type="submit">Create User</button>
+          </form>
+        </div>
+      </div>
+
+      <div id="auth-logged-in" class="auth-session-row" hidden>
+        <div class="auth-session-copy">
+          <strong id="auth-session-name">Signed in</strong>
+          <span id="auth-session-details"></span>
+        </div>
+        <div class="auth-session-actions">
+          <button id="refresh_access_user" class="btn-secondary" type="button">Retry / Refresh Access</button>
+          <button id="logout_access_user" class="btn-secondary" type="button">Log Out</button>
+        </div>
+      </div>
+      <div id="auth-status" class="auth-status" role="status" aria-live="polite"></div>
+    </div>
+
+    <div id="settings-access-state" class="settings-access-state" role="status">
+      <strong>Verifying access</strong>
+      Checking your extension login and assigned role…
+    </div>
+
+    <div id="core-connectivity-section" class="section" data-access-permission="settings.coreConnectivity" hidden>
+      <div class="section-title">📡 Core Connectivity</div>
+      
+      <div class="form-group">
+        <label for="piracy_folder_id">Google Drive Root Folder</label>
+        <div class="input-desc">Target folder for PDF reports and forensic screenshots. Administrator-managed folders display their assigned name instead of the ID.</div>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="piracy_folder_id" placeholder="e.g. 1AbC2DeF3GhI...">
+          <button id="open_evidence_locker" class="btn-secondary" data-access-permission="settings.openLocker" title="Open Drive Folder" hidden>Open Locker</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="piracy_sheet_id">Foundation Log Sheet</label>
+        <div class="input-desc">The primary spreadsheet where all enforcement actions are logged. Administrator-managed sheets display their assigned name instead of the ID.</div>
+        <input type="text" id="piracy_sheet_id" placeholder="Spreadsheet ID from URL">
+      </div>
+
+      <div class="form-group">
+        <label for="event_sheet_id">Event Config Sheet</label>
+        <div class="input-desc">Source for whitelists, event schedules, and XP multipliers. Administrator-managed sheets display their assigned name instead of the ID.</div>
+        <input type="text" id="event_sheet_id" placeholder="Config Sheet ID">
+      </div>
+
+      <div class="form-group">
+        <label for="report_mode">Deployment Protocol</label>
+        <div class="input-desc">
+          <strong>Scout Mode:</strong> Safely logs intelligence to the sheet without opening reporting forms. Best for quick tactical sweeps.<br>
+          <strong>Full Enforcer:</strong> Automatically opens TikTok/YouTube DMCA forms and injects all evidence for immediate submission.
+        </div>
+        <select id="report_mode">
+          <option value="scout">Scout Mode (Intelligence Gathering Only)</option>
+          <option value="all">Full Enforcer (DMCA Workflow Active)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="intelligence-tools-section" class="section" data-access-permission="settings.intelligenceTools" hidden>
+      <div class="section-title">📊 Intelligence &amp; Config Tools</div>
+      <div class="input-desc">Managers and administrators can configure briefing statistics and shared briefing content from this section.</div>
+      <div class="button-row">
+        <button id="open_briefing_settings" class="btn-secondary" data-access-permission="settings.briefingStats" hidden>Configure Briefing Stats</button>
+        <button id="open_briefing_content_editor" class="btn-secondary" data-access-permission="settings.briefingContent" hidden>Edit Briefing Content</button>
+        <button id="open_selector_path_editor" class="btn-secondary" data-access-permission="settings.selectorPaths" hidden>Edit Selector Paths</button>
+      </div>
+    </div>
+
+    <div id="admin-access-section" class="section" data-access-permission="settings.adminAccess" hidden>
+      <div class="section-title">🔐 Admin Access Management</div>
+      <div class="input-desc">Search the access registry and update a user's name fields, role, approved platforms, and managed connectivity settings.</div>
+      <button id="open_access_manager" class="btn-secondary" type="button">Open User Access Manager</button>
+    </div>
+
+    <div id="community-lab-section" class="section" hidden>
+      <div class="section-title" style="color: var(--pioneer-gold);">🚀 The Lab (Community)</div>
+      <div class="lab-card">
+        <div id="lab-instructions" class="input-desc" style="color: #92400e;">Join the experimental squad to test new scrapers and earn the Pioneer Badge.</div>
+        
+        <div class="beta-row">
+            <input type="checkbox" id="beta_opt_in">
+            <label for="beta_opt_in" style="font-weight: normal;">
+                Enable Experimental Scrapers (Rumble, Discord, etc.)
+            </label>
+        </div>
+
+        <div style="margin-top: 15px; font-weight: bold; font-size: 12px; color: var(--pioneer-gold);">🏆 Intelligence Highlight:</div>
+        <div class="highlight-box">
+            <div id="highlight-user" style="font-weight: bold; color: var(--flo-red); font-size: 13px;">Syncing...</div>
+            <div id="highlight-desc" style="font-size: 11px; color: #4b5563; margin-top: 4px;">Connect your IDs to see team achievements.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="feedback-comms-section" class="section" data-access-permission="settings.feedbackComms" hidden>
+      <div class="section-title" style="color: #2563eb;">💬 Feedback Comms</div>
+      <textarea id="suggestion_text" maxlength="1000" rows="3" placeholder="Report a bug or suggest a feature..."></textarea>
+      <button id="send_suggestion" style="background-color: #2563eb; color: white; border: none; padding: 10px; border-radius: 8px; margin-top: 10px; width: 100%; font-weight: 600; cursor: pointer;">Send to Engineering</button>
+      <div id="suggestion_status" style="margin-top: 8px; text-align: center; font-size: 12px;"></div>
+    </div>
+
+    <div id="core-save-bar" class="save-bar" data-access-permission="settings.coreConnectivity" hidden>
+      <div id="status"></div>
+      <button id="save">Save Connectivity Settings</button>
+>>>>>>> Stashed changes
     </div>
   </div>
 
@@ -1275,6 +1621,7 @@
     <img src="images/Flopirate hunter.gif" alt="Pirate Hunter Fleet">
     <div class="easter-egg-close">Click anywhere to close</div>
   </div>
+<<<<<<< Updated upstream
 
   <div id="briefing-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="briefing-modal-title">
     <div class="briefing-dialog">
@@ -1282,10 +1629,125 @@
         <div>
           <h2 id="briefing-modal-title">Briefing Configuration</h2>
           <p class="input-desc">Select which modules to include in reports. Future stats can plug into these groups without changing the rest of the page.</p>
+=======
+  <div id="access-manager-modal" class="easter-egg-overlay" style="align-items: center;">
+    <div class="config-modal" style="width: min(760px, 94vw);">
+      <h2 style="margin-top: 0; color: var(--flo-red);">User Access Manager</h2>
+      <p class="input-desc">Email is the permanent identity key. Columns A-C store first, last, and middle names. Password hashes in column G are never displayed or edited here. Columns H-M can centrally assign the three Google resources and their user-facing names.</p>
+
+      <div class="form-group">
+        <label for="access_user_search">Search users</label>
+        <input type="text" id="access_user_search" placeholder="Search by name or email">
+      </div>
+      <div id="access_user_results" class="access-user-results">
+        <div class="editor-empty-state">Loading users…</div>
+      </div>
+
+      <div id="access_user_editor" class="config-editor-section" hidden>
+        <h3>Edit selected user</h3>
+        <div class="form-group">
+          <label for="access_user_first_name">First Name</label>
+          <input type="text" id="access_user_first_name" maxlength="60">
+        </div>
+        <div class="form-group">
+          <label for="access_user_last_name">Last Name</label>
+          <input type="text" id="access_user_last_name" maxlength="60">
+        </div>
+        <div class="form-group">
+          <label for="access_user_middle_name">Middle Name or Initial</label>
+          <input type="text" id="access_user_middle_name" maxlength="60">
+        </div>
+        <div class="form-group">
+          <label for="access_user_email">User Email</label>
+          <input type="text" id="access_user_email" readonly>
+        </div>
+        <div class="form-group">
+          <label for="access_user_role">Access Level</label>
+          <select id="access_user_role">
+            <option value="waiting_approval">Waiting_Approval</option>
+            <option value="employee">Employee</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Platforms</label>
+          <label style="display:flex; align-items:center; gap:7px; margin-bottom:10px;">
+            <input id="access_all_platforms" type="checkbox" style="width:auto;">
+            All platforms
+          </label>
+          <div id="access_platform_grid" class="platform-access-grid"></div>
+        </div>
+        <div class="config-editor-section">
+          <h3>Managed Connectivity (optional)</h3>
+          <p class="input-desc">When an ID is assigned, the extension uses it automatically and shows the paired display name to the user. Leave an ID blank to let that user enter their own value.</p>
+          <div class="form-group">
+            <label for="access_drive_root_id">Google Drive Root Folder ID (H)</label>
+            <input type="text" id="access_drive_root_id" maxlength="256" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="access_drive_root_label">Display Name (I)</label>
+            <input type="text" id="access_drive_root_label" maxlength="120" placeholder="e.g. FloSportsA1" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="access_report_sheet_id">Foundation Log Sheet ID (J)</label>
+            <input type="text" id="access_report_sheet_id" maxlength="256" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="access_report_sheet_label">Display Name (K)</label>
+            <input type="text" id="access_report_sheet_label" maxlength="120" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="access_event_sheet_id">Event Config Sheet ID (L)</label>
+            <input type="text" id="access_event_sheet_id" maxlength="256" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="access_event_sheet_label">Display Name (M)</label>
+            <input type="text" id="access_event_sheet_label" maxlength="120" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <div id="access_manager_status" class="modal-status"></div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button id="save_access_user" class="btn-secondary" style="flex:1; background:var(--flo-red); color:white;" type="button" disabled>Save User</button>
+        <button id="close_access_manager" class="btn-secondary" style="flex:1;" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+  <!-- Briefing Settings Modal -->
+  <div id="briefing-modal" class="easter-egg-overlay" style="align-items: center;">
+    <div class="config-modal" style="width: 450px;">
+      <h2 style="margin-top: 0; color: var(--flo-red);">Briefing Configuration</h2>
+      <p class="input-desc">Select which modules to include in your reports. Future stats will automatically appear here.</p>
+      
+      <div id="briefing-toggles" style="display: flex; flex-direction: column; gap: 10px; margin: 20px 0; max-height: 50vh; overflow-y: auto; padding-right: 10px;">
+        <strong style="color: var(--flo-red); margin-top: 5px;">Enforcement Overview (KPIs)</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label title="Total rows processed in the selected date range."><input type="checkbox" id="stat_kpi_total_takedowns"> Total Takedowns <span style="color: #6b7280; font-size: 10px;">(Count of all rows)</span></label>
+          <label><input type="checkbox" id="stat_kpi_takedowns_platform"> Takedowns by Platform</label>
+          <label><input type="checkbox" id="stat_kpi_total_urls"> Total URLs</label>
+          <label><input type="checkbox" id="stat_kpi_urls_platform"> Total URLs by Platform</label>
+          <label title="Counts resolved reports based solely on the 'Status' column being set to 'Resolved'."><input type="checkbox" id="stat_kpi_resolved_num_unweighted"> Resolved Rate (Number Unweighted) <span style="color: #6b7280; font-size: 10px;">(All marked Resolved)</span></label>
+          <label title="Counts resolved reports ONLY if they also have a valid timestamp in the 'Resolve Date' column (Col V)."><input type="checkbox" id="stat_kpi_resolved_num_weighted"> Resolved Rate (Number Weighted) <span style="color: #6b7280; font-size: 10px;">(Requires Date in Col V)</span></label>
+          <label title="Percentage of total reports marked as 'Resolved'."><input type="checkbox" id="stat_kpi_resolved_pct_unweighted"> Resolved Rate (% Unweighted)</label>
+          <label title="Percentage of total reports that have a valid 'Resolve Date' logged."><input type="checkbox" id="stat_kpi_resolved_pct_weighted"> Resolved Rate (% Weighted)</label>
+          <label title="Calculates average days to resolve ONLY for reports with an explicit Resolve Date (Col V)."><input type="checkbox" id="stat_kpi_burndown_weighted"> Avg Burndown (Weighted) <span style="color: #6b7280; font-size: 10px;">(Exact days from sheet)</span></label>
+          <label title="Calculates average across ALL reports. Unresolved items are heavily penalized, calculated as (Days Currently Open + 14 days)."><input type="checkbox" id="stat_kpi_burndown_unweighted"> Avg Burndown (Unweighted) <span style="color: #6b7280; font-size: 10px;">(Penalizes open reports)</span></label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Leaderboards &amp; MVP</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label title="User with the highest combined Scout &amp; Enforcer appearances."><input type="checkbox" id="stat_leaderboard_mvp"> MVP <span style="color: #6b7280; font-size: 10px;">(Highest combined appearances)</span></label>
+          <label title="Ranked by total appearances in Col G/M."><input type="checkbox" id="stat_leaderboard_top_3"> Top 3</label>
+          <label title="Ranked by total appearances in Col G/M."><input type="checkbox" id="stat_leaderboard_top_5"> Top 5</label>
+          <label title="Ranked by lowest total appearances in Col G/M."><input type="checkbox" id="stat_leaderboard_last_3"> Last 3</label>
+>>>>>>> Stashed changes
         </div>
         <button id="close_briefing_stats" class="modal-close" type="button" aria-label="Close briefing settings">&times;</button>
       </header>
 
+<<<<<<< Updated upstream
       <div class="briefing-toolbar" aria-label="Briefing quick actions">
         <button id="briefing_select_all" class="btn-secondary" type="button">Select All</button>
         <button id="briefing_reset_defaults" class="btn-secondary" type="button">Reset Defaults</button>
@@ -1306,6 +1768,101 @@
             <label title="Percentage of total reports that have a valid 'Resolve Date' logged."><input type="checkbox" id="stat_kpi_resolved_pct_weighted"> <span>Resolved Rate (% Weighted)</span></label>
             <label title="Calculates average days to resolve ONLY for reports with an explicit Resolve Date (Col V)."><input type="checkbox" id="stat_kpi_burndown_weighted"> <span>Avg Burndown (Weighted) <span class="help-text">(Exact days from sheet)</span></span></label>
             <label title="Calculates average across ALL reports. Unresolved items are heavily penalized, calculated as (Days Currently Open + 14 days)."><input type="checkbox" id="stat_kpi_burndown_unweighted"> <span>Avg Burndown (Unweighted) <span class="help-text">(Penalizes open reports)</span></span></label>
+=======
+        <strong style="color: var(--flo-red); margin-top: 10px;">Report Timeline &amp; Platforms</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label title="Daily volume of reports based on the date in Col A."><input type="checkbox" id="stat_timeline_report"> Report Timeline <span style="color: #6b7280; font-size: 10px;">(Daily volume)</span></label>
+          <label title="Reports and URLs grouped by platform (Col D)."><input type="checkbox" id="stat_platform_breakdown"> Platform Breakdown</label>
+        </div>
+
+       <strong style="color: var(--flo-red); margin-top: 10px;">High-Value Targets</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label title="Grouped by target Handle (Col K), ranked by total URLs."><input type="checkbox" id="stat_targets_top_1"> Top Pirate <span style="color: #6b7280; font-size: 10px;">(Ranked by URLs)</span></label>
+          <label title="Top 5 pirates grouped by target Handle (Col K), ranked by URLs."><input type="checkbox" id="stat_targets_top_5"> Top 5 Pirates</label>
+          <label title="Top pirate grouped by Handle, filtered per platform."><input type="checkbox" id="stat_targets_top_platform_1"> Top Pirate for Each Platform</label>
+          <label title="Top 3 pirates grouped by Handle, filtered per platform."><input type="checkbox" id="stat_targets_top_platform_3"> Top 3 Pirates Each Platform</label>
+        </div>
+
+       <strong style="color: var(--flo-red); margin-top: 10px;">Team Performance Rankings</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label title="Total URLs scouted by the user (Col G)."><input type="checkbox" id="stat_team_col_scout"> Scout <span style="color: #6b7280; font-size: 10px;">(Total URLs scouted)</span></label>
+          <label title="Total URLs enforced by the user (Col M)."><input type="checkbox" id="stat_team_col_enforced"> Enforced <span style="color: #6b7280; font-size: 10px;">(Total URLs enforced)</span></label>
+          <label title="Total number of the user's URLs marked 'Resolved'."><input type="checkbox" id="stat_team_col_urls_resolved_num"> URLs Resolved (Number)</label>
+          <label title="Percentage of the user's URLs marked 'Resolved'."><input type="checkbox" id="stat_team_col_urls_resolved_pct"> URLs Resolved (%)</label>
+          <label title="The user's average days to resolve an issue."><input type="checkbox" id="stat_team_col_burndown_rate"> Burndown Rate <span style="color: #6b7280; font-size: 10px;">(Avg days to resolve)</span></label>
+          <label title="Count of unique days the user filed a report."><input type="checkbox" id="stat_team_col_days_reported"> Number of Days Reported Piracy</label>
+        </div>
+
+       <strong style="color: var(--flo-red); margin-top: 10px;">Event View Analysis</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label title="Grouped by Event Name (Col C), ranked by total estimated views (Col F)."><input type="checkbox" id="stat_events_top_5"> Top 5 <span style="color: #6b7280; font-size: 10px;">(Ranked by Views)</span></label>
+          <label title="Grouped by Event Name (Col C), ranked by total estimated views (Col F)."><input type="checkbox" id="stat_events_top_10"> Top 10</label>
+          <label title="Top 5% of events based on total estimated views."><input type="checkbox" id="stat_events_top_5_pct"> Top 5%</label>
+          <label title="Top 10% of events based on total estimated views."><input type="checkbox" id="stat_events_top_10_pct"> Top 10%</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Appendix: Complete Team Performance</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_appx_team_all"> All</label>
+          <label><input type="checkbox" id="stat_appx_team_half"> Half</label>
+        </div>
+
+        <strong style="color: var(--flo-red); margin-top: 10px;">Appendix: Complete Event View Analysis</strong>
+        <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
+          <label><input type="checkbox" id="stat_appx_events_all"> All</label>
+          <label><input type="checkbox" id="stat_appx_events_half"> Half</label>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button id="save_briefing_stats" class="btn-secondary" style="flex: 1; background: var(--flo-red); color: white;">Save Settings</button>
+        <button id="cancel_briefing_stats" class="btn-secondary" style="flex: 1;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="briefing-content-modal" class="easter-egg-overlay" style="align-items: center;">
+    <div class="config-modal">
+      <h2 style="margin-top: 0; color: var(--flo-red);">Briefing Content Editor</h2>
+      <p class="input-desc">Manage the live community highlight, Lab copy, and Double XP event list stored in the shared <code>events_config.json</code> file.</p>
+
+      <div class="config-editor-section">
+        <h3>🏆 Community Highlight</h3>
+        <div class="form-group">
+          <label for="briefing_highlight_user">Featured Person</label>
+          <input type="text" id="briefing_highlight_user" placeholder="e.g. Bry Peters">
+        </div>
+        <div class="form-group">
+          <label for="briefing_highlight_desc">Highlight</label>
+          <textarea id="briefing_highlight_desc" rows="3" placeholder="Describe the achievement or spotlight."></textarea>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label for="briefing_highlight_bonus">Bonus / Badge</label>
+          <input type="text" id="briefing_highlight_bonus" placeholder="e.g. +50 XP">
+        </div>
+        <div class="config-editor-actions">
+          <button id="clear_highlight_content" class="btn-secondary" type="button">Remove Current Highlight</button>
+        </div>
+      </div>
+
+      <div class="config-editor-section">
+        <h3>🚀 Lab Instructions</h3>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label for="briefing_lab_instructions_input">Lab Instructions Copy</label>
+          <textarea id="briefing_lab_instructions_input" rows="4" placeholder="Add the community/lab instructions shown in options."></textarea>
+        </div>
+        <div class="config-editor-actions">
+          <button id="clear_lab_instructions" class="btn-secondary" type="button">Clear Lab Instructions</button>
+        </div>
+      </div>
+
+      <div class="config-editor-section">
+        <h3>⚡ Double XP Events</h3>
+        <div class="editor-inline-form">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="double_xp_vertical">Vertical</label>
+            <select id="double_xp_vertical"></select>
+>>>>>>> Stashed changes
           </div>
         </details>
 

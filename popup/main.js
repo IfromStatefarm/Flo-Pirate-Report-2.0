@@ -1,12 +1,18 @@
-import { requestVerifiedRuntimeIdentity } from '../utils/runtime_identity.js';
-import { ALLOWED_EMAIL_DOMAIN } from '../utils/extension_constants.js';
 import { populateEventSelect, populateVerticalSelect } from '../utils/select_options.js';
+import {
+  PERMISSIONS,
+  hasPermission,
+  hasPlatformAccess,
+  normalizeAccessPlatform
+} from '../utils/access_control.js';
+import { detectPlatformDetails } from '../utils/platforms.js';
 
 const state = {
   configData: null,
   lastVertical: '',
   lastEvent: '',
-  successAudio: null
+  successAudio: null,
+  accessProfile: null
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -23,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function initializePopup() {
   const dom = getPopupDom();
 
-  await enforceIdentity();
+  if (!(await enforceIdentity())) return;
   bindPopupEvents(dom);
   bindProgressListener(dom);
   await hydrateSavedState(dom);
@@ -65,18 +71,16 @@ function ensureIdentityOverlay() {
   overlay.innerHTML = `
     <div style="background:white; padding:20px; border-radius:8px; border:2px solid #ce0e2d; box-shadow:0 4px 15px rgba(0,0,0,0.2); width: 80%;">
       <h3 style="color: #ce0e2d; margin: 0 0 10px 0;">Restricted</h3>
-      <p style="margin: 0 0 10px 0; font-size:13px;">Please log into the <strong>Copyright Profile</strong>.</p>
-      <p style="font-size: 11px; color: #666; margin-bottom: 15px; font-family:monospace; background:#eee; padding:4px; border-radius:4px;">${ALLOWED_EMAIL_DOMAIN}</p>
-      <button id="flo-login-retry-pop" style="padding: 8px 15px; background: #ce0e2d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Check Account</button>
+      <p style="margin: 0 0 10px 0; font-size:13px;">Log in to the extension and obtain approved Report access.</p>
+      <button id="flo-login-retry-pop" style="padding: 8px 15px; background: #ce0e2d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Open Settings</button>
       <div id="flo-lock-status-pop" style="margin-top:10px; font-size:12px; min-height:15px; color:#666;"></div>
     </div>
   `;
   document.body.appendChild(overlay);
 
   document.getElementById('flo-login-retry-pop')?.addEventListener('click', () => {
-    const statusEl = document.getElementById('flo-lock-status-pop');
-    if (statusEl) statusEl.innerText = 'Checking...';
-    enforceIdentity();
+    chrome.runtime.openOptionsPage();
+    window.close();
   });
 
   return overlay;
@@ -86,21 +90,28 @@ async function enforceIdentity() {
   const overlay = ensureIdentityOverlay();
 
   try {
-    const identity = await requestVerifiedRuntimeIdentity();
+    const response = await chrome.runtime.sendMessage({ action: 'getAccessProfile', forceRefresh: true });
     const statusEl = document.getElementById('flo-lock-status-pop');
+    const profile = response?.profile;
 
-    if (identity.allowed) {
+    if (response?.success && hasPermission(profile, PERMISSIONS.SIDEPANEL_REPORT)) {
+      state.accessProfile = profile;
       overlay.style.display = 'none';
       return true;
     }
 
     overlay.style.display = 'flex';
     if (statusEl) {
-      if (identity.email) {
-        statusEl.innerText = `Logged in as: ${identity.email}`;
+      if (profile?.status === 'logged_out') {
+        statusEl.innerText = 'Open Settings to log in or create a user.';
+        statusEl.style.color = '#666';
+      } else if (profile?.email) {
+        statusEl.innerText = profile.status === 'waiting_approval'
+          ? `Waiting for approval: ${profile.name || profile.email}`
+          : `Access denied: ${profile.email}`;
         statusEl.style.color = 'red';
       } else {
-        statusEl.innerText = 'Not logged in.';
+        statusEl.innerText = response?.error || 'Google identity or access registry unavailable.';
       }
     }
 
@@ -113,8 +124,29 @@ async function enforceIdentity() {
 
 async function verifyAccessBeforeAction() {
   try {
-    const identity = await requestVerifiedRuntimeIdentity();
-    if (identity.allowed) return true;
+    const response = await chrome.runtime.sendMessage({ action: 'getAccessProfile' });
+    if (response?.success && hasPermission(response.profile, PERMISSIONS.SIDEPANEL_REPORT)) {
+      const storage = await chrome.storage.local.get('piracy_cart');
+      const cart = Array.isArray(storage.piracy_cart) ? storage.piracy_cart : [];
+      const allTargetsAllowed = cart.every((item) => {
+        const requestedPlatforms = new Set([
+          normalizeAccessPlatform(item?.platform),
+          detectPlatformDetails(item?.url || '').key
+        ].filter((platform) => platform && platform !== 'all'));
+        return [...requestedPlatforms].every((platform) => hasPlatformAccess(response.profile, platform));
+      });
+
+      if (allTargetsAllowed) return true;
+
+      const overlay = ensureIdentityOverlay();
+      overlay.style.display = 'flex';
+      const statusEl = document.getElementById('flo-lock-status-pop');
+      if (statusEl) {
+        statusEl.innerText = 'Access denied: the queue contains a platform that is not assigned to your account.';
+        statusEl.style.color = 'red';
+      }
+      return false;
+    }
   } catch (error) {
     console.error('Access verification failed:', error);
   }
@@ -224,8 +256,8 @@ async function hydrateSavedState(dom) {
     dom.reportBtn.disabled = true;
   }
 
-  if (storage.last_reporter && dom.reporterName) {
-    dom.reporterName.value = storage.last_reporter;
+  if (dom.reporterName) {
+    dom.reporterName.value = state.accessProfile?.name || storage.last_reporter || '';
   }
 
   state.lastVertical = storage.last_vertical || '';

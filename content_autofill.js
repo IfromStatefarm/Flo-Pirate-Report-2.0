@@ -22,6 +22,15 @@
     const INSTAGRAM_BATCH_LIMIT = 30;
     const RUMBLE_REPORT_SESSION_KEY = 'rumble_report_session';
     const TIKTOK_VERIFICATION_EMAIL = 'social@flosports.tv';
+<<<<<<< Updated upstream
+=======
+    const TWITCH_CONTACT_EMAIL = 'Social@flosports.tv';
+    const TWITCH_CONTACT_PHONE = '5122702356';
+    const TWITCH_STREET_ADDRESS = '301 Congress ave #1500';
+    const TWITCH_CITY = 'Austin';
+    const TWITCH_STATE = 'Texas';
+    const TWITCH_ZIP = '78745';
+>>>>>>> Stashed changes
     let configLoaded = false;
     let isAutofilling = false; 
     let lastReportData = null; // Cache data for SPA navigation
@@ -29,7 +38,46 @@
     let hasRunAutomatedFill = false; // Prevents Youtube/Twitter loops on SPA wake-up
     let hasRunRumbleAutomation = false;
     let isTransitioning = false; // Prevents SPA wake-up from firing while we wait for a page transition
+<<<<<<< Updated upstream
     
+=======
+
+    async function hasAutofillAccess(platform = '', url = window.location.href) {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          action: 'checkAccess',
+          permission: 'sidepanel.report',
+          platform,
+          url
+        });
+        return Boolean(response?.success && response.allowed);
+      } catch (error) {
+        return false;
+      }
+    }
+
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'showKickDmcaComposer') {
+            void (async () => {
+              const requestedUrls = Array.isArray(request.data?.urls) ? request.data.urls : [];
+              const pageAllowed = await hasAutofillAccess(request.data?.platform || 'kick');
+              const urlsAllowed = requestedUrls.length === 0 || (await Promise.all(
+                requestedUrls.map((url) => hasAutofillAccess(request.data?.platform || 'kick', url))
+              )).every(Boolean);
+              if (!pageAllowed || !urlsAllowed) {
+                sendResponse?.({ success: false, error: 'Access denied for this platform.' });
+                return;
+              }
+              lastReportData = request.data || lastReportData;
+              createKickOverlay(lastReportData || {});
+              sendResponse?.({ success: true });
+            })();
+            return true;
+        }
+        return false;
+    });
+
+>>>>>>> Stashed changes
     async function loadConfig() {
       try {
         if (!chrome.runtime?.id) return;
@@ -46,18 +94,34 @@
         if (document.readyState === 'loading') {
             await new Promise(r => document.addEventListener('DOMContentLoaded', r));
         }
+
+        if (!(await hasAutofillAccess())) return;
     
         try {
             const host = window.location.hostname;
             const isTikTok = host.includes('tiktok.com') || host.includes('tiktokforbusiness.com');
             const isRumble = host.includes('rumble.com');
+<<<<<<< Updated upstream
+=======
+            const isTwitch = host.includes('twitch.tv');
+>>>>>>> Stashed changes
 
             const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo', RUMBLE_REPORT_SESSION_KEY]);
             const cart = res.piracy_cart || [];
             const info = res.reporterInfo || {};
             const rumbleSession = res[RUMBLE_REPORT_SESSION_KEY] || null;
+<<<<<<< Updated upstream
         
             const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : (isRumble ? "Rumble" : "Unknown"));
+=======
+
+            const cartAccessChecks = await Promise.all(cart.map((item) => (
+                hasAutofillAccess(item?.platform || '', item?.url || window.location.href)
+            )));
+            if (cartAccessChecks.some((allowed) => !allowed)) return;
+
+            const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : (isRumble ? "Rumble" : (isTwitch ? "Twitch" : "Unknown")));
+>>>>>>> Stashed changes
         
             const data = {
                 fullName: info.name || "",
@@ -96,6 +160,7 @@
         if (isAutofilling || !data) return;
         isAutofilling = true;
 
+<<<<<<< Updated upstream
     try {
         const host = window.location.hostname;
         const currentUrl = window.location.href.toLowerCase();
@@ -116,6 +181,13 @@
                 if (host.includes('youtube')) await fillYouTube(data);
                 else if (host.includes('instagram')) await fillInstagram(data);
                 else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
+=======
+        try {
+            const autofillModule = globalThis.__floPlatformRegistry?.findAutofillByContext?.(window.location.href, data);
+            if (autofillModule?.run) {
+                await autofillModule.run(data);
+                return;
+>>>>>>> Stashed changes
             }
             
             if (data.eventName) createStandardOverlay(data);
@@ -470,6 +542,106 @@
             .replace(/\[Vertical Name\]/g, vertical);
     }
 
+<<<<<<< Updated upstream
+=======
+    function buildFacebookExplanation(data) {
+        const template = AUTOFILL_CONFIG.facebook?.autofill?.templates?.infringement_explanation ||
+            AUTOFILL_CONFIG.instagram?.autofill?.templates?.infringement_explanation ||
+            'Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]). FloSports owns the exclusive copyright. Infringement is visually verifiable via our proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account.';
+        const vertical = data?.vertical || 'FloSports';
+        const eventName = data?.eventName || 'the event';
+        return template
+            .replace(/\[Event Name\]/g, eventName)
+            .replace(/\[Vertical Name\]/g, vertical);
+    }
+
+    function buildKickDmcaEmail(data, reporterFullName) {
+        const conf = AUTOFILL_CONFIG.kick?.autofill || {};
+        const defaults = conf.defaults || {};
+        const templates = conf.templates || {};
+        const recipient = defaults.recipient_email || KICK_DMCA_EMAIL;
+        const contactEmail = defaults.contact_email || KICK_CONTACT_EMAIL;
+        const contactPhone = defaults.phone || KICK_CONTACT_PHONE;
+        const contactAddress = defaults.address || KICK_CONTACT_ADDRESS;
+        const contactTitle = defaults.title || 'Authorized user';
+        const eventName = data?.eventName || 'FloSports event';
+        const vertical = data?.vertical || 'FloSports';
+        const sourceUrl = data?.sourceUrl || 'Original FloSports URL not provided';
+        const urls = Array.isArray(data?.urls) ? data.urls.filter(Boolean) : [];
+        const urlsList = urls.length > 0 ? urls.map((url) => `- ${url}`) : ['- URL not provided'];
+        const subjectTemplate = templates.subject || 'DMCA Takedown Notice - FloSports - [Event Name]';
+        const subject = subjectTemplate
+            .replace(/\[Event Name\]/g, eventName)
+            .replace(/\[Vertical Name\]/g, vertical);
+        const greeting = templates.greeting || 'To Whom It May Concern at Kick,';
+        const submissionIntro = templates.submission_intro || 'I am submitting this DMCA takedown notice on behalf of FloSports.';
+        const genericDescription = templates.infringing_material_description ||
+            'Unauthorized Kick-hosted or Kick-linked distribution of FloSports material appearing at the URLs listed below.';
+        const ownershipEvidence = templates.ownership_evidence ||
+            'The infringing material often includes FloSports, MileSplit, or Varsity TV watermarks and proprietary broadcast graphics, all of which evidence FloSports ownership.';
+        const sourceUrlLabel = templates.source_url_label || 'Original FloSports URL being pirated:';
+        const reportedUrlsLabel = templates.reported_urls_label || 'Reported Kick URLs:';
+        const sourceLine = `${sourceUrlLabel} ${sourceUrl}`;
+
+        const sections = [
+            {
+                number: 1,
+                title: 'A description of the copyrighted work that I claim is being infringed:',
+                lines: [eventName]
+            },
+            {
+                number: 2,
+                title: 'A description of the material I claim is infringing and that I want removed or access to which I want disabled, and the location of that material:',
+                lines: [genericDescription, ownershipEvidence, sourceLine, reportedUrlsLabel, ...urlsList]
+            },
+            {
+                number: 3,
+                title: 'My contact information:',
+                lines: [
+                    `Name: ${reporterFullName}`,
+                    `Title: ${contactTitle}`,
+                    `Address: ${contactAddress}`,
+                    `Telephone: ${contactPhone}`,
+                    `Email: ${contactEmail}`
+                ]
+            },
+            {
+                number: 4,
+                title: 'Good faith statement:',
+                lines: [
+                    `I, ${reporterFullName}, have a good faith belief that the use of the copyrighted material I am complaining of is not authorized by the copyright owner, its agent, or the law (e.g., as a fair use).`
+                ]
+            },
+            {
+                number: 5,
+                title: 'Accuracy and authority statement:',
+                lines: [
+                    `The information in this notice is accurate and, under penalty of perjury, I, ${reporterFullName}, am the owner, or authorized to act on behalf of the owner, of the copyright or of an exclusive right that is allegedly infringed.`
+                ]
+            },
+            {
+                number: 6,
+                title: 'Electronic signature:',
+                lines: [reporterFullName]
+            }
+        ];
+
+        const body = [
+            greeting,
+            '',
+            submissionIntro,
+            '',
+            ...sections.flatMap((section) => [
+                `${section.number}. ${section.title}`,
+                ...section.lines,
+                ''
+            ])
+        ].join('\n');
+
+        return { recipient, subject, body, sections };
+    }
+
+>>>>>>> Stashed changes
     const setNativeValue = (element, value) => {
         const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
         const prototype = Object.getPrototypeOf(element);
@@ -1001,6 +1173,160 @@
         document.body.appendChild(launcher);
     }
 
+<<<<<<< Updated upstream
+=======
+    function createTwitterOverlay(data) {
+        if (cachedOverlay && cachedOverlay.id === "flo-twitter-overlay") {
+            if (!document.getElementById("flo-twitter-overlay")) {
+                document.body.appendChild(cachedOverlay);
+            }
+            return;
+        }
+
+        const existing = document.getElementById("flo-twitter-overlay");
+        if (existing) existing.remove();
+
+        const overlay = document.createElement("div");
+        overlay.id = "flo-twitter-overlay";
+        overlay.style.cssText = `
+          position: fixed; top: 80px; right: 20px; width: 320px;
+          background: white; border: 3px solid #1d9bf0; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
+        `;
+
+        overlay.innerHTML = `
+          <div id="flo-x-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+            <h3 id="flo-x-title" style="margin:0; color:#1d9bf0; font-size:16px; pointer-events:none;">X DMCA Wizard ✥</h3>
+            <div>
+                <button id="flo-x-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
+                <button id="flo-x-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">×</button>
+            </div>
+          </div>
+
+          <div id="flo-x-main-content">
+              <div style="margin-bottom: 12px; font-size: 13px;">
+                <small>Use these in order on the X authorized-rep DMCA form. Review the page before submitting.</small>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <button id="flo-x-btn-step1" style="background: #1d9bf0; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Contact Info</button>
+                  <button id="flo-x-btn-step2" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 2: Work & Links</button>
+                  <button id="flo-x-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Acknowledgments</button>
+              </div>
+
+              <div id="flo-x-log-container" style="display:none; margin-top: 15px;">
+                  <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                      Click Submit on the X page first, then log below.
+                  </div>
+                  <button id="flo-x-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+                  <div id="flo-x-log-status" style="margin-top:8px; font-size:12px; text-align:center;"></div>
+              </div>
+          </div>
+        `;
+
+        cachedOverlay = overlay;
+        document.body.appendChild(overlay);
+        setupDrag(overlay);
+
+        let isMinimized = false;
+        const minBtn = document.getElementById('flo-x-min-btn');
+        const closeBtn = document.getElementById('flo-x-close-btn');
+        const mainContent = document.getElementById('flo-x-main-content');
+        const title = document.getElementById('flo-x-title');
+        const topBar = document.getElementById('flo-x-top-bar');
+
+        minBtn.addEventListener('click', () => {
+            isMinimized = !isMinimized;
+            if (isMinimized) {
+                mainContent.style.display = 'none';
+                minBtn.innerHTML = '+';
+                title.innerText = 'X ✥';
+                overlay.style.width = 'auto';
+                topBar.style.borderBottom = 'none';
+                topBar.style.marginBottom = '0';
+                topBar.style.paddingBottom = '0';
+                overlay.style.right = '0px';
+                overlay.style.left = 'auto';
+                overlay.style.borderTopRightRadius = '0';
+                overlay.style.borderBottomRightRadius = '0';
+            } else {
+                mainContent.style.display = 'block';
+                minBtn.innerHTML = '−';
+                title.innerText = 'X DMCA Wizard ✥';
+                overlay.style.width = '320px';
+                topBar.style.borderBottom = '1px solid #eee';
+                topBar.style.marginBottom = '10px';
+                topBar.style.paddingBottom = '8px';
+                overlay.style.borderRadius = '8px';
+                const rect = overlay.getBoundingClientRect();
+                if (window.innerWidth - rect.right < 10) {
+                    overlay.style.right = '20px';
+                    overlay.style.left = 'auto';
+                }
+            }
+        });
+
+        closeBtn.addEventListener('click', () => overlay.remove());
+
+        const btn1 = document.getElementById('flo-x-btn-step1');
+        const btn2 = document.getElementById('flo-x-btn-step2');
+        const btn3 = document.getElementById('flo-x-btn-step3');
+        const logContainer = document.getElementById('flo-x-log-container');
+
+        btn1.addEventListener('click', async () => {
+            btn1.innerText = 'Running...';
+            await runTwitterStep1(data);
+            btn1.innerText = 'Step 1: Done';
+            btn1.style.background = '#ccc';
+            btn1.style.color = '#333';
+            btn2.style.background = '#1d9bf0';
+            btn2.style.color = 'white';
+        });
+
+        btn2.addEventListener('click', async () => {
+            btn2.innerText = 'Running...';
+            await runTwitterStep2(data);
+            btn2.innerText = 'Step 2: Done';
+            btn2.style.background = '#ccc';
+            btn2.style.color = '#333';
+            btn3.style.background = '#1d9bf0';
+            btn3.style.color = 'white';
+        });
+
+        btn3.addEventListener('click', async () => {
+            btn3.innerText = 'Running...';
+            await runTwitterStep3(data);
+            btn3.innerText = 'Step 3: Done';
+            btn3.style.background = '#ccc';
+            btn3.style.color = '#333';
+            logContainer.style.display = 'block';
+            overlay.style.borderColor = '#ce0e2d';
+        });
+
+        document.getElementById('flo-x-log-btn').addEventListener('click', async () => {
+            const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
+            const status = document.getElementById('flo-x-log-status');
+            status.innerText = 'Logging...';
+            const freshData = await getFreshTwitterReportData(data);
+            chrome.runtime.sendMessage({ action: 'logToSheet', data: freshData }, (response) => {
+                if (response && response.success) {
+                    successAudio.play().catch(() => {});
+                    status.innerText = 'Logged. Closing...';
+                    status.style.color = 'green';
+                    setTimeout(() => {
+                        lastReportData = null;
+                        cachedOverlay = null;
+                        overlay.remove();
+                    }, 2000);
+                } else {
+                    status.innerText = 'Failed.';
+                    status.style.color = 'red';
+                }
+            });
+        });
+    }
+
+>>>>>>> Stashed changes
     function createInstagramOverlay(data) {
         if (cachedOverlay && cachedOverlay.id === "flo-instagram-overlay") {
             if (!document.getElementById("flo-instagram-overlay")) {

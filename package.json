@@ -1,0 +1,9 @@
+{
+  "name": "rights-reporter-extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:customer-config": "node --test tests/customer_config.test.mjs"
+  }
+}

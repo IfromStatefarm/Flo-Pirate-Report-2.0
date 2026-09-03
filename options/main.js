@@ -1,6 +1,13 @@
-import { fetchConfig, updateConfigSections } from '../utils/google_api.js';
 import { getClippyAssetForState } from '../utils/clippy_assets.js';
+import {
+  PERMISSIONS,
+  hasPermission,
+  hasPlatformAccess,
+  roleLabel
+} from '../utils/access_control.js';
+import { PLATFORM_CATALOG } from '../utils/platform_catalog.js';
 
+<<<<<<< Updated upstream
 const DEFAULT_BRIEFING_STATS = {
     kpi_total_takedowns: true,
     kpi_takedowns_platform: true,
@@ -37,6 +44,70 @@ const DEFAULT_BRIEFING_STATS = {
     appx_events_all: true,
     appx_events_half: false
 };
+=======
+const clippy = document.getElementById('clippy-img');
+const status = document.getElementById('status');
+let currentAccessProfile = null;
+let selectedAccessUser = null;
+let accessSearchTimer = null;
+
+const CONNECTIVITY_FIELDS = Object.freeze([
+  { inputId: 'piracy_folder_id', storageKey: 'piracy_folder_id', profileId: 'driveRootId', profileLabel: 'driveRootLabel' },
+  { inputId: 'piracy_sheet_id', storageKey: 'piracy_sheet_id', profileId: 'reportSheetId', profileLabel: 'reportSheetLabel' },
+  { inputId: 'event_sheet_id', storageKey: 'event_sheet_id', profileId: 'eventSheetId', profileLabel: 'eventSheetLabel' }
+]);
+
+function getConnectivityValue(inputId) {
+  const input = document.getElementById(inputId);
+  return String(input?.dataset.endpoint || input?.value || '').trim();
+}
+
+function renderConnectivityFields(profile, storedValues) {
+  const managedConfig = profile?.managedConfig || {};
+  CONNECTIVITY_FIELDS.forEach(({ inputId, storageKey, profileId, profileLabel }) => {
+    const input = document.getElementById(inputId);
+    const endpoint = String(managedConfig[profileId] || '').trim();
+    const displayName = String(managedConfig[profileLabel] || '').trim();
+
+    if (endpoint) {
+      input.value = displayName || 'Managed by administrator';
+      input.dataset.endpoint = endpoint;
+      input.dataset.managed = 'true';
+      input.readOnly = true;
+      input.title = 'This value is managed by an administrator.';
+      return;
+    }
+
+    input.value = String(storedValues[storageKey] || '').trim();
+    delete input.dataset.endpoint;
+    delete input.dataset.managed;
+    input.readOnly = false;
+    input.removeAttribute('title');
+  });
+}
+
+function refreshSidepanelAccessView() {
+  return chrome.runtime.sendMessage({ action: 'refreshSidepanelAccessView' }).catch(() => null);
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.action !== 'refreshSettingsAccessView') return false;
+  window.location.reload();
+  return false;
+});
+
+async function fetchConfig() {
+  const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
+  if (!response?.success) throw new Error(response?.error || 'Unable to load shared configuration.');
+  return response.config;
+}
+
+async function updateConfigSections(sections, platform = '') {
+  const response = await chrome.runtime.sendMessage({ action: 'updateSharedConfig', sections, platform });
+  if (!response?.success) throw new Error(response?.error || 'Unable to update shared configuration.');
+  return response.config;
+}
+>>>>>>> Stashed changes
 
 const DEFAULT_LAB_INSTRUCTIONS = 'Test new features and earn badges!';
 const DEFAULT_HIGHLIGHT = Object.freeze({
@@ -224,12 +295,1123 @@ function readNestedValue(target, pathSegments) {
 }
 
 function setNestedValue(target, pathSegments, nextValue) {
+<<<<<<< Updated upstream
     if (!pathSegments.length) return;
     let cursor = target;
     for (let index = 0; index < pathSegments.length - 1; index += 1) {
         const segment = pathSegments[index];
         if (!isPlainObject(cursor[segment])) {
             cursor[segment] = {};
+=======
+  if (!pathSegments.length) return;
+  let cursor = target;
+  for (let index = 0; index < pathSegments.length - 1; index += 1) {
+    const segment = pathSegments[index];
+    if (!isPlainObject(cursor[segment])) {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment];
+  }
+  cursor[pathSegments[pathSegments.length - 1]] = nextValue;
+}
+
+function normalizeSelectorPaths(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || '')).filter(Boolean);
+  if (typeof value === 'string') return value ? [value] : [];
+  return [];
+}
+
+function isEditableSelectorLeaf(pathSegments, value) {
+  if (pathSegments.some((segment) => segment.startsWith('_COMMENT'))) return false;
+  if (pathSegments.length === 0) return false;
+
+  const topLevelGroup = pathSegments[0];
+  const leafKey = pathSegments[pathSegments.length - 1];
+  if (NON_EDITABLE_SELECTOR_GROUPS.has(topLevelGroup)) return false;
+  if (NON_EDITABLE_SELECTOR_LEAFS.has(leafKey)) return false;
+
+  return Array.isArray(value) || typeof value === 'string';
+}
+
+function flattenEditableSelectorCategories(node, pathSegments = [], results = []) {
+  if (!isPlainObject(node)) return results;
+
+  Object.entries(node).forEach(([key, value]) => {
+    if (key.startsWith('_COMMENT')) return;
+    const nextPath = [...pathSegments, key];
+
+    if (isPlainObject(value)) {
+      flattenEditableSelectorCategories(value, nextPath, results);
+      return;
+    }
+
+    if (!isEditableSelectorLeaf(nextPath, value)) return;
+
+    const group = nextPath.length > 1 ? nextPath[0] : 'root';
+    const title = nextPath.length > 1
+      ? `${prettyLabel(nextPath[0])} / ${prettyLabel(nextPath[nextPath.length - 1])}`
+      : prettyLabel(nextPath[0]);
+
+    results.push({
+      pathSegments: nextPath,
+      pathString: nextPath.join('.'),
+      group,
+      title,
+      valueType: Array.isArray(value) ? 'array' : 'string',
+      paths: normalizeSelectorPaths(value)
+    });
+  });
+
+  return results;
+}
+
+function collectDoubleXpEvents(verticals) {
+  return normalizeVerticals(verticals)
+    .flatMap((vertical) =>
+      (vertical.events || [])
+        .filter((event) => event?.double_xp)
+        .map((event) => ({
+          verticalName: vertical.name,
+          eventName: String(event.eventName || '').trim()
+        }))
+    )
+    .filter((event) => event.verticalName && event.eventName)
+    .sort((a, b) => {
+      const verticalCompare = a.verticalName.localeCompare(b.verticalName);
+      return verticalCompare !== 0 ? verticalCompare : a.eventName.localeCompare(b.eventName);
+    });
+}
+
+function populateDoubleXpVerticalOptions() {
+  const { verticalSelect } = getBriefingContentModalElements();
+  const selected = verticalSelect.value;
+  const verticalNames = normalizeVerticals(editorVerticals)
+    .map((vertical) => vertical.name)
+    .filter(Boolean);
+
+  verticalSelect.innerHTML = verticalNames.length > 0
+    ? verticalNames.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')
+    : '<option value="">No verticals found</option>';
+
+  if (selected && verticalNames.includes(selected)) {
+    verticalSelect.value = selected;
+  }
+}
+
+function renderDoubleXpEventList() {
+  const { listContainer } = getBriefingContentModalElements();
+  const events = collectDoubleXpEvents(editorVerticals);
+
+  if (events.length === 0) {
+    listContainer.innerHTML = '<div class="editor-empty-state">No Double XP events are live right now.</div>';
+    return;
+  }
+
+  listContainer.innerHTML = events
+    .map((event, index) => `
+      <div class="double-xp-item">
+        <div>
+          <div class="double-xp-item-title">${escapeHtml(event.eventName)}</div>
+          <div class="double-xp-item-subtitle">${escapeHtml(event.verticalName)}</div>
+        </div>
+        <button class="btn-secondary remove-double-xp-event" data-index="${index}" type="button">Remove</button>
+      </div>
+    `)
+    .join('');
+
+  listContainer.querySelectorAll('.remove-double-xp-event').forEach((button) => {
+    button.addEventListener('click', () => {
+      const index = Number(button.dataset.index);
+      const target = events[index];
+      if (!target) return;
+
+      editorVerticals = editorVerticals.map((vertical) => {
+        if (vertical.name !== target.verticalName) return vertical;
+        return {
+          ...vertical,
+          events: (vertical.events || []).filter((event) => {
+            const matchesName = String(event?.eventName || '').trim().toLowerCase() === target.eventName.toLowerCase();
+            return !(matchesName && event?.double_xp);
+          })
+        };
+      });
+
+      renderDoubleXpEventList();
+      setBriefingContentStatus(`Removed "${target.eventName}" from Double XP.`, '#b45309');
+    });
+  });
+}
+
+function syncBriefingContentEditorInputs() {
+  const { userInput, descInput, bonusInput, labInput } = getBriefingContentModalElements();
+  const highlight = editorCommunityHighlights.highlight_of_the_week || DEFAULT_HIGHLIGHT;
+
+  userInput.value = highlight.user || '';
+  descInput.value = highlight.achievement || '';
+  bonusInput.value = highlight.bonus_awarded || '';
+  labInput.value = editorCommunityHighlights.lab_instructions || '';
+
+  populateDoubleXpVerticalOptions();
+  renderDoubleXpEventList();
+}
+
+async function loadBriefingContentEditor() {
+  const { modal, saveBtn } = getBriefingContentModalElements();
+  try {
+    setBriefingContentStatus('Loading shared briefing content...', '#2563eb');
+    saveBtn.disabled = true;
+    const config = await fetchConfig();
+    editorCommunityHighlights = normalizeCommunityHighlights(config.community_highlights);
+    editorVerticals = normalizeVerticals(config.verticals);
+    syncBriefingContentEditorInputs();
+    modal.style.display = 'flex';
+    setBriefingContentStatus('');
+  } catch (error) {
+    console.error('Failed to load briefing content editor:', error);
+    setStatusMessage('Unable to load shared briefing content.', '#ce0e2d', 'looking');
+    clearStatusMessage();
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+function addDoubleXpEventFromInputs() {
+  const { verticalSelect, eventNameInput } = getBriefingContentModalElements();
+  const verticalName = verticalSelect.value.trim();
+  const eventName = eventNameInput.value.trim();
+
+  if (!verticalName || !eventName) {
+    setBriefingContentStatus('Choose a vertical and enter an event name first.', '#ce0e2d');
+    return;
+  }
+
+  const matchingVertical = editorVerticals.find((vertical) => vertical.name === verticalName);
+  if (!matchingVertical) {
+    setBriefingContentStatus('That vertical is missing from config.', '#ce0e2d');
+    return;
+  }
+
+  const existingEvent = (matchingVertical.events || []).find(
+    (event) => String(event?.eventName || '').trim().toLowerCase() === eventName.toLowerCase()
+  );
+
+  if (existingEvent?.double_xp) {
+    setBriefingContentStatus('That Double XP event is already live.', '#b45309');
+    return;
+  }
+
+  if (existingEvent) {
+    existingEvent.double_xp = true;
+  } else {
+    matchingVertical.events = [...(matchingVertical.events || []), { eventName, double_xp: true }];
+  }
+
+  eventNameInput.value = '';
+  renderDoubleXpEventList();
+  setBriefingContentStatus(`Added "${eventName}" to Double XP.`, 'green');
+}
+
+async function saveBriefingContentEdits() {
+  const { modal, saveBtn, userInput, descInput, bonusInput, labInput } = getBriefingContentModalElements();
+
+  const communityHighlights = {
+    highlight_of_the_week: {
+      user: userInput.value.trim(),
+      achievement: descInput.value.trim(),
+      bonus_awarded: bonusInput.value.trim()
+    },
+    lab_instructions: labInput.value.trim()
+  };
+
+  try {
+    saveBtn.disabled = true;
+    setBriefingContentStatus('Saving shared events_config.json...', '#2563eb');
+    await updateConfigSections({
+      community_highlights: communityHighlights,
+      verticals: editorVerticals
+    });
+
+    renderCommunityPreview(communityHighlights);
+    modal.style.display = 'none';
+    setStatusMessage('Briefing content saved to shared events_config.json.', 'green', 'smirk');
+    clearStatusMessage();
+  } catch (error) {
+    console.error('Failed to save briefing content:', error);
+    setBriefingContentStatus(error.message || 'Failed to save briefing content.', '#ce0e2d');
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+function getSelectorEditorPlatforms() {
+  return Object.entries(selectorEditorPlatformSelectors)
+    .filter(([, value]) => isPlainObject(value))
+    .map(([platformKey, value]) => ({
+      key: platformKey,
+      label: prettyLabel(platformKey),
+      hasAutofill: isPlainObject(value.autofill),
+      hasScraper: isPlainObject(value.scraper)
+    }))
+    .filter((platform) => (platform.hasAutofill || platform.hasScraper) && hasPlatformAccess(currentAccessProfile, platform.key))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function getSelectorEditorSectionsForPlatform(platformKey) {
+  const platformConfig = selectorEditorPlatformSelectors[platformKey];
+  if (!isPlainObject(platformConfig)) return [];
+  return ['autofill', 'scraper'].filter((section) => isPlainObject(platformConfig[section]));
+}
+
+function getSelectedSelectorSectionNode() {
+  const platformConfig = selectorEditorPlatformSelectors[selectorEditorSelectedPlatform];
+  if (!isPlainObject(platformConfig)) return null;
+  return platformConfig[selectorEditorSelectedSection] || null;
+}
+
+function populateSelectorEditorPlatformOptions() {
+  const { platformSelect } = getSelectorEditorElements();
+  const platforms = getSelectorEditorPlatforms();
+
+  platformSelect.innerHTML = platforms.length > 0
+    ? platforms.map((platform) => `<option value="${escapeHtml(platform.key)}">${escapeHtml(platform.label)}</option>`).join('')
+    : '<option value="">No editable platforms</option>';
+
+  if (!platforms.some((platform) => platform.key === selectorEditorSelectedPlatform)) {
+    selectorEditorSelectedPlatform = platforms[0]?.key || '';
+  }
+  platformSelect.value = selectorEditorSelectedPlatform;
+}
+
+function populateSelectorEditorSectionOptions() {
+  const { sectionSelect } = getSelectorEditorElements();
+  const sections = getSelectorEditorSectionsForPlatform(selectorEditorSelectedPlatform);
+
+  sectionSelect.innerHTML = sections.length > 0
+    ? sections.map((section) => `<option value="${escapeHtml(section)}">${escapeHtml(prettyLabel(section))}</option>`).join('')
+    : '<option value="">No editable sections</option>';
+
+  if (!sections.includes(selectorEditorSelectedSection)) {
+    selectorEditorSelectedSection = sections[0] || '';
+  }
+  sectionSelect.value = selectorEditorSelectedSection;
+}
+
+function buildSelectorHelpText(platformKey, sectionKey, pathSegments) {
+  const pathString = pathSegments.join('.');
+  const explicitHelp = SELECTOR_HELP_TEXT?.[platformKey]?.[sectionKey]?.[pathString];
+  if (explicitHelp) return explicitHelp;
+
+  const leafLabel = prettyLabel(pathSegments[pathSegments.length - 1] || pathString);
+  const groupLabel = prettyLabel(pathSegments[0] || sectionKey);
+  if (sectionKey === 'autofill') {
+    return `${prettyLabel(platformKey)} autofill: update the paths used to locate "${leafLabel}" inside the ${groupLabel} area of the reporting workflow.`;
+  }
+  return `${prettyLabel(platformKey)} scraper: update the paths used to capture "${leafLabel}" from the page during evidence gathering.`;
+}
+
+function applySelectorCategoryPaths(pathSegments, nextPaths, valueType) {
+  const sectionNode = getSelectedSelectorSectionNode();
+  if (!isPlainObject(sectionNode)) return;
+
+  let nextValue;
+  if (nextPaths.length === 0) {
+    nextValue = valueType === 'string' ? '' : [];
+  } else if (valueType === 'string' && nextPaths.length === 1) {
+    nextValue = nextPaths[0];
+  } else {
+    nextValue = nextPaths;
+  }
+
+  setNestedValue(sectionNode, pathSegments, nextValue);
+}
+
+function renderSelectorEditorCategories() {
+  const { categoriesContainer } = getSelectorEditorElements();
+  const sectionNode = getSelectedSelectorSectionNode();
+
+  if (!isPlainObject(sectionNode)) {
+    categoriesContainer.innerHTML = '<div class="editor-empty-state">No editable categories are available for this platform section.</div>';
+    currentSelectorCategoryMap = new Map();
+    return;
+  }
+
+  const categories = flattenEditableSelectorCategories(sectionNode);
+  currentSelectorCategoryMap = new Map(categories.map((category) => [category.pathString, category]));
+
+  if (categories.length === 0) {
+    categoriesContainer.innerHTML = '<div class="editor-empty-state">No editable categories are available for this platform section.</div>';
+    return;
+  }
+
+  const groupedCategories = categories.reduce((accumulator, category) => {
+    const groupKey = category.group || 'root';
+    if (!accumulator[groupKey]) accumulator[groupKey] = [];
+    accumulator[groupKey].push(category);
+    return accumulator;
+  }, {});
+
+  categoriesContainer.innerHTML = Object.entries(groupedCategories)
+    .sort(([groupA], [groupB]) => groupA.localeCompare(groupB))
+    .map(([groupKey, groupCategories]) => `
+      <div class="selector-category-group">
+        <div class="selector-group-title">${escapeHtml(groupKey === 'root' ? 'General' : prettyLabel(groupKey))}</div>
+        ${groupCategories.map((category) => {
+          const helpText = buildSelectorHelpText(selectorEditorSelectedPlatform, selectorEditorSelectedSection, category.pathSegments);
+          const pathsMarkup = category.paths.length > 0
+            ? category.paths.map((pathValue, index) => `
+                <div class="selector-path-row">
+                  <div class="selector-path-text">${escapeHtml(pathValue)}</div>
+                  <button
+                    class="icon-button selector-path-delete"
+                    type="button"
+                    title="Delete this saved path"
+                    data-category="${escapeHtml(category.pathString)}"
+                    data-index="${index}"
+                  >✕</button>
+                </div>
+              `).join('')
+            : '<div class="editor-empty-state">No saved paths for this category yet.</div>';
+
+          return `
+            <details class="selector-category">
+              <summary>
+                <div class="selector-category-label">
+                  <span class="selector-category-title">${escapeHtml(category.title)}</span>
+                  <span class="selector-category-count">${category.paths.length} saved</span>
+                </div>
+                <button
+                  class="help-pill selector-help-trigger"
+                  type="button"
+                  data-help="${escapeHtml(helpText)}"
+                  title="What this category controls"
+                >?</button>
+              </summary>
+              <div class="selector-category-body">
+                <div class="selector-help-text">${escapeHtml(helpText)}</div>
+                <div class="selector-path-list">${pathsMarkup}</div>
+                <div class="selector-add-row">
+                  <input
+                    type="text"
+                    placeholder="Add a new selector / XPath / regex path"
+                    data-add-input="${escapeHtml(category.pathString)}"
+                  >
+                  <button
+                    class="btn-secondary selector-add-path"
+                    type="button"
+                    data-category="${escapeHtml(category.pathString)}"
+                  >Add New Value Path</button>
+                </div>
+              </div>
+            </details>
+          `;
+        }).join('')}
+      </div>
+    `)
+    .join('');
+
+  categoriesContainer.querySelectorAll('.selector-help-trigger').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      alert(button.dataset.help || 'No help text available.');
+    });
+  });
+
+  categoriesContainer.querySelectorAll('.selector-add-path').forEach((button) => {
+    button.addEventListener('click', () => {
+      const categoryKey = button.dataset.category || '';
+      const input = categoriesContainer.querySelector(`[data-add-input="${CSS.escape(categoryKey)}"]`);
+      const category = currentSelectorCategoryMap.get(categoryKey);
+      if (!input || !category) return;
+
+      const newPath = input.value.trim();
+      if (!newPath) {
+        setSelectorEditorStatus('Enter a value path before adding it.', '#ce0e2d');
+        return;
+      }
+
+      const currentPaths = normalizeSelectorPaths(readNestedValue(getSelectedSelectorSectionNode(), category.pathSegments));
+      const nextPaths = [newPath, ...currentPaths.filter((pathValue) => pathValue !== newPath)];
+      let droppedPath = '';
+      if (nextPaths.length > SELECTOR_EDITOR_MAX_PATHS) {
+        droppedPath = nextPaths[SELECTOR_EDITOR_MAX_PATHS];
+        nextPaths.length = SELECTOR_EDITOR_MAX_PATHS;
+      }
+
+      applySelectorCategoryPaths(category.pathSegments, nextPaths, category.valueType);
+      renderSelectorEditorCategories();
+      setSelectorEditorStatus(
+        droppedPath
+          ? `Saved new path for ${category.title}. Oldest path was removed to keep the most recent ${SELECTOR_EDITOR_MAX_PATHS}.`
+          : `Saved new path for ${category.title}.`,
+        droppedPath ? '#b45309' : 'green'
+      );
+    });
+  });
+
+  categoriesContainer.querySelectorAll('[data-add-input]').forEach((input) => {
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      const categoryKey = input.getAttribute('data-add-input') || '';
+      categoriesContainer.querySelector(`.selector-add-path[data-category="${CSS.escape(categoryKey)}"]`)?.click();
+    });
+  });
+
+  categoriesContainer.querySelectorAll('.selector-path-delete').forEach((button) => {
+    button.addEventListener('click', () => {
+      const categoryKey = button.dataset.category || '';
+      const category = currentSelectorCategoryMap.get(categoryKey);
+      const index = Number(button.dataset.index);
+      if (!category || Number.isNaN(index)) return;
+
+      const currentPaths = normalizeSelectorPaths(readNestedValue(getSelectedSelectorSectionNode(), category.pathSegments));
+      const targetPath = currentPaths[index];
+      if (!targetPath) return;
+
+      const fruit = SELECTOR_EDITOR_DELETE_FRUITS[Math.floor(Math.random() * SELECTOR_EDITOR_DELETE_FRUITS.length)];
+      pendingSelectorDelete = {
+        categoryKey,
+        pathIndex: index,
+        fruit,
+        targetPath
+      };
+
+      const { modal, copy, input, status: confirmStatus } = getDeleteConfirmElements();
+      copy.innerText = `Type "${fruit}" to delete this saved path from ${category.title}.`;
+      input.value = '';
+      confirmStatus.innerText = '';
+      modal.style.display = 'flex';
+      input.focus();
+    });
+  });
+}
+
+async function loadSelectorPathEditor() {
+  const { modal, saveBtn } = getSelectorEditorElements();
+  try {
+    setSelectorEditorStatus('Loading shared selector paths...', '#2563eb');
+    saveBtn.disabled = true;
+    const config = await fetchConfig();
+    selectorEditorPlatformSelectors = normalizePlatformSelectors(config.platform_selectors);
+
+    populateSelectorEditorPlatformOptions();
+    populateSelectorEditorSectionOptions();
+    renderSelectorEditorCategories();
+    modal.style.display = 'flex';
+    setSelectorEditorStatus('');
+  } catch (error) {
+    console.error('Failed to load selector editor:', error);
+    setStatusMessage('Unable to load selector path editor.', '#ce0e2d', 'looking');
+    clearStatusMessage();
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+async function saveSelectorPathEdits() {
+  const { modal, saveBtn } = getSelectorEditorElements();
+  try {
+    saveBtn.disabled = true;
+    setSelectorEditorStatus('Saving selector paths to shared events_config.json...', '#2563eb');
+    await updateConfigSections({
+      platform_selectors: selectorEditorPlatformSelectors
+    }, selectorEditorSelectedPlatform);
+
+    modal.style.display = 'none';
+    setStatusMessage('Selector paths saved to shared events_config.json.', 'green', 'smirk');
+    clearStatusMessage();
+  } catch (error) {
+    console.error('Failed to save selector paths:', error);
+    setSelectorEditorStatus(error.message || 'Failed to save selector paths.', '#ce0e2d');
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+function closeSelectorDeleteConfirmModal() {
+  pendingSelectorDelete = null;
+  const { modal, input } = getDeleteConfirmElements();
+  modal.style.display = 'none';
+  input.value = '';
+  setDeleteConfirmStatus('');
+}
+
+function confirmSelectorDelete() {
+  if (!pendingSelectorDelete) return;
+
+  const { input } = getDeleteConfirmElements();
+  if (input.value.trim().toLowerCase() !== pendingSelectorDelete.fruit.toLowerCase()) {
+    setDeleteConfirmStatus(`Type "${pendingSelectorDelete.fruit}" exactly to confirm this delete.`, '#ce0e2d');
+    return;
+  }
+
+  const category = currentSelectorCategoryMap.get(pendingSelectorDelete.categoryKey);
+  if (!category) {
+    closeSelectorDeleteConfirmModal();
+    return;
+  }
+
+  const currentPaths = normalizeSelectorPaths(readNestedValue(getSelectedSelectorSectionNode(), category.pathSegments));
+  const nextPaths = currentPaths.filter((_, index) => index !== pendingSelectorDelete.pathIndex);
+  applySelectorCategoryPaths(category.pathSegments, nextPaths, category.valueType);
+
+  closeSelectorDeleteConfirmModal();
+  renderSelectorEditorCategories();
+  setSelectorEditorStatus(`Deleted one saved path from ${category.title}.`, '#b45309');
+}
+
+function showSettingsAccessState({ title, message, state = '', showRetry = false }) {
+  const accessState = document.getElementById('settings-access-state');
+  if (!accessState) return;
+
+  accessState.replaceChildren();
+  accessState.className = `settings-access-state${state ? ` is-${state}` : ''}`;
+  const heading = document.createElement('strong');
+  heading.textContent = title;
+  const copy = document.createElement('div');
+  copy.textContent = message;
+  accessState.append(heading, copy);
+
+  if (showRetry) {
+    const retryButton = document.createElement('button');
+    retryButton.type = 'button';
+    retryButton.className = 'btn-secondary';
+    retryButton.style.marginTop = '10px';
+    retryButton.textContent = 'Retry access check';
+    retryButton.addEventListener('click', () => {
+      void refreshSidepanelAccessView();
+      window.location.reload();
+    });
+    accessState.appendChild(retryButton);
+  }
+
+  accessState.hidden = false;
+}
+
+function hideProtectedSettings() {
+  document.querySelectorAll('[data-access-permission]').forEach((section) => {
+    section.hidden = true;
+  });
+  document.getElementById('community-lab-section').hidden = true;
+}
+
+function setAuthStatus(message = '', color = '#475569') {
+  const authStatus = document.getElementById('auth-status');
+  if (!authStatus) return;
+  authStatus.textContent = message;
+  authStatus.style.color = color;
+}
+
+function setAuthFormsDisabled(disabled) {
+  document.querySelectorAll('#access-login-form input, #access-login-form select, #access-login-form button, #access-create-form input, #access-create-form button')
+    .forEach((control) => { control.disabled = disabled; });
+}
+
+function hideLoginEmailSelection() {
+  const group = document.getElementById('login-email-group');
+  const select = document.getElementById('login_email');
+  group.hidden = true;
+  select.required = false;
+  select.replaceChildren(new Option('Choose your email…', ''));
+}
+
+function showMiddleNameChallenge(formPrefix, message) {
+  const group = document.getElementById(`${formPrefix}-middle-name-group`);
+  const input = document.getElementById(`${formPrefix}_middle_name`);
+  group.hidden = false;
+  input.required = true;
+  setAuthFormsDisabled(false);
+  setAuthStatus(message || 'Another user has the same first and last name. Enter your middle name or initial.', '#92400e');
+  input.focus();
+}
+
+function showLoginEmailChallenge(emails, message) {
+  const group = document.getElementById('login-email-group');
+  const select = document.getElementById('login_email');
+  select.replaceChildren(new Option('Choose your email…', ''));
+  (Array.isArray(emails) ? emails : []).forEach((email) => {
+    select.appendChild(new Option(email, email));
+  });
+  group.hidden = false;
+  select.required = true;
+  setAuthFormsDisabled(false);
+  setAuthStatus(message || 'Select your email, then log in with your password.', '#92400e');
+  select.focus();
+}
+
+function renderExtensionAuthState(profile) {
+  const isLoggedOut = !profile || profile.status === 'logged_out';
+  const loggedOut = document.getElementById('auth-logged-out');
+  const loggedIn = document.getElementById('auth-logged-in');
+  loggedOut.hidden = !isLoggedOut;
+  loggedIn.hidden = isLoggedOut;
+
+  if (isLoggedOut) {
+    setAuthStatus('Log in with an existing account or create a new user.');
+    return;
+  }
+
+  document.getElementById('auth-session-name').textContent = profile.name || 'Extension user';
+  const accessLabel = ['ready', 'waiting_approval'].includes(profile.status)
+    ? roleLabel(profile.role)
+    : 'Access unavailable';
+  document.getElementById('auth-session-details').textContent = `${profile.email || 'Google identity unavailable'} · ${accessLabel}`;
+
+  if (profile.status === 'waiting_approval') {
+    setAuthStatus('Waiting for administrator approval. After an admin updates the sheet, use Retry / Refresh Access or reopen Settings.', '#92400e');
+  } else if (profile.status === 'identity_error') {
+    setAuthStatus('The active Google account does not match this extension session. Log out, switch accounts, and try again.', '#991b1b');
+  } else if (profile.status !== 'ready') {
+    setAuthStatus('The current extension session could not be verified. You can log out and try again.', '#991b1b');
+  } else {
+    setAuthStatus('Signed in. Your access level was refreshed from the registry.', '#166534');
+  }
+}
+
+function bindExtensionAuthEvents() {
+  const loginForm = document.getElementById('access-login-form');
+  const createForm = document.getElementById('access-create-form');
+  const loginMiddleNameGroup = document.getElementById('login-middle-name-group');
+  const createMiddleNameGroup = document.getElementById('create-middle-name-group');
+  const refreshButton = document.getElementById('refresh_access_user');
+  const logoutButton = document.getElementById('logout_access_user');
+
+  ['login_first_name', 'login_last_name'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', () => {
+      loginMiddleNameGroup.hidden = true;
+      document.getElementById('login_middle_name').required = false;
+      document.getElementById('login_middle_name').value = '';
+      hideLoginEmailSelection();
+    });
+  });
+  document.getElementById('login_middle_name').addEventListener('input', hideLoginEmailSelection);
+  ['create_first_name', 'create_last_name'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', () => {
+      createMiddleNameGroup.hidden = true;
+      document.getElementById('create_middle_name').required = false;
+      document.getElementById('create_middle_name').value = '';
+    });
+  });
+
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const firstName = document.getElementById('login_first_name').value.trim();
+    const lastName = document.getElementById('login_last_name').value.trim();
+    const middleName = document.getElementById('login_middle_name').value.trim();
+    const email = document.getElementById('login_email').value;
+    const passwordInput = document.getElementById('login_password');
+    setAuthFormsDisabled(true);
+    setAuthStatus('Logging in and refreshing access…', '#2563eb');
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'loginAccessUser',
+        credentials: { firstName, lastName, middleName, email, password: passwordInput.value }
+      });
+      if (!response?.success) throw new Error(response?.error || 'Login failed.');
+      if (response.challenge === 'middle_name') {
+        showMiddleNameChallenge('login', response.message);
+        return;
+      }
+      if (response.challenge === 'email_selection') {
+        showLoginEmailChallenge(response.emails, response.message);
+        return;
+      }
+      if (!response.profile) throw new Error('Login did not return an access profile.');
+      passwordInput.value = '';
+      await refreshSidepanelAccessView();
+      window.location.reload();
+    } catch (error) {
+      passwordInput.value = '';
+      setAuthStatus(error.message || 'Login failed.', '#991b1b');
+      setAuthFormsDisabled(false);
+    }
+  });
+
+  createForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const firstName = document.getElementById('create_first_name').value.trim();
+    const lastName = document.getElementById('create_last_name').value.trim();
+    const middleName = document.getElementById('create_middle_name').value.trim();
+    const passwordInput = document.getElementById('create_password');
+    const confirmInput = document.getElementById('create_password_confirm');
+    if (passwordInput.value !== confirmInput.value) {
+      setAuthStatus('Passwords do not match.', '#991b1b');
+      return;
+    }
+
+    setAuthFormsDisabled(true);
+    setAuthStatus('Creating your account…', '#2563eb');
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'createAccessUser',
+        credentials: { firstName, lastName, middleName, password: passwordInput.value }
+      });
+      if (!response?.success) throw new Error(response?.error || 'Account creation failed.');
+      if (response.challenge === 'middle_name') {
+        showMiddleNameChallenge('create', response.message);
+        return;
+      }
+      if (!response.profile) throw new Error('Account creation did not return an access profile.');
+      passwordInput.value = '';
+      confirmInput.value = '';
+      await refreshSidepanelAccessView();
+      window.location.reload();
+    } catch (error) {
+      passwordInput.value = '';
+      confirmInput.value = '';
+      setAuthStatus(error.message || 'Account creation failed.', '#991b1b');
+      setAuthFormsDisabled(false);
+    }
+  });
+
+  refreshButton.addEventListener('click', async () => {
+    refreshButton.disabled = true;
+    setAuthStatus('Refreshing your access level from the registry…', '#2563eb');
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'refreshAccessProfile' });
+      if (!response?.success) throw new Error(response?.error || 'Access refresh failed.');
+      await refreshSidepanelAccessView();
+      window.location.reload();
+    } catch (error) {
+      setAuthStatus(error.message || 'Access refresh failed.', '#991b1b');
+      refreshButton.disabled = false;
+    }
+  });
+
+  logoutButton.addEventListener('click', async () => {
+    logoutButton.disabled = true;
+    setAuthStatus('Logging out…', '#2563eb');
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'logoutAccessUser' });
+      if (!response?.success) throw new Error(response?.error || 'Logout failed.');
+      window.location.reload();
+    } catch (error) {
+      setAuthStatus(error.message || 'Logout failed.', '#991b1b');
+      logoutButton.disabled = false;
+    }
+  });
+}
+
+function applySettingsAccess(profile) {
+  document.querySelectorAll('[data-access-permission]').forEach((section) => {
+    section.hidden = !hasPermission(profile, section.dataset.accessPermission);
+  });
+  document.getElementById('community-lab-section').hidden = true;
+  document.getElementById('settings-access-state').hidden = true;
+  const subtitle = document.querySelector('p.subtitle');
+  if (subtitle) subtitle.textContent = `${roleLabel(profile.role)} access · ${profile.email}`;
+}
+
+function setAccessManagerStatus(message, color = '#374151') {
+  const statusElement = document.getElementById('access_manager_status');
+  if (!statusElement) return;
+  statusElement.textContent = message;
+  statusElement.style.color = color;
+}
+
+function syncAllPlatformsControl() {
+  const allPlatforms = document.getElementById('access_all_platforms');
+  document.querySelectorAll('#access_platform_grid input[type="checkbox"]').forEach((checkbox) => {
+    checkbox.disabled = Boolean(allPlatforms?.checked);
+  });
+}
+
+function populateAccessUserEditor(user) {
+  selectedAccessUser = user;
+  const editor = document.getElementById('access_user_editor');
+  document.getElementById('access_user_first_name').value = user.firstName || '';
+  document.getElementById('access_user_last_name').value = user.lastName || '';
+  document.getElementById('access_user_middle_name').value = user.middleName || '';
+  document.getElementById('access_user_email').value = user.email || '';
+  document.getElementById('access_user_role').value = user.role || 'waiting_approval';
+  const managedConfig = user.managedConfig || {};
+  document.getElementById('access_drive_root_id').value = managedConfig.driveRootId || '';
+  document.getElementById('access_drive_root_label').value = managedConfig.driveRootLabel || '';
+  document.getElementById('access_report_sheet_id').value = managedConfig.reportSheetId || '';
+  document.getElementById('access_report_sheet_label').value = managedConfig.reportSheetLabel || '';
+  document.getElementById('access_event_sheet_id').value = managedConfig.eventSheetId || '';
+  document.getElementById('access_event_sheet_label').value = managedConfig.eventSheetLabel || '';
+
+  const allPlatforms = document.getElementById('access_all_platforms');
+  const assignedPlatforms = new Set(user.platforms || []);
+  allPlatforms.checked = assignedPlatforms.has('all');
+
+  const platformGrid = document.getElementById('access_platform_grid');
+  platformGrid.replaceChildren();
+  PLATFORM_CATALOG.forEach((platform) => {
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = platform.key;
+    checkbox.checked = assignedPlatforms.has(platform.key);
+    const copy = document.createElement('span');
+    copy.textContent = platform.label;
+    label.append(checkbox, copy);
+    platformGrid.appendChild(label);
+  });
+
+  syncAllPlatformsControl();
+  editor.hidden = false;
+  document.getElementById('save_access_user').disabled = false;
+  document.querySelectorAll('.access-user-result').forEach((button) => {
+    button.classList.toggle('is-selected', button.dataset.email === user.email);
+  });
+  setAccessManagerStatus('');
+}
+
+function renderAccessUsers(users) {
+  const results = document.getElementById('access_user_results');
+  results.replaceChildren();
+
+  if (!Array.isArray(users) || users.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'editor-empty-state';
+    empty.textContent = 'No matching users found.';
+    results.appendChild(empty);
+    return;
+  }
+
+  users.forEach((user) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'access-user-result';
+    button.dataset.email = user.email;
+    const name = document.createElement('strong');
+    name.textContent = user.middleName
+      ? `${user.name || 'Unnamed user'} · Middle: ${user.middleName}`
+      : user.name || 'Unnamed user';
+    const details = document.createElement('span');
+    const platformSummary = user.platforms?.includes('all') ? 'All platforms' : (user.platforms || []).join(', ') || 'No platforms';
+    details.textContent = `${user.email} · ${roleLabel(user.role)} · ${platformSummary}`;
+    button.append(name, details);
+    button.addEventListener('click', () => populateAccessUserEditor(user));
+    results.appendChild(button);
+  });
+}
+
+async function loadAccessUsers(query = '') {
+  const results = document.getElementById('access_user_results');
+  results.innerHTML = '<div class="editor-empty-state">Loading users…</div>';
+  setAccessManagerStatus('');
+
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'listAccessUsers', query });
+    if (!response?.success) throw new Error(response?.error || 'Unable to load users.');
+    renderAccessUsers(response.users);
+  } catch (error) {
+    results.replaceChildren();
+    const failure = document.createElement('div');
+    failure.className = 'editor-empty-state';
+    failure.textContent = error.message || 'Unable to load users.';
+    results.appendChild(failure);
+    setAccessManagerStatus('Access registry lookup failed.', '#ce0e2d');
+  }
+}
+
+function bindAccessManagerEvents() {
+  const modal = document.getElementById('access-manager-modal');
+  const search = document.getElementById('access_user_search');
+  const allPlatforms = document.getElementById('access_all_platforms');
+  const saveButton = document.getElementById('save_access_user');
+
+  document.getElementById('open_access_manager')?.addEventListener('click', () => {
+    modal.style.display = 'flex';
+    selectedAccessUser = null;
+    document.getElementById('access_user_editor').hidden = true;
+    saveButton.disabled = true;
+    search.value = '';
+    void loadAccessUsers();
+    search.focus();
+  });
+
+  document.getElementById('close_access_manager')?.addEventListener('click', () => {
+    modal.style.display = 'none';
+    setAccessManagerStatus('');
+  });
+
+  search.addEventListener('input', () => {
+    clearTimeout(accessSearchTimer);
+    accessSearchTimer = setTimeout(() => void loadAccessUsers(search.value), 250);
+  });
+
+  allPlatforms.addEventListener('change', syncAllPlatformsControl);
+
+  saveButton.addEventListener('click', async () => {
+    if (!selectedAccessUser) return;
+    const firstName = document.getElementById('access_user_first_name').value.trim();
+    const lastName = document.getElementById('access_user_last_name').value.trim();
+    const middleName = document.getElementById('access_user_middle_name').value.trim();
+    const email = document.getElementById('access_user_email').value.trim();
+    const role = document.getElementById('access_user_role').value;
+    const platforms = allPlatforms.checked
+      ? ['all']
+      : Array.from(document.querySelectorAll('#access_platform_grid input[type="checkbox"]:checked'))
+        .map((checkbox) => checkbox.value);
+    const managedConfig = {
+      driveRootId: document.getElementById('access_drive_root_id').value.trim(),
+      driveRootLabel: document.getElementById('access_drive_root_label').value.trim(),
+      reportSheetId: document.getElementById('access_report_sheet_id').value.trim(),
+      reportSheetLabel: document.getElementById('access_report_sheet_label').value.trim(),
+      eventSheetId: document.getElementById('access_event_sheet_id').value.trim(),
+      eventSheetLabel: document.getElementById('access_event_sheet_label').value.trim()
+    };
+
+    if (!firstName || !lastName) {
+      setAccessManagerStatus('Enter the user\'s first and last name.', '#ce0e2d');
+      return;
+    }
+
+    const changesOwnUsername = email === currentAccessProfile?.email &&
+      (
+        firstName !== (currentAccessProfile.firstName || '') ||
+        lastName !== (currentAccessProfile.lastName || '') ||
+        middleName !== (currentAccessProfile.middleName || '')
+      );
+    const changesOwnRole = email === currentAccessProfile?.email && role !== currentAccessProfile.role;
+    const changesOwnPlatforms = email === currentAccessProfile?.email &&
+      [...platforms].sort().join(',') !== [...(currentAccessProfile.platforms || [])].sort().join(',');
+    const changesOwnConnectivity = email === currentAccessProfile?.email &&
+      JSON.stringify(managedConfig) !== JSON.stringify(currentAccessProfile.managedConfig || {});
+    if (changesOwnUsername || changesOwnRole || changesOwnPlatforms || changesOwnConnectivity) {
+      const confirmed = confirm('You are changing your own name, access level, platform access, or managed connectivity. Continue?');
+      if (!confirmed) return;
+    }
+
+    saveButton.disabled = true;
+    setAccessManagerStatus('Saving access changes…', '#2563eb');
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'updateAccessUser',
+        user: { email, firstName, lastName, middleName, role, platforms, managedConfig }
+      });
+      if (!response?.success) throw new Error(response?.error || 'Unable to update this user.');
+      selectedAccessUser = response.user;
+      setAccessManagerStatus('Access updated successfully.', 'green');
+
+      if (email === currentAccessProfile?.email) {
+        setTimeout(() => window.location.reload(), 700);
+        return;
+      }
+
+      await loadAccessUsers(search.value);
+      const refreshedButton = Array.from(document.querySelectorAll('.access-user-result'))
+        .find((button) => button.dataset.email === email);
+      refreshedButton?.click();
+    } catch (error) {
+      setAccessManagerStatus(error.message || 'Unable to update this user.', '#ce0e2d');
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+}
+
+function openEvidenceLocker() {
+  if (!hasPermission(currentAccessProfile, PERMISSIONS.SETTINGS_OPEN_LOCKER)) {
+    status.style.color = '#ce0e2d';
+    status.innerText = 'Your access level does not allow opening the Evidence Locker.';
+    return;
+  }
+
+  const folderId = getConnectivityValue('piracy_folder_id');
+  if (folderId) {
+    window.open(`https://drive.google.com/drive/folders/${folderId}`, '_blank');
+    return;
+  }
+
+  setClippyState('looking');
+  status.style.color = '#ce0e2d';
+  status.innerText = 'Please enter a Folder ID first to open the locker.';
+  setTimeout(() => {
+    status.innerText = '';
+    setClippyState('default');
+  }, 3000);
+}
+
+function bindCoreOptionsEvents() {
+  document.getElementById('open_evidence_locker').addEventListener('click', openEvidenceLocker);
+
+  let clickCount = 0;
+  const headerTitle = document.querySelector('header h1');
+  const easterEggOverlay = document.getElementById('easter-egg');
+  headerTitle.addEventListener('click', () => {
+    clickCount += 1;
+    if (clickCount < 5) return;
+    clickCount = 0;
+    easterEggOverlay.style.display = 'flex';
+    new Audio(chrome.runtime.getURL('Piratemusic.mp3')).play().catch((error) => console.warn('Audio play blocked:', error));
+  });
+  easterEggOverlay.addEventListener('click', () => {
+    easterEggOverlay.style.display = 'none';
+  });
+
+  document.getElementById('send_suggestion').addEventListener('click', () => {
+    const text = document.getElementById('suggestion_text').value.trim();
+    const sugStatus = document.getElementById('suggestion_status');
+
+    if (!text) {
+      setClippyState('looking');
+      sugStatus.style.color = '#ce0e2d';
+      sugStatus.innerText = 'Field is empty!';
+      return;
+    }
+
+    setClippyState('talking');
+    sugStatus.style.color = '#2563eb';
+    sugStatus.innerText = 'Transmitting...';
+
+    chrome.runtime.sendMessage({ action: 'submitSuggestion', text }, (response) => {
+      if (response && response.success) {
+        setClippyState('smirk');
+        sugStatus.style.color = 'green';
+        sugStatus.innerText = '✅ Comms received. Thanks!';
+        document.getElementById('suggestion_text').value = '';
+      } else {
+        setClippyState('default');
+        sugStatus.style.color = '#ce0e2d';
+        sugStatus.innerText = '❌ Uplink failed.';
+      }
+    });
+  });
+
+  document.getElementById('save').addEventListener('click', () => {
+    const folderId = getConnectivityValue('piracy_folder_id');
+    const sheetId = getConnectivityValue('piracy_sheet_id');
+    const eventSheetId = getConnectivityValue('event_sheet_id');
+    const reportMode = document.getElementById('report_mode').value;
+
+    if (!folderId || !sheetId || !eventSheetId) {
+      setClippyState('talking');
+      status.style.color = '#ce0e2d';
+      status.innerText = 'Missing IDs! Check Clippy for details.';
+
+      if (window.showClippyMessage) {
+        window.showClippyMessage('Missing IDs! Please check the <a href="https://flocasts.atlassian.net/wiki/spaces/FSM/pages/5634621448/FloSports+Pirate+Reporter+3.3.1+Pirate+AI#Options-Set-up" target="_blank" style="color: #2563eb; text-decoration: underline;">Setup Guide</a> to fill out all boxes.');
+      }
+      return;
+    }
+
+    const connectivityUpdates = {
+      piracy_folder_id: folderId,
+      piracy_sheet_id: sheetId,
+      event_sheet_id: eventSheetId,
+      report_mode: reportMode
+    };
+    CONNECTIVITY_FIELDS.forEach(({ inputId, storageKey }) => {
+      const input = document.getElementById(inputId);
+      if (input.dataset.managed !== 'true') connectivityUpdates[`manual_${storageKey}`] = input.value.trim();
+    });
+
+    chrome.storage.sync.set(connectivityUpdates, () => {
+      void refreshSidepanelAccessView();
+      setClippyState('smirk');
+      status.style.color = 'green';
+      status.innerText = 'Configurations Locked. Ready for Hunt.';
+
+      chrome.storage.local.get(['onboarding_step'], (res) => {
+        if (res.onboarding_step === 'NEEDS_CONFIG') {
+          chrome.storage.local.set({ onboarding_step: 'READY_FOR_FIRST_REPORT' });
+>>>>>>> Stashed changes
         }
         cursor = cursor[segment];
     }
@@ -242,6 +1424,7 @@ function setStatusMessage(message, color = '#374151', clippyState = 'default') {
     status.innerText = message;
 }
 
+<<<<<<< Updated upstream
 function clearStatusMessage(delayMs = 3000) {
     setTimeout(() => {
         status.innerText = '';
@@ -1361,3 +2544,181 @@ if (document.readyState === 'loading') {
 } else {
     void initializeOptionsPage();
 }
+=======
+function bindBriefingContentModalEvents() {
+  const briefingContentModal = document.getElementById('briefing-content-modal');
+  document.getElementById('open_briefing_content_editor')?.addEventListener('click', () => {
+    void loadBriefingContentEditor();
+  });
+  document.getElementById('cancel_briefing_content')?.addEventListener('click', () => {
+    briefingContentModal.style.display = 'none';
+    setBriefingContentStatus('');
+  });
+  document.getElementById('clear_highlight_content')?.addEventListener('click', () => {
+    const { userInput, descInput, bonusInput } = getBriefingContentModalElements();
+    userInput.value = '';
+    descInput.value = '';
+    bonusInput.value = '';
+    setBriefingContentStatus('Community highlight cleared. Save to apply it.', '#b45309');
+  });
+  document.getElementById('clear_lab_instructions')?.addEventListener('click', () => {
+    const { labInput } = getBriefingContentModalElements();
+    labInput.value = '';
+    setBriefingContentStatus('Lab instructions cleared. Save to apply it.', '#b45309');
+  });
+  document.getElementById('add_double_xp_event')?.addEventListener('click', addDoubleXpEventFromInputs);
+  document.getElementById('double_xp_event_name')?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    addDoubleXpEventFromInputs();
+  });
+  document.getElementById('save_briefing_content')?.addEventListener('click', () => {
+    void saveBriefingContentEdits();
+  });
+}
+
+function bindSelectorEditorEvents() {
+  const { modal, platformSelect, sectionSelect } = getSelectorEditorElements();
+  document.getElementById('open_selector_path_editor')?.addEventListener('click', () => {
+    void loadSelectorPathEditor();
+  });
+  document.getElementById('cancel_selector_editor')?.addEventListener('click', () => {
+    modal.style.display = 'none';
+    setSelectorEditorStatus('');
+  });
+  platformSelect.addEventListener('change', () => {
+    selectorEditorSelectedPlatform = platformSelect.value;
+    populateSelectorEditorSectionOptions();
+    renderSelectorEditorCategories();
+    setSelectorEditorStatus('');
+  });
+  sectionSelect.addEventListener('change', () => {
+    selectorEditorSelectedSection = sectionSelect.value;
+    renderSelectorEditorCategories();
+    setSelectorEditorStatus('');
+  });
+  document.getElementById('save_selector_editor')?.addEventListener('click', () => {
+    void saveSelectorPathEdits();
+  });
+
+  const { modal: deleteModal, input: deleteInput } = getDeleteConfirmElements();
+  document.getElementById('cancel_selector_delete')?.addEventListener('click', closeSelectorDeleteConfirmModal);
+  document.getElementById('confirm_selector_delete')?.addEventListener('click', confirmSelectorDelete);
+  deleteInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    confirmSelectorDelete();
+  });
+  deleteModal.addEventListener('click', (event) => {
+    if (event.target === deleteModal) {
+      closeSelectorDeleteConfirmModal();
+    }
+  });
+}
+
+async function loadInitialOptionsState({ loadIntelligenceConfig = false } = {}) {
+  const items = await chrome.storage.sync.get([
+    'piracy_folder_id',
+    'piracy_sheet_id',
+    'event_sheet_id',
+    'beta_opt_in',
+    'report_mode',
+    'briefing_config'
+  ]);
+  renderConnectivityFields(currentAccessProfile, items);
+  document.getElementById('beta_opt_in').checked = !!items.beta_opt_in;
+  document.getElementById('report_mode').value = items.report_mode || 'scout';
+
+  const briefingConfig = items.briefing_config || BRIEFING_DEFAULTS;
+  document.querySelectorAll('#briefing-toggles input[type="checkbox"]').forEach((el) => {
+    const key = el.id.replace('stat_', '');
+    el.checked = briefingConfig[key] !== false;
+  });
+  window.dispatchEvent(new CustomEvent('floAccessConfigReady'));
+
+  if (loadIntelligenceConfig) {
+    try {
+      setClippyState('looking');
+      const config = await fetchConfig();
+      renderCommunityPreview(config.community_highlights);
+      setClippyState('default');
+    } catch (error) {
+      console.error('Failed to load community highlights:', error);
+      document.getElementById('highlight-user').innerText = 'Team Sync Required';
+      document.getElementById('highlight-desc').innerText = 'Verify your Folder ID to see team updates.';
+      setClippyState('default');
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  bindExtensionAuthEvents();
+  hideProtectedSettings();
+
+  try {
+    const accessResponse = await Promise.race([
+      chrome.runtime.sendMessage({ action: 'getAccessProfile', forceRefresh: true }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Access check timed out.')), 12000))
+    ]);
+    if (!accessResponse?.success || !accessResponse.profile) {
+      throw new Error(accessResponse?.error || 'The access registry did not return a profile.');
+    }
+
+    currentAccessProfile = accessResponse.profile;
+    renderExtensionAuthState(currentAccessProfile);
+    if (currentAccessProfile.status === 'logged_out') {
+      document.getElementById('settings-access-state').hidden = true;
+      return;
+    }
+
+    if (currentAccessProfile.status === 'identity_error') {
+      showSettingsAccessState({
+        title: 'Google account mismatch',
+        message: 'Log out of the extension, switch to the Google account associated with this user, and log in again.',
+        state: 'error',
+        showRetry: true
+      });
+      return;
+    }
+
+    if (currentAccessProfile.status !== 'ready') {
+      document.getElementById('settings-access-state').hidden = true;
+      return;
+    }
+
+    applySettingsAccess(currentAccessProfile);
+    bindCoreOptionsEvents();
+
+    const canUseIntelligenceTools = hasPermission(currentAccessProfile, PERMISSIONS.SETTINGS_INTELLIGENCE_TOOLS);
+    if (hasPermission(currentAccessProfile, PERMISSIONS.SETTINGS_BRIEFING_STATS)) {
+      bindBriefingStatsModalEvents();
+    }
+    if (hasPermission(currentAccessProfile, PERMISSIONS.SETTINGS_BRIEFING_CONTENT)) {
+      bindBriefingContentModalEvents();
+    }
+    if (hasPermission(currentAccessProfile, PERMISSIONS.SETTINGS_SELECTOR_PATHS)) {
+      bindSelectorEditorEvents();
+    }
+    if (hasPermission(currentAccessProfile, PERMISSIONS.SETTINGS_ADMIN_ACCESS)) {
+      bindAccessManagerEvents();
+    }
+
+    await loadInitialOptionsState({ loadIntelligenceConfig: canUseIntelligenceTools });
+  } catch (error) {
+    console.error('Settings access initialization failed:', error);
+    renderExtensionAuthState(currentAccessProfile || {
+      status: 'registry_error',
+      role: 'waiting_approval',
+      name: 'Extension session',
+      email: '',
+      platforms: []
+    });
+    showSettingsAccessState({
+      title: 'Access could not be verified',
+      message: error.message || 'Check your Google sign-in and access to the user registry.',
+      state: 'error',
+      showRetry: true
+    });
+  }
+});
+>>>>>>> Stashed changes
