@@ -1,6 +1,6 @@
 // content_autofill.js
 
-(function() { 
+(function() {
     // 1. INJECTION GUARD (Fixes Duplicates)
     if (window.floAutofillRunning) return;
     window.floAutofillRunning = true;
@@ -14,32 +14,49 @@
     });
 
     if (typeof AUTOFILL_CONFIG === 'undefined') {
-      var AUTOFILL_CONFIG = {}; 
+      var AUTOFILL_CONFIG = {};
     }
-    
+
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    const COPYRIGHT_OWNER_NAME = 'FloSports';
+    let COPYRIGHT_OWNER_NAME = 'Rights Owner';
     const INSTAGRAM_BATCH_LIMIT = 30;
     const RUMBLE_REPORT_SESSION_KEY = 'rumble_report_session';
-    const TIKTOK_VERIFICATION_EMAIL = 'social@flosports.tv';
+    let TIKTOK_VERIFICATION_EMAIL = '';
 <<<<<<< Updated upstream
 =======
-    const TWITCH_CONTACT_EMAIL = 'Social@flosports.tv';
-    const TWITCH_CONTACT_PHONE = '5122702356';
-    const TWITCH_STREET_ADDRESS = '301 Congress ave #1500';
-    const TWITCH_CITY = 'Austin';
-    const TWITCH_STATE = 'Texas';
-    const TWITCH_ZIP = '78745';
+    let TWITCH_CONTACT_EMAIL = '';
+    let TWITCH_CONTACT_PHONE = '';
+    let TWITCH_STREET_ADDRESS = '';
+    let TWITCH_CITY = '';
+    let TWITCH_STATE = '';
+    let TWITCH_ZIP = '';
+    let TWITCH_COUNTRY = '';
 >>>>>>> Stashed changes
     let configLoaded = false;
-    let isAutofilling = false; 
+    let isAutofilling = false;
     let lastReportData = null; // Cache data for SPA navigation
     let cachedOverlay = null;  // Caches the overlay element to preserve its state
     let hasRunAutomatedFill = false; // Prevents Youtube/Twitter loops on SPA wake-up
     let hasRunRumbleAutomation = false;
     let isTransitioning = false; // Prevents SPA wake-up from firing while we wait for a page transition
+
+    function applyCustomerCopy(theme = globalThis.RightsReporterTheme?.getTheme?.()) {
+      const legal = theme?.legal || {};
+      COPYRIGHT_OWNER_NAME = legal.ownerName || legal.companyName || 'Rights Owner';
+      TIKTOK_VERIFICATION_EMAIL = legal.reportingEmail || '';
+      TWITCH_CONTACT_EMAIL = legal.reportingEmail || legal.secondaryEmail || '';
+      TWITCH_CONTACT_PHONE = legal.phone || '';
+      TWITCH_STREET_ADDRESS = legal.addressLine1 || '';
+      TWITCH_CITY = legal.city || '';
+      TWITCH_STATE = legal.region || '';
+      TWITCH_ZIP = legal.postalCode || '';
+      TWITCH_COUNTRY = legal.country || '';
+    }
+
+    applyCustomerCopy();
+    globalThis.addEventListener?.('rights-reporter-theme-changed', (event) => applyCustomerCopy(event.detail));
 <<<<<<< Updated upstream
-    
+
 =======
 
     async function hasAutofillAccess(platform = '', url = window.location.href) {
@@ -89,14 +106,16 @@
         }
       } catch(e) { console.warn("⚠️ Config load failed.", e); }
     }
-    
+
     async function init() {
+        await globalThis.RightsReporterTheme?.loadTheme?.();
+        applyCustomerCopy();
         if (document.readyState === 'loading') {
             await new Promise(r => document.addEventListener('DOMContentLoaded', r));
         }
 
         if (!(await hasAutofillAccess())) return;
-    
+
         try {
             const host = window.location.hostname;
             const isTikTok = host.includes('tiktok.com') || host.includes('tiktokforbusiness.com');
@@ -111,7 +130,7 @@
             const info = res.reporterInfo || {};
             const rumbleSession = res[RUMBLE_REPORT_SESSION_KEY] || null;
 <<<<<<< Updated upstream
-        
+
             const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : (isRumble ? "Rumble" : "Unknown"));
 =======
 
@@ -122,10 +141,10 @@
 
             const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : (isRumble ? "Rumble" : (isTwitch ? "Twitch" : "Unknown")));
 >>>>>>> Stashed changes
-        
+
             const data = {
                 fullName: info.name || "",
-                email: info.email || "copyright@flosports.tv",
+                email: info.email || TIKTOK_VERIFICATION_EMAIL,
                 cart,
                 urls: cart.map(c => c.url),
                 platform: platform,
@@ -134,9 +153,9 @@
                 sourceUrl: info.sourceUrl || "",
                 rumbleSession
             };
-            
+
             lastReportData = data; // Save for SPA wake-up
-        
+
             // 🔹 Always create the Launcher Tab fallback on TikTok
             if (isTikTok) {
                 createLauncherTab(data);
@@ -146,16 +165,16 @@
             if ((cart.length === 0 || !info.name) && !(isRumble && rumbleSession?.active)) {
                 return;
             }
-        
+
             loadConfig();
             let retries = 0;
             while (!configLoaded && retries < 20) { await sleep(100); retries++; }
-        
-            await sleep(500); 
+
+            await sleep(500);
             routeAutofill(data);
         } catch(e) { console.warn("Autofill Init Error:", e); }
     }
-    
+
     async function routeAutofill(data) {
         if (isAutofilling || !data) return;
         isAutofilling = true;
@@ -189,18 +208,18 @@
                 return;
 >>>>>>> Stashed changes
             }
-            
+
             if (data.eventName) createStandardOverlay(data);
         }
     } finally {
         isAutofilling = false;
     }
     }
-    
+
     // ==========================================
     // 1. DOM UTILITIES & SETTERS
     // ==========================================
-    
+
     const isVisible = (elem) => {
         if (!elem) return false;
         const rect = elem.getBoundingClientRect();
@@ -533,9 +552,8 @@
     }
 
     function buildInstagramExplanation(data) {
-        const template = AUTOFILL_CONFIG.instagram?.autofill?.templates?.infringement_explanation ||
-            'Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]). FloSports owns the exclusive copyright. Infringement is visually verifiable via our proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account.';
-        const vertical = data?.vertical || 'FloSports';
+        const template = `Unauthorized distribution of copyrighted ${COPYRIGHT_OWNER_NAME} material ([Event Name] / [Vertical Name]). ${COPYRIGHT_OWNER_NAME} owns or controls the exclusive rights. Infringement is visually verifiable through the content and identifying broadcast graphics. No license or permission has been granted to this account.`;
+        const vertical = data?.vertical || 'the applicable category';
         const eventName = data?.eventName || 'the event';
         return template
             .replace(/\[Event Name\]/g, eventName)
@@ -545,10 +563,8 @@
 <<<<<<< Updated upstream
 =======
     function buildFacebookExplanation(data) {
-        const template = AUTOFILL_CONFIG.facebook?.autofill?.templates?.infringement_explanation ||
-            AUTOFILL_CONFIG.instagram?.autofill?.templates?.infringement_explanation ||
-            'Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]). FloSports owns the exclusive copyright. Infringement is visually verifiable via our proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account.';
-        const vertical = data?.vertical || 'FloSports';
+        const template = `Unauthorized distribution of copyrighted ${COPYRIGHT_OWNER_NAME} material ([Event Name] / [Vertical Name]). ${COPYRIGHT_OWNER_NAME} owns or controls the exclusive rights. Infringement is visually verifiable through the content and identifying broadcast graphics. No license or permission has been granted to this account.`;
+        const vertical = data?.vertical || 'the applicable category';
         const eventName = data?.eventName || 'the event';
         return template
             .replace(/\[Event Name\]/g, eventName)
@@ -560,26 +576,24 @@
         const defaults = conf.defaults || {};
         const templates = conf.templates || {};
         const recipient = defaults.recipient_email || KICK_DMCA_EMAIL;
-        const contactEmail = defaults.contact_email || KICK_CONTACT_EMAIL;
-        const contactPhone = defaults.phone || KICK_CONTACT_PHONE;
-        const contactAddress = defaults.address || KICK_CONTACT_ADDRESS;
+        const contactEmail = TIKTOK_VERIFICATION_EMAIL;
+        const contactPhone = TWITCH_CONTACT_PHONE;
+        const contactAddress = [TWITCH_STREET_ADDRESS, TWITCH_CITY, TWITCH_STATE, TWITCH_ZIP, TWITCH_COUNTRY].filter(Boolean).join(', ');
         const contactTitle = defaults.title || 'Authorized user';
-        const eventName = data?.eventName || 'FloSports event';
-        const vertical = data?.vertical || 'FloSports';
-        const sourceUrl = data?.sourceUrl || 'Original FloSports URL not provided';
+        const eventName = data?.eventName || 'reported event';
+        const vertical = data?.vertical || 'the applicable category';
+        const sourceUrl = data?.sourceUrl || 'Original work URL not provided';
         const urls = Array.isArray(data?.urls) ? data.urls.filter(Boolean) : [];
         const urlsList = urls.length > 0 ? urls.map((url) => `- ${url}`) : ['- URL not provided'];
-        const subjectTemplate = templates.subject || 'DMCA Takedown Notice - FloSports - [Event Name]';
+        const subjectTemplate = `DMCA Takedown Notice - ${COPYRIGHT_OWNER_NAME} - [Event Name]`;
         const subject = subjectTemplate
             .replace(/\[Event Name\]/g, eventName)
             .replace(/\[Vertical Name\]/g, vertical);
         const greeting = templates.greeting || 'To Whom It May Concern at Kick,';
-        const submissionIntro = templates.submission_intro || 'I am submitting this DMCA takedown notice on behalf of FloSports.';
-        const genericDescription = templates.infringing_material_description ||
-            'Unauthorized Kick-hosted or Kick-linked distribution of FloSports material appearing at the URLs listed below.';
-        const ownershipEvidence = templates.ownership_evidence ||
-            'The infringing material often includes FloSports, MileSplit, or Varsity TV watermarks and proprietary broadcast graphics, all of which evidence FloSports ownership.';
-        const sourceUrlLabel = templates.source_url_label || 'Original FloSports URL being pirated:';
+        const submissionIntro = `I am submitting this DMCA takedown notice on behalf of ${COPYRIGHT_OWNER_NAME}.`;
+        const genericDescription = `Unauthorized Kick-hosted or Kick-linked distribution of ${COPYRIGHT_OWNER_NAME} material appears at the URLs listed below.`;
+        const ownershipEvidence = `The infringing material contains identifying marks or broadcast graphics that evidence ${COPYRIGHT_OWNER_NAME} ownership.`;
+        const sourceUrlLabel = 'Original work URL:';
         const reportedUrlsLabel = templates.reported_urls_label || 'Reported Kick URLs:';
         const sourceLine = `${sourceUrlLabel} ${sourceUrl}`;
 
@@ -646,7 +660,7 @@
         const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
         const prototype = Object.getPrototypeOf(element);
         const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
-        
+
         if (valueSetter && valueSetter !== prototypeValueSetter) {
             prototypeValueSetter.call(element, value);
         } else if (prototypeValueSetter) {
@@ -660,11 +674,11 @@
         if (!cb || !isVisible(cb)) return;
         try {
             if (cb.tagName === 'INPUT' && (cb.type === 'checkbox' || cb.type === 'radio')) {
-                if (cb.checked) return; 
+                if (cb.checked) return;
                 cb.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
                 cb.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-                cb.click(); 
-                
+                cb.click();
+
                 const nativeCheckboxSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
                 if (nativeCheckboxSetter) {
                     nativeCheckboxSetter.call(cb, true);
@@ -673,7 +687,7 @@
                 }
                 cb.dispatchEvent(new Event('change', { bubbles: true }));
                 cb.dispatchEvent(new Event('input', { bubbles: true }));
-            } 
+            }
             else if (cb.getAttribute('role') === 'checkbox' || cb.getAttribute('role') === 'radio') {
                 if (cb.getAttribute('aria-checked') === 'true') return;
                 cb.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -700,25 +714,25 @@
 
         setNativeValue(el, "");
         el.dispatchEvent(new Event('input', { bubbles: true }));
-        
+
         setNativeValue(el, cleanVal);
         el.dispatchEvent(new Event('input', { bubbles: true }));
-        
+
         setNativeValue(el, val);
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true })); 
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
         return true;
     };
 
     const fillByLabel = (labelTexts, value) => {
         if (!value) return;
         const labels = Array.isArray(labelTexts) ? labelTexts.map(l => l.toLowerCase()) : [labelTexts.toLowerCase()];
-        
+
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
         let textNode;
         let targetInput = null;
-        
+
         while ((textNode = walker.nextNode())) {
             const nodeText = textNode.nodeValue.toLowerCase();
             if (labels.some(l => nodeText.includes(l))) {
@@ -726,7 +740,7 @@
                 if (isVisible(parent)) {
                     const xpath = `following::input[not(@type='hidden') and not(@type='radio') and not(@type='checkbox')] | following::textarea`;
                     const input = document.evaluate(xpath, parent, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    
+
                     if (isVisible(input)) {
                         targetInput = input;
                         break;
@@ -744,7 +758,7 @@
     async function waitForButton(variants, timeout) {
             const start = Date.now();
             if (!Array.isArray(variants)) variants = [variants];
-        
+
             while (Date.now() - start < timeout) {
                 for (const v of variants) {
                     let el;
@@ -770,20 +784,20 @@
             try { macroSteps = JSON.parse(macroSteps); } catch(e) { return false; }
         }
         if (!Array.isArray(macroSteps)) return false;
-        
+
         console.log("▶️ Executing Macro Sequence...");
         for (const step of macroSteps) {
             if (step.delay) await sleep(step.delay);
-            
-            const el = step.selector.startsWith('//') 
+
+            const el = step.selector.startsWith('//')
                 ? document.evaluate(step.selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
                 : document.querySelector(step.selector);
-                
+
             if (!el) {
                 console.warn(`⚠️ Macro step failed: Could not find ${step.selector}`);
                 continue;
             }
-            
+
             if (step.action === 'click') {
                 el.scrollIntoView({block: 'center', behavior: 'smooth'});
                 el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
@@ -818,7 +832,7 @@
                         let el = (typeof sel === 'string' && sel.startsWith('//'))
                             ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
                             : document.querySelector(sel);
-                        
+
                         if (el && isVisible(el)) {
                             typeValue(el, map.value);
                             filled = true;
@@ -852,22 +866,22 @@
             const dropdowns = document.querySelectorAll('button[aria-haspopup="listbox"]');
             for (const dd of dropdowns) {
                 if (dd.innerText.toLowerCase().includes(searchText.toLowerCase())) return true;
-                
-                dd.click(); 
-                await sleep(500); 
-                
+
+                dd.click();
+                await sleep(500);
+
                 const xpath = `//div[@role="option" or @role="menuitem"]//text()[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${searchText.toLowerCase()}')]/parent::* | //li[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${searchText.toLowerCase()}')]`;
                 const option = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                
+
                 if (option) {
                     option.scrollIntoView({block: 'center', behavior: 'smooth'});
                     option.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
                     option.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
                     option.click();
-                    await sleep(500); 
+                    await sleep(500);
                     return true;
                 } else {
-                    dd.click(); 
+                    dd.click();
                     await sleep(300);
                 }
             }
@@ -876,7 +890,7 @@
 
         const platform = "tiktok";
         const conf = AUTOFILL_CONFIG[platform]?.autofill || {};
-        
+
         // 1. Execute Dropdowns from Config or Fallback
         const wizardSteps = conf.wizard_steps || ["copyright infringement", "i am the copyright owner"];
         for (const stepText of wizardSteps) {
@@ -888,12 +902,12 @@
         await executeConfigStep(platform, "Step 1", [
             { section: 'field_strategies', field: 'email', value: email, fallbackLabels: ['email'] }
         ]);
-        
+
         const nextBtn = await waitForButton(conf.buttons?.next || ['Next', 'Continue', 'button.submit-button'], 500);
         if (nextBtn && !nextBtn.disabled) {
             console.log("➡️ Clicking Next...");
             nextBtn.click();
-            return true; 
+            return true;
         }
         return false;
     }
@@ -903,11 +917,11 @@
         const reporterFullName = await resolveReporterFullName(data);
         const defaults = {
             company: COPYRIGHT_OWNER_NAME,
-            phone: "5122702356",
-            address: "301 Congress ave #1500 Austin Tx 78701",
+            phone: TWITCH_CONTACT_PHONE,
+            address: [TWITCH_STREET_ADDRESS, TWITCH_CITY, TWITCH_STATE, TWITCH_ZIP, TWITCH_COUNTRY].filter(Boolean).join(', '),
             name: reporterFullName
         };
-        
+
         // Map logical fields to their respective sections in the config and fallback labels
         const fieldMappings = [
             { section: 'field_strategies', field: 'name', value: defaults.name, fallbackLabels: ['your full name', 'nombre completo'] },
@@ -917,7 +931,7 @@
         ];
 
         await executeConfigStep(platform, "Step 2", fieldMappings);
-        
+
         const conf = AUTOFILL_CONFIG[platform]?.autofill || {};
         const nextBtn = await waitForButton(conf.buttons?.next || ['Next', 'Continue', 'button.submit-button'], 500);
         if (nextBtn && !nextBtn.disabled) {
@@ -947,11 +961,11 @@
         if (outsideSpan && isVisible(outsideSpan)) {
             const radioSource = outsideSpan.closest('div')?.querySelector('input[type="radio"]');
             if (radioSource && !radioSource.checked) checkReactCheckbox(radioSource);
-            else if (!radioSource) outsideSpan.click(); 
+            else if (!radioSource) outsideSpan.click();
         }
 
         fillByLabel('url to the original', data.sourceUrl || "Original source not provided");
-        fillByLabel('description of copyrighted work', data.eventName || "FloSports Event");
+        fillByLabel('description of copyrighted work', data.eventName || "Reported Event");
         fillByLabel('content to report', Array.isArray(data.urls) ? data.urls.join('\n') : (data.urls || ''));
 
         // --- 1. USE DYNAMIC CLOUD SELECTOR IF AVAILABLE ---
@@ -959,7 +973,7 @@
         if (conf.agreement) {
             console.log("☑️ Using Cloud Config Selector for Checkboxes:", conf.agreement);
             const agreements = Array.isArray(conf.agreement) ? conf.agreement : [conf.agreement];
-            
+
             agreements.forEach(item => {
                 try {
                     // Extract the string whether it's an object {selector: '...'} or a Macro JSON string
@@ -967,7 +981,7 @@
                     if (typeof selStr === 'string' && selStr.trim().startsWith('[{')) {
                         selStr = JSON.parse(selStr)[0]?.selector || selStr;
                     }
-                    
+
                     if (typeof selStr === 'string') {
                         document.querySelectorAll(selStr).forEach(box => checkReactCheckbox(box));
                     }
@@ -996,10 +1010,10 @@
             const lower = text.toLowerCase();
             const xpath = `//*[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}') and not(*[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')])]`;
             const node = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-            
+
             if (node && isVisible(node)) {
                 let container = node.closest('label, div.form-item, div.tux-row') || node.parentElement;
-                
+
                 const hiddenInput = container ? container.querySelector('input[type="checkbox"]') : null;
                 const ariaBox = container ? container.querySelector('[role="checkbox"], [role="switch"]') : null;
 
@@ -1012,25 +1026,25 @@
                         node.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
                         node.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
                         node.click();
-                        
+
                         // Often the custom box is the previous sibling to the text
                         if (node.previousElementSibling) {
                             node.previousElementSibling.click();
                         } else if (node.parentElement) {
                             node.parentElement.click();
                         }
-                        
+
                         node.setAttribute('data-flo-clicked', 'true');
                     }
                 }
             }
         });
-    
-        const sendBtn = await waitForButton(['Send', 'Submit'], 500); 
+
+        const sendBtn = await waitForButton(['Send', 'Submit'], 500);
         if (sendBtn) {
             sendBtn.scrollIntoView({block: 'center'});
-            sendBtn.style.border = "4px solid #ce0e2d"; 
-            sendBtn.disabled = false; 
+            sendBtn.style.border = "4px solid var(--brand-primary)";
+            sendBtn.disabled = false;
             console.log("🛑 Step 3 complete. Waiting for user to review and manually click Send.");
         }
     }
@@ -1117,7 +1131,7 @@
             throw new Error('The Rumble report modal did not confirm submission. Please review the page.');
         }
 
-        updateStatus('Opening next queued URL...', '#0288d1');
+        updateStatus('Opening next queued URL...', 'var(--brand-primary)');
         const response = await chrome.runtime.sendMessage({
             action: 'advanceRumbleQueue',
             currentUrl: window.location.href
@@ -1147,13 +1161,13 @@
         launcher.id = 'flo-wiz-launcher';
         launcher.style.cssText = `
             position: fixed; top: 40%; right: -50px; transform: translateY(-50%);
-            background: #0288d1; color: white; padding: 12px 6px; border-radius: 8px 0 0 8px;
+            background: var(--brand-primary); color: white; padding: 12px 6px; border-radius: 8px 0 0 8px;
             cursor: pointer; z-index: 2147483646; font-family: sans-serif; font-weight: bold; font-size: 14px;
             box-shadow: -2px 0 10px rgba(0,0,0,0.2); writing-mode: vertical-rl; text-orientation: mixed;
             transition: right 0.3s ease;
         `;
         launcher.innerText = "Wizard ✥";
-        
+
         launcher.addEventListener('click', async () => {
             // Fetch fresh data in case the user added things while the wizard was closed
             const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
@@ -1161,7 +1175,7 @@
             const info = res.reporterInfo || {};
             const freshData = {
                 fullName: info.name || data?.fullName || "",
-                email: info.email || data?.email || "copyright@flosports.tv",
+                email: info.email || data?.email || TIKTOK_VERIFICATION_EMAIL,
                 urls: cart.map(c => c.url),
                 platform: cart[0]?.platform || data?.platform || "TikTok",
                 eventName: info.eventName || data?.eventName || "",
@@ -1215,10 +1229,10 @@
               </div>
 
               <div id="flo-x-log-container" style="display:none; margin-top: 15px;">
-                  <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                  <div style="margin-bottom: 8px; font-size: 12px; color: var(--brand-primary); font-weight: bold; text-align: center;">
                       Click Submit on the X page first, then log below.
                   </div>
-                  <button id="flo-x-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+                  <button id="flo-x-log-btn" style="background: var(--brand-primary); color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
                   <div id="flo-x-log-status" style="margin-top:8px; font-size:12px; text-align:center;"></div>
               </div>
           </div>
@@ -1300,7 +1314,7 @@
             btn3.style.background = '#ccc';
             btn3.style.color = '#333';
             logContainer.style.display = 'block';
-            overlay.style.borderColor = '#ce0e2d';
+            overlay.style.borderColor = 'var(--brand-primary)';
         });
 
         document.getElementById('flo-x-log-btn').addEventListener('click', async () => {
@@ -1367,10 +1381,10 @@
               </div>
 
               <div id="flo-ig-log-container" style="display:none; margin-top: 15px;">
-                  <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                  <div style="margin-bottom: 8px; font-size: 12px; color: var(--brand-primary); font-weight: bold; text-align: center;">
                       ⚠️ Click "Send" on the Instagram page first, then log below.
                   </div>
-                  <button id="flo-ig-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+                  <button id="flo-ig-log-btn" style="background: var(--brand-primary); color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
                   <div id="flo-ig-log-status" style="margin-top:8px; font-size:12px; text-align:center;"></div>
               </div>
           </div>
@@ -1518,7 +1532,7 @@
         runRumbleReportSequence(data, statusEl).catch((error) => {
             if (statusEl) {
                 statusEl.innerText = `❌ ${error.message}`;
-                statusEl.style.color = '#ce0e2d';
+                statusEl.style.color = 'var(--brand-primary)';
             }
             hasRunRumbleAutomation = false;
         });
@@ -1532,53 +1546,54 @@
             }
             return;
         }
-    
+
 
         const existing = document.getElementById("flo-upload-overlay");
         if (existing) existing.remove();
-      
+
         const overlay = document.createElement("div");
         overlay.id = "flo-upload-overlay";
         overlay.style.cssText = `
           position: fixed; top: 80px; right: 20px; width: 280px;
-          background: white; border: 3px solid #0288d1; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          background: white; border: 3px solid var(--brand-primary); box-shadow: 0 4px 15px rgba(0,0,0,0.3);
           z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
         `;
-      
+
         overlay.innerHTML = `
           <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
-            <h3 id="flo-wiz-title" style="margin:0; color:#0288d1; font-size:16px; pointer-events:none;">FloSports Wizard ✥</h3>
+            <h3 id="flo-wiz-title" style="margin:0; color:var(--brand-primary); font-size:16px; pointer-events:none;"></h3>
             <div>
                 <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
                 <button id="flo-wiz-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">×</button>
             </div>
           </div>
-          
+
           <div id="flo-wiz-main-content">
               <div style="margin-bottom: 12px; font-size: 13px;">
                 <small>Follow the highlighted steps as you progress through the form.</small>
               </div>
-              
+
               <div id="flo-step-container" style="display: flex; flex-direction: column; gap: 8px;">
-                  <button id="flo-btn-step1" style="background: #0288d1; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Init & Email</button>
+                  <button id="flo-btn-step1" style="background: var(--brand-primary); color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Init & Email</button>
                   <button id="flo-btn-step2" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 2: Personal Info</button>
                   <button id="flo-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Infringement & Sign</button>
               </div>
-      
+
               <div id="flo-log-container" style="display: none; margin-top: 15px;">
-                  <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                  <div style="margin-bottom: 8px; font-size: 12px; color: var(--brand-primary); font-weight: bold; text-align: center;">
                       ⚠️ Click "Send" on the page first, then log below!
                   </div>
-                  <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+                  <button id="flo-log-btn" style="background: var(--brand-primary); color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
                   <div id="flo-log-status" style="margin-top:8px; font-size:12px; text-align: center;"></div>
               </div>
           </div>
         `;
-      
+
         cachedOverlay = overlay; // Cache it!
         document.body.appendChild(overlay);
+        overlay.querySelector('#flo-wiz-title').textContent = `${globalThis.RightsReporterTheme?.value('assistantName') || 'Reporting Assistant'} ✥`;
         setupDrag(overlay);
-  
+
         // Minimize Logic
         let isWizMinimized = sessionStorage.getItem('floWizMinimized') === 'true';
         const minBtn = document.getElementById('flo-wiz-min-btn');
@@ -1604,13 +1619,13 @@
             } else {
                 mainContent.style.display = 'block';
                 minBtn.innerHTML = '−';
-                title.innerText = 'FloSports Wizard ✥';
+                title.innerText = `${globalThis.RightsReporterTheme?.value('assistantName') || 'Reporting Assistant'} ✥`;
                 overlay.style.width = '280px';
                 topBar.style.borderBottom = '1px solid #eee';
                 topBar.style.marginBottom = '10px';
                 topBar.style.paddingBottom = '8px';
                 overlay.style.borderRadius = '8px';
-                
+
                 // Adjust position slightly to prevent overflow
                 const rect = overlay.getBoundingClientRect();
                 if (window.innerWidth - rect.right < 10) {
@@ -1630,35 +1645,14 @@
         const btn3 = document.getElementById('flo-btn-step3');
         const stepContainer = document.getElementById('flo-step-container');
         const logContainer = document.getElementById('flo-log-container');
-  
+
         btn1.addEventListener('click', async () => {
             btn1.innerText = "Running...";
             const transitioned = await runStep1(data);
-            
+
             btn1.innerText = "Step 1: Done";
             btn1.style.background = "#ccc"; btn1.style.color = "#333";
-            btn2.style.background = "#0288d1"; btn2.style.color = "white";
-            
-            if (transitioned) {
-                isTransitioning = true;
-                overlay.style.display = 'none';
-                setTimeout(() => {
-                    isTransitioning = false;
-                    if (cachedOverlay) cachedOverlay.style.display = 'block';
-                    if (!document.getElementById("flo-upload-overlay") && cachedOverlay) {
-                        document.body.appendChild(cachedOverlay);
-                    }
-                }, 2500); // 2.5 second pause for the page to load
-            }
-        });
-  
-        btn2.addEventListener('click', async () => {
-            btn2.innerText = "Running...";
-            const transitioned = await runStep2(data);
-            
-            btn2.innerText = "Step 2: Done";
-            btn2.style.background = "#ccc"; btn2.style.color = "#333";
-            btn3.style.background = "#0288d1"; btn3.style.color = "white";
+            btn2.style.background = "var(--brand-primary)"; btn2.style.color = "white";
 
             if (transitioned) {
                 isTransitioning = true;
@@ -1672,19 +1666,40 @@
                 }, 2500); // 2.5 second pause for the page to load
             }
         });
-  
+
+        btn2.addEventListener('click', async () => {
+            btn2.innerText = "Running...";
+            const transitioned = await runStep2(data);
+
+            btn2.innerText = "Step 2: Done";
+            btn2.style.background = "#ccc"; btn2.style.color = "#333";
+            btn3.style.background = "var(--brand-primary)"; btn3.style.color = "white";
+
+            if (transitioned) {
+                isTransitioning = true;
+                overlay.style.display = 'none';
+                setTimeout(() => {
+                    isTransitioning = false;
+                    if (cachedOverlay) cachedOverlay.style.display = 'block';
+                    if (!document.getElementById("flo-upload-overlay") && cachedOverlay) {
+                        document.body.appendChild(cachedOverlay);
+                    }
+                }, 2500); // 2.5 second pause for the page to load
+            }
+        });
+
         btn3.addEventListener('click', async () => {
             btn3.innerText = "Running...";
             await runStep3(data);
             btn3.innerText = "Step 3: Done";
-            btn3.style.background = "#ccc"; 
+            btn3.style.background = "#ccc";
             btn3.style.color = "#333";
-            
+
             // Show the log container, but DO NOT hide the step buttons
             logContainer.style.display = "block";
-            overlay.style.borderColor = "#ce0e2d"; 
+            overlay.style.borderColor = "var(--brand-primary)";
         });
-  
+
         document.getElementById("flo-log-btn").addEventListener("click", () => {
         // Unlock audio context instantly on click
         const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
@@ -1719,36 +1734,37 @@
 
       const existing = document.getElementById("flo-upload-overlay");
       if (existing) existing.remove();
-    
+
       const overlay = document.createElement("div");
       overlay.id = "flo-upload-overlay";
       overlay.style.cssText = `
         position: fixed; top: 80px; right: 20px; width: 300px;
-        background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        background: white; border: 3px solid var(--brand-primary); box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
       `;
-    
+
       overlay.innerHTML = `
         <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
-          <h3 id="flo-wiz-title" style="margin:0; color:#ce0e2d; font-size:16px; pointer-events:none;">FloSports Helper ✥</h3>
+          <h3 id="flo-wiz-title" style="margin:0; color:var(--brand-primary); font-size:16px; pointer-events:none;"></h3>
           <div>
               <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
               <button id="flo-wiz-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">×</button>
           </div>
         </div>
-        
+
         <div id="flo-wiz-main-content">
             <div style="margin-bottom: 10px;">
               <strong>Platform:</strong> ${data.platform || "Unknown"}<br>
               <small>Review fields, then click Send.</small>
             </div>
-            <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+            <button id="flo-log-btn" style="background: var(--brand-primary); color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
             <div id="flo-log-status" style="margin-top:8px; font-size:12px;"></div>
         </div>
       `;
-    
+
       cachedOverlay = overlay; // Cache it
       document.body.appendChild(overlay);
+      overlay.querySelector('#flo-wiz-title').textContent = `${globalThis.RightsReporterTheme?.value('assistantName') || 'Reporting Assistant'} ✥`;
       setupDrag(overlay);
 
       // Minimize Logic
@@ -1777,13 +1793,13 @@
           } else {
               mainContent.style.display = 'block';
               minBtn.innerHTML = '−';
-              title.innerText = 'FloSports Helper ✥';
+              title.innerText = `${globalThis.RightsReporterTheme?.value('assistantName') || 'Reporting Assistant'} ✥`;
               overlay.style.width = '300px';
               topBar.style.borderBottom = '1px solid #eee';
               topBar.style.marginBottom = '10px';
               topBar.style.paddingBottom = '8px';
               overlay.style.borderRadius = '8px';
-              
+
               // Adjust position slightly to prevent overflow
               const rect = overlay.getBoundingClientRect();
               if (window.innerWidth - rect.right < 10) {
@@ -1792,11 +1808,11 @@
               }
           }
       });
-      
+
       closeBtn.addEventListener('click', () => {
           overlay.remove();
       });
-    
+
       document.getElementById("flo-log-btn").addEventListener("click", () => {
         const status = document.getElementById("flo-log-status");
         status.innerText = "Logging...";
@@ -1825,49 +1841,49 @@
 
         const existing = document.getElementById("flo-upload-overlay");
         if (existing) existing.remove();
-      
+
         const overlay = document.createElement("div");
         overlay.id = "flo-upload-overlay";
         overlay.style.cssText = `
           position: fixed; top: 80px; right: 20px; width: 280px;
-          background: white; border: 3px solid #ce0e2d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          background: white; border: 3px solid var(--brand-primary); box-shadow: 0 4px 15px rgba(0,0,0,0.3);
           z-index: 2147483647; padding: 15px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none; transition: all 0.3s ease;
         `;
-      
+
         overlay.innerHTML = `
           <div id="flo-wiz-top-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
-            <h3 id="flo-wiz-title" style="margin:0; color:#ce0e2d; font-size:16px; pointer-events:none;">YouTube Wizard ✥</h3>
+            <h3 id="flo-wiz-title" style="margin:0; color:var(--brand-primary); font-size:16px; pointer-events:none;">YouTube Wizard ✥</h3>
             <div>
                 <button id="flo-wiz-min-btn" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; line-height:1; padding:0 5px;">−</button>
                 <button id="flo-wiz-close-btn" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0 5px; margin-left: 2px;">×</button>
             </div>
           </div>
-          
+
           <div id="flo-wiz-main-content">
               <div style="margin-bottom: 12px; font-size: 13px;">
                 <small>Follow the highlighted steps as you progress through the form.</small>
               </div>
-              
+
               <div id="flo-step-container" style="display: flex; flex-direction: column; gap: 8px;">
-                  <button id="flo-yt-btn-step1" style="background: #ce0e2d; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Videos to remove</button>
+                  <button id="flo-yt-btn-step1" style="background: var(--brand-primary); color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 1: Videos to remove</button>
                   <button id="flo-yt-btn-step2" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 2: Copyright owner</button>
                   <button id="flo-yt-btn-step3" style="background: #ccc; color: #333; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-weight:bold;">Step 3: Removal options & Legal</button>
               </div>
-      
+
               <div id="flo-log-container" style="display: none; margin-top: 15px;">
-                  <div style="margin-bottom: 8px; font-size: 12px; color: #ce0e2d; font-weight: bold; text-align: center;">
+                  <div style="margin-bottom: 8px; font-size: 12px; color: var(--brand-primary); font-weight: bold; text-align: center;">
                       ⚠️ Ensure all fields are valid before logging!
                   </div>
-                  <button id="flo-log-btn" style="background: #ce0e2d; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
+                  <button id="flo-log-btn" style="background: var(--brand-primary); color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight:bold; width:100%;">Log to Sheet</button>
                   <div id="flo-log-status" style="margin-top:8px; font-size:12px; text-align: center;"></div>
               </div>
           </div>
         `;
-      
+
         cachedOverlay = overlay;
         document.body.appendChild(overlay);
         setupDrag(overlay);
-  
+
         let isWizMinimized = false;
         const minBtn = document.getElementById('flo-wiz-min-btn');
         const closeBtn = document.getElementById('flo-wiz-close-btn');
@@ -1911,23 +1927,23 @@
         const btn2 = document.getElementById('flo-yt-btn-step2');
         const btn3 = document.getElementById('flo-yt-btn-step3');
         const logContainer = document.getElementById('flo-log-container');
-  
+
         btn1.addEventListener('click', async () => {
             btn1.innerText = "Running...";
             await runYtStep1(data);
             btn1.innerText = "Step 1: Done";
             btn1.style.background = "#ccc"; btn1.style.color = "#333";
-            btn2.style.background = "#ce0e2d"; btn2.style.color = "white";
+            btn2.style.background = "var(--brand-primary)"; btn2.style.color = "white";
         });
-  
+
         btn2.addEventListener('click', async () => {
             btn2.innerText = "Running...";
             await runYtStep2(data);
             btn2.innerText = "Step 2: Done";
             btn2.style.background = "#ccc"; btn2.style.color = "#333";
-            btn3.style.background = "#ce0e2d"; btn3.style.color = "white";
+            btn3.style.background = "var(--brand-primary)"; btn3.style.color = "white";
         });
-  
+
         btn3.addEventListener('click', async () => {
             btn3.innerText = "Running...";
             await runYtStep3(data);
@@ -1939,19 +1955,19 @@
     document.getElementById("flo-log-btn").addEventListener("click", (e) => {
         // 1. Create the audio object IMMEDIATELY on click to capture user permission
         const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
-        
+
         if (e.target) e.target.disabled = true;
         const status = document.getElementById("flo-log-status");
         status.innerText = "Logging...";
-        
+
         chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
           if (response && response.success) {
             // 2. Play the pre-authorized audio object
             successAudio.play().catch(err => console.warn("Audio blocked:", err));
             status.innerText = "✅ Logged! Closing..."; status.style.color = "green";
             setTimeout(() => {
-              lastReportData = null; // Clear so the interval stops 
-              cachedOverlay = null;  
+              lastReportData = null; // Clear so the interval stops
+              cachedOverlay = null;
               overlay.remove();
           }, 2000);
         } else {
@@ -2097,7 +2113,7 @@ async function runTwitchStep1(data) {
     fillFieldWithFallback(
         ['textarea[name="copyrightWorkAllegedlyInfringed"]'],
         ['Describe the copyrighted work'],
-        data.eventName || 'FloSports Event'
+        data.eventName || 'Reported Event'
     );
     selectFieldOption(
         ['select[aria-label*="copyrighted work" i]', 'select[name*="copyright" i]'],
@@ -2139,18 +2155,18 @@ async function runTwitchStep2(data) {
 
 async function runTwitchStep3(data) {
     const reporterFullName = await resolveReporterFullName(data);
-    const contactEmail = 'Social@flosports.tv';
+    const contactEmail = TWITCH_CONTACT_EMAIL;
 
     fillFieldWithFallback(['input[name="claimantName"]'], ['Your name or organization'], reporterFullName);
     fillFieldWithFallback(['input[name="relationship"]'], ['Relationship to copyrighted work'], 'Authorized Agent');
     fillFieldWithFallback(['input[name="email"]'], ['Email Address', 'Email'], contactEmail);
-    selectFieldOption(['select[name="country"]'], ['Country'], 'United States');
-    fillFieldWithFallback(['input[name="city"]'], ['City'], 'Austin');
+    selectFieldOption(['select[name="country"]'], ['Country'], TWITCH_COUNTRY || 'United States');
+    fillFieldWithFallback(['input[name="city"]'], ['City'], TWITCH_CITY);
     fillFieldWithFallback(['input[name="ownerName"]'], ['Name of copyright owner'], COPYRIGHT_OWNER_NAME);
-    fillFieldWithFallback(['input[name="phoneNumber"]'], ['Phone number'], '5122702356');
-    fillFieldWithFallback(['input[name="address"]'], ['Street address'], '301 Congress ave #1500');
-    selectFieldOption(['select[name="stateOrProvince"]'], ['State/Province', 'State'], 'Texas');
-    fillFieldWithFallback(['input[name="postalCode"]'], ['Zip/Postal Code', 'Postal Code', 'Zip'], '78745');
+    fillFieldWithFallback(['input[name="phoneNumber"]'], ['Phone number'], TWITCH_CONTACT_PHONE);
+    fillFieldWithFallback(['input[name="address"]'], ['Street address'], TWITCH_STREET_ADDRESS);
+    selectFieldOption(['select[name="stateOrProvince"]'], ['State/Province', 'State'], TWITCH_STATE);
+    fillFieldWithFallback(['input[name="postalCode"]'], ['Zip/Postal Code', 'Postal Code', 'Zip'], TWITCH_ZIP);
 
     [
         'input[name="goodFaithCheckbox"]',
@@ -2199,7 +2215,7 @@ function setupDrag(overlay) {
         console.log("📝 Running YouTube Step 1: Videos...");
         const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
         const defaults = conf.defaults || {};
-        
+
         // 1. IMPOSE THE 10 VIDEO LIMIT
             const infringingUrls = data.urls || [];
             const MAX_YOUTUBE_URLS = 10;
@@ -2215,8 +2231,8 @@ function setupDrag(overlay) {
             if (btn) {
                btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
                btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-               btn.click(); 
-               return true; 
+               btn.click();
+               return true;
            }
            return false;
         }
@@ -2228,7 +2244,7 @@ function setupDrag(overlay) {
 
             if (targetDd) {
                 if (targetDd.innerText.toLowerCase().includes(valueStr.toLowerCase())) return;
-                
+
                 const trigger = targetDd.querySelector('[role="button"]') || targetDd;
                 trigger.click();
                 await sleep(500);
@@ -2252,7 +2268,7 @@ function setupDrag(overlay) {
             const sels = typeof selectors === 'string' ? selectors.split(',').map(s => s.trim()) : selectors;
             let found = false;
             for (const sel of sels) {
-                let el = sel.startsWith('//') 
+                let el = sel.startsWith('//')
                     ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
                     : document.querySelector(sel);
                 if (el) {
@@ -2278,25 +2294,25 @@ function setupDrag(overlay) {
             await sleep(1000);
 
             const dds = conf.dropdowns || {};
-            
+
             // 1. Fill the infringing YouTube URL first
             const badInputSel = conf.inputs?.infringing_url || "YouTube URL of video to be removed";
             fillYtcpInput(badInputSel, badUrl);
-            
+
             // 2. Select dropdowns to reveal the hidden fields
             await selectYtcpDropdown(dds.type_work?.label || "Type of work", dds.type_work?.value || "Video");
             await selectYtcpDropdown(dds.subcategory?.label || "Subcategory", dds.subcategory?.value || "Internet video");
-            
+
             // CRITICAL FIX: Select 'Source' BEFORE filling the Source URL so the box actually exists!
             await selectYtcpDropdown(dds.source?.label || "Source of my content", dds.source?.value || "From outside of YouTube");
             await sleep(500); // Wait for the "My video URL" box to render on screen
-            
-            // 3. Now fill the FloSports source URL and Title
+
+            // 3. Fill the configured rights-owner source URL and title.
             const sourceUrlSel = conf.inputs?.source_url || "My video URL";
             fillYtcpInput(sourceUrlSel, data.sourceUrl || defaults.source_url);
 
             const videoTitleSel = conf.inputs?.video_title || "Video title";
-            fillYtcpInput(videoTitleSel, data.eventName || "FloSports Event");
+            fillYtcpInput(videoTitleSel, data.eventName || "Reported Event");
             const locDropdown = dds.location || { label: "Location of infringing content", value: "Entire video" };
             await selectYtcpDropdown(locDropdown.label, locDropdown.value);
 
@@ -2307,21 +2323,21 @@ function setupDrag(overlay) {
         // 3. FILL COPYRIGHT OWNER SECTION
         console.log("Filling copyright owner details...");
         const ownerInputs = conf.inputs || {};
-        
+
         await selectYtcpDropdown(conf.dropdowns?.affected_party?.label || "Relationship", conf.dropdowns?.affected_party?.value || "My company, organization, or client");
 
         fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", COPYRIGHT_OWNER_NAME);
-        fillYtcpInput(ownerInputs.phone || "Phone", defaults.phone || "5122702356"); // FloSports Default
-        fillYtcpInput(ownerInputs.secondary_email || "Secondary email", defaults.secondary_email || data.email || "copyright@flosports.tv");
+        fillYtcpInput(ownerInputs.phone || "Phone", TWITCH_CONTACT_PHONE);
+        fillYtcpInput(ownerInputs.secondary_email || "Secondary email", TIKTOK_VERIFICATION_EMAIL || data.email || '');
         fillYtcpInput(ownerInputs.authority || "Relationship", defaults.authority || "Authorized Representative");
-        
-        await selectYtcpDropdown(conf.dropdowns?.country?.label || "Country", conf.dropdowns?.country?.value || "United States");
 
-        fillYtcpInput(ownerInputs.street || "Street address", defaults.street || "301 Congress Ave #1500");
-        fillYtcpInput(ownerInputs.city || "City", defaults.city || "Austin");
+        await selectYtcpDropdown(conf.dropdowns?.country?.label || "Country", TWITCH_COUNTRY || conf.dropdowns?.country?.value || "United States");
+
+        fillYtcpInput(ownerInputs.street || "Street address", TWITCH_STREET_ADDRESS);
+        fillYtcpInput(ownerInputs.city || "City", TWITCH_CITY);
         await sleep(1000); // Give the form time to re-render after Country selection
-        fillYtcpInput(ownerInputs.state || "ytcp-form-textarea#state textarea, #state textarea", defaults.state || "TX");
-        fillYtcpInput(ownerInputs.zip || "Zip code", defaults.zip || "78701");
+        fillYtcpInput(ownerInputs.state || "ytcp-form-textarea#state textarea, #state textarea", TWITCH_STATE);
+        fillYtcpInput(ownerInputs.zip || "Zip code", TWITCH_ZIP);
 
         // 4. REMOVAL OPTIONS & AGREEMENTS
         console.log("Checking agreements...");
@@ -2344,7 +2360,7 @@ function setupDrag(overlay) {
 
         console.log("✅ YouTube Strategy Complete!");
     }
-    
+
     async function runYtStep2(data) {
         console.log("📝 Running YouTube Step 2: Copyright owner...");
         const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
@@ -2356,7 +2372,7 @@ function setupDrag(overlay) {
             const sels = typeof selectors === 'string' ? selectors.split(',').map(s => s.trim()) : selectors;
             let found = false;
             for (const sel of sels) {
-                let el = sel.startsWith('//') 
+                let el = sel.startsWith('//')
                     ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
                     : document.querySelector(sel);
                 if (el) {
@@ -2383,10 +2399,10 @@ function setupDrag(overlay) {
                     const currentVal = targetDropdown.querySelector('.dropdown-trigger-text')?.innerText || '';
                     if (currentVal.toLowerCase().includes(valueText.toLowerCase())) return;
                     trigger.click();
-                    await sleep(500); 
+                    await sleep(500);
                     const options = Array.from(document.querySelectorAll('tp-yt-paper-item, ytcp-text-dropdown-item'));
                     const targetOption = options.find(opt => isVisible(opt) && opt.innerText.toLowerCase().includes(valueText.toLowerCase()));
-                    if (targetOption) { targetOption.click(); await sleep(500); } 
+                    if (targetOption) { targetOption.click(); await sleep(500); }
                     else { trigger.click(); }
                 }
             }
@@ -2397,26 +2413,26 @@ function setupDrag(overlay) {
 
         const ownerInputs = conf.inputs || {};
         fillYtcpInput(ownerInputs.claimant_name || "Copyright owner name", COPYRIGHT_OWNER_NAME);
-        fillYtcpInput(ownerInputs.phone || "Phone", defaults.phone || "5122702356");
-        fillYtcpInput(ownerInputs.secondary_email || "Secondary email", defaults.secondary_email || data.email || "copyright@flosports.tv");
+        fillYtcpInput(ownerInputs.phone || "Phone", TWITCH_CONTACT_PHONE);
+        fillYtcpInput(ownerInputs.secondary_email || "Secondary email", TIKTOK_VERIFICATION_EMAIL || data.email || '');
         fillYtcpInput(ownerInputs.authority || "Relationship", defaults.authority || "Authorized Representative");
-        
-        await selectYtcpDropdown(conf.dropdowns?.country?.label || "Country", conf.dropdowns?.country?.value || "United States");
 
-        fillYtcpInput(ownerInputs.street || "Street address", defaults.street || "301 Congress Ave #1500");
-        fillYtcpInput(ownerInputs.city || "City", defaults.city || "Austin");
+        await selectYtcpDropdown(conf.dropdowns?.country?.label || "Country", TWITCH_COUNTRY || conf.dropdowns?.country?.value || "United States");
+
+        fillYtcpInput(ownerInputs.street || "Street address", TWITCH_STREET_ADDRESS);
+        fillYtcpInput(ownerInputs.city || "City", TWITCH_CITY);
         await sleep(1000); // Give the form time to re-render after Country selection
-        fillYtcpInput(ownerInputs.state || "ytcp-form-textarea#state textarea, #state textarea", defaults.state || "TX");
-        fillYtcpInput(ownerInputs.zip || "Zip code", defaults.zip || "78701");
+        fillYtcpInput(ownerInputs.state || "ytcp-form-textarea#state textarea, #state textarea", TWITCH_STATE);
+        fillYtcpInput(ownerInputs.zip || "Zip code", TWITCH_ZIP);
     }
-    
+
     async function runIgStep1(data) {
         console.log("📝 Running Instagram Step 1: Contact information...");
         const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
         const fields = conf.fields || {};
         const defaults = conf.defaults || {};
         const reporterFullName = await resolveReporterFullName(data);
-        const contactEmail = defaults.contact_email || TIKTOK_VERIFICATION_EMAIL;
+        const contactEmail = TIKTOK_VERIFICATION_EMAIL;
 
         checkChoiceField(
             fields.relationship_radio,
@@ -2440,7 +2456,7 @@ function setupDrag(overlay) {
         fillFieldWithFallback(
             fields.rights_owner_name,
             ['Name of the rights owner', 'This may be your full name or the name of the organization'],
-            defaults.rights_owner_name || COPYRIGHT_OWNER_NAME
+            COPYRIGHT_OWNER_NAME
         );
         selectFieldOption(
             fields.country_select,
@@ -2469,7 +2485,7 @@ function setupDrag(overlay) {
         fillFieldWithFallback(
             fields.copyrighted_work_description,
             ['Describe your copyrighted work in the link you provided above'],
-            data.eventName || 'FloSports Event'
+            data.eventName || 'Reported Event'
         );
 
         if (hasPostLike || !hasStory) {
@@ -2538,7 +2554,7 @@ function setupDrag(overlay) {
         const sendBtn = await waitForVisibleElement(fields.send_button || ['button[type="submit"]'], 1000);
         if (sendBtn) {
             sendBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            sendBtn.style.border = "4px solid #ce0e2d";
+            sendBtn.style.border = "4px solid var(--brand-primary)";
             sendBtn.disabled = false;
         }
     }
@@ -2557,7 +2573,7 @@ function setupDrag(overlay) {
             if (!selectors || !val) return;
             const sels = typeof selectors === 'string' ? selectors.split(',').map(s => s.trim()) : selectors;
             for (const sel of sels) {
-                let el = sel.startsWith('//') 
+                let el = sel.startsWith('//')
                     ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
                     : document.querySelector(sel);
                 if (el) {
@@ -2600,7 +2616,7 @@ function setupDrag(overlay) {
                 checkbox.click();
             }
         }
-        
+
         fillYtcpInput(ownerInputs.signature || "Signature", COPYRIGHT_OWNER_NAME);
 
         console.log("✅ YouTube Step 3 Complete!");

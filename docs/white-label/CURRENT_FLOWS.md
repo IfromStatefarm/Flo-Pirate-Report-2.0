@@ -11,25 +11,27 @@ Page content scripts / side panel / popup / options
                 v
 background/main.js authorization + action router
                 |
-                +-- services/access_registry.js --> Google Sheets access registry
+                +-- services/customer_bootstrap_service.js --> customer membership API
+                +-- services/customer_data_service.js ------> normalized event/statistics API
                 +-- background/services/* -------> Chrome tabs, reporting sites
                 +-- utils/google_api.js ----------> Google Drive + Sheets
                 +-- utils/idb_storage.js ---------> local screenshot blobs
 ```
 
-There is no `customer_id` in the current queue, report rows, statistics calculations, or storage keys. Isolation is indirect: a user profile may replace their configured Drive/report/event IDs, but the application has no first-class customer boundary.
+The verified access profile contains stable `customerId` and `userId` values plus a configuration version. Every normalized reporting/activity event receives those identifiers and a unique `eventId`. Scoreboard and intelligence requests and responses repeat the verified customer/user/dashboard scope.
 
 ## Authentication and authorization
 
-1. UI surfaces request `getAccessProfile`, commonly with `forceRefresh: true` when opening settings or the side panel.
-2. `background/main.js` delegates to `services/access_registry.js`.
-3. The registry compares the active Google identity with an extension session stored in `chrome.storage.session`.
-4. It reads columns A-M from worksheet `gid=0` of one hardcoded access spreadsheet.
-5. `utils/access_control.js` converts the row to a profile and assigns cumulative Waiting Approval, Employee, Manager, or Admin permissions plus platform access.
-6. `background/main.js` applies an action policy before dispatching protected messages. Platform-scoped actions derive platforms from request fields, URLs, and sometimes the entire local queue.
-7. UI permission checks hide/disable features, while background checks provide the stronger in-extension guard.
+1. UI surfaces request `getAccessProfile`; an explicit Settings action can call `bootstrapCustomerAccess`.
+2. `background/main.js` delegates to `services/customer_bootstrap_service.js`.
+3. The service obtains a Google OAuth token and current Google email, then posts them to the packaged credential-free HTTPS endpoint.
+4. The server verifies the token and must resolve exactly one active customer membership.
+5. `utils/access_control.js` validates the fixed profile, limits its lifetime to fifteen minutes, and intersects API permissions with the retained Employee, Manager, or Admin permission matrix.
+6. Only validated profiles enter `chrome.storage.local`. An expired last-known-good profile is display-only, while authoritative membership denial immediately blocks it.
+7. `background/main.js` applies an action policy before dispatching protected messages. Platform-scoped actions derive platforms from request fields, URLs, and sometimes the entire local queue.
+8. UI permission checks hide/disable features, while background checks provide the authorization boundary.
 
-The current registry also stores per-user managed Drive root, report sheet, and event sheet IDs. When present, those values are copied into `chrome.storage.sync` and replace manual values.
+Validated customer integration destinations are copied into `chrome.storage.sync` for legacy UI compatibility, while reporting, automation, event lookup, and Drive code receives destinations directly from the verified profile. A change of customer or user clears queued reporting data and active search state.
 
 ## Configuration flow
 
@@ -46,9 +48,9 @@ This is a global/per-user-resource configuration model. It does not validate a t
 ### Acquisition
 
 1. Content scripts run on supported social/video sites and use the platform registry plus platform scrapers to extract URL, handle, views, profile URL, content type, and related evidence.
-2. `processNewItem` may check the event sheet's `Handles White List` first. A match writes a negative-points penalty row instead of adding the item normally.
+2. `processNewItem` checks the verified customer's event sheet `Handles White List`. A match writes a normalized `report.whitelist_penalty` API event instead of adding the item normally.
 3. `addToCart` or `processNewItem` captures the visible tab when possible, stores the image in IndexedDB, and saves queue metadata in `chrome.storage.local.piracy_cart`.
-4. Queue uniqueness is URL-based. Items currently contain user/platform/report metadata but no customer identifier or configuration version.
+4. Queue uniqueness is URL-based. Each accepted addition also writes an `activity.item_added` event containing customer, user, and event IDs.
 
 ### Side-panel start
 
@@ -62,16 +64,16 @@ This is a global/per-user-resource configuration model. It does not validate a t
 
 1. `background/main.js` authorizes the message through `ACTION_ACCESS_POLICIES` and rejects unassigned platforms.
 2. `background/services/reporting_workflow.js::handleBatchReport()` reads the local queue and refreshes missing TikTok views. Platform wrappers can first capture screenshots or refresh Rumble/Facebook/Twitch metadata.
-3. The workflow obtains a Google OAuth token, creates/fetches a yearly report folder and daily screenshot folder, then groups queue items by handle. Twitch separates Live and VOD groups.
+3. The workflow obtains a Google OAuth token, uses the verified customer's Drive root to create/fetch a yearly report folder and daily screenshot folder, then groups queue items by handle. Twitch separates Live and VOD groups.
 4. Screenshots are uploaded to Drive.
 5. `utils/pdf_gen.js::generatePDF()` creates one evidence PDF per group, and the PDF is uploaded to the yearly report folder.
-6. A report row is appended to the report spreadsheet. URL text in column H and the report/channel/PDF text in column K are converted to rich links.
+6. `report.submitted` and `platform.report_outcome` events are accepted by the customer data API. The server-side projector owns the customer statistics workbook projection.
 7. Streak, Double XP, queue-size multiplier, scout points, and enforcer points are calculated locally.
 8. Processed queue items and IndexedDB screenshots are cleared; YouTube batches retain items beyond ten for the next run.
 
-## Current report row contract
+## Legacy report projection contract
 
-The batch workflow writes the following positional A-V contract:
+Existing operational report sheets still use the following positional A-V contract. New statistics are sourced from normalized API events rather than trusting this layout:
 
 | Column | Current value |
 | --- | --- |
@@ -100,7 +102,7 @@ This contract is implicit and referenced by numeric indexes throughout `utils/go
 1. The side panel requests `scanSheetForActiveLinks` to find active links for a platform and add them to the queue, or `triggerCloser` to process report rows directly.
 2. `services/sheet_scanner.js` reads column H with rich-text formatting from the report sheet.
 3. It ignores configured internal/owned URLs and already-struck links, opens remaining URLs in tabs, and applies platform-specific takedown detection.
-4. Dead links are struck through in column H. If every link is dead, column J is changed to `Resolved` and bonus points are added to column U. Rows with active links are changed to `Investigating`.
+4. Every checked platform URL emits `automation.platform_outcome`. Row changes emit `automation.row_status_changed`; runs emit start/completion events. Existing operational sheet formatting/status writes use the verified customer's report-sheet destination.
 5. The scanner can add up to 100 active URLs to the local queue and uses three concurrent tab workers for the queue-building scan.
 
 ## Scoreboard flow
@@ -109,19 +111,19 @@ This contract is implicit and referenced by numeric indexes throughout `utils/go
 sidepanel/main.js refreshGamificationStats
   -> getGamificationStats message
   -> background/main.js handleGamificationStats
-  -> utils/google_api.js fetchLeaderboardData
-  -> report sheet A:V
+  -> customer_data_service queryStatistics(profile, scoreboard)
+  -> customer-scoped normalized store/materialized metrics
   -> utils/gamification_ui.js renderGamificationStats
 ```
 
-`fetchLeaderboardData()`:
+The server scoreboard query:
 
-- Includes rows from the current Chicago calendar month.
-- Treats column G as the scout identity and column M as the enforcer identity.
-- Sums scout points from T and enforcer points from U.
+- Includes normalized customer events from the requested current-month period.
+- Uses stable `user_id` rather than a name/email column as the identity.
+- Aggregates scout/enforcer points from normalized event attributes.
 - Produces the current user's totals, level labels, top-five lists, overall MVP, and a derived team total.
 - Uses fixed thresholds of 501 and 1001 points and a team goal of 1,000.
-- Uses three fixed Drive-hosted celebration videos.
+- Returns a response bound to the requesting customer, user, and configured dashboard.
 
 ## Intelligence/statistics flow
 
@@ -129,10 +131,10 @@ sidepanel/main.js refreshGamificationStats
 sidepanel date range + selected vertical
   -> generateIntelligenceReport message
   -> background permission + assigned-platform filter
-  -> fetchIntelligenceData(startDate, endDate, allowedPlatforms)
-  -> report sheet A:V aggregation
+  -> customer_data_service queryStatistics(profile, intelligence)
+  -> API-enforced customer/platform/date scope
   -> generateIntelligencePDF
-  -> Drive/Tactical Briefings
+  -> verified customer Drive/Tactical Briefings
   -> open uploaded PDF
 ```
 
@@ -145,11 +147,11 @@ The aggregation produces:
 - team rows and MVP;
 - weighted and unweighted burndown values.
 
-The intelligence handler receives the selected vertical but does not pass it to `fetchIntelligenceData()`. The current PDF is therefore date- and platform-filtered, not vertical-filtered.
+The response customer, user, query type, and dashboard must match the verified request. The PDF and Drive file receive the generated activity event's customer/user/event metadata.
 
-## Important baseline inconsistencies
+## Historical baseline inconsistencies
 
-These are documented before refactoring so customer work does not accidentally preserve or obscure them:
+These describe the legacy sheet implementation retained for migration. Background statistics no longer invoke that implementation:
 
 1. **Column V has conflicting meanings.** New report rows write `reportId` to V, while intelligence calculations read V as a resolution date for burndown.
 2. **Per-user burndown accumulators are absent.** `teamStats` reads `rCount`, `wSum`, `uwCount`, and `uwSum`, but the current aggregation never initializes or updates those fields, so per-user burndown resolves to `N/A`.
@@ -166,14 +168,14 @@ These issues should be covered by characterization tests before the report schem
 
 | State/resource | Current use |
 | --- | --- |
-| `chrome.storage.session` | Extension login session |
+| `chrome.storage.session` | Legacy login key cleanup only; customer bootstrap does not create a custom login session |
 | `chrome.storage.sync` | Drive/report/event IDs, report mode, briefing preferences, beta flag, managed/manual resource state |
 | `chrome.storage.local` | Queue, reporter context, last selections, streaks, access-profile cache, UI/onboarding state |
 | IndexedDB `PirateReportDB/screenshots` | Base64 screenshot evidence before Drive upload |
-| Access spreadsheet | Users, roles, platforms, password hashes, managed Google resource IDs |
-| Report spreadsheet | Operational log, status, evidence links, points, scoreboard, intelligence source |
+| Customer API | Verified identity/profile, normalized events, scoped statistics, membership, permissions, and destinations |
+| Report spreadsheet | Customer-routed operational projection/status workspace; no longer the statistics authority |
 | Event spreadsheet | Event URLs, allowed handles, rogue-site notes, suggestions |
-| Drive root | Remote `events_config.json`, evidence folders, report PDFs, intelligence PDFs |
+| Drive root | Verified-customer remote config, evidence folders, report PDFs, and intelligence PDFs with scope metadata |
 
 ## Characterization-test seam for the next phase
 

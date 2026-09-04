@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Rights Reporter</title>
+  <rect width="128" height="128" rx="28" fill="#334155"/>
+  <path d="M64 20 103 35v27c0 24-15.7 41.8-39 50-23.3-8.2-39-26-39-50V35l39-15Z" fill="#fff" opacity=".97"/>
+  <path d="M45 47h38M45 62h38M45 77h24" fill="none" stroke="#334155" stroke-linecap="round" stroke-width="8"/>
+  <circle cx="84" cy="84" r="16" fill="#2563eb"/>
+  <path d="m77 84 5 5 10-11" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+</svg>

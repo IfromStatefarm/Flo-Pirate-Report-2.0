@@ -33,6 +33,11 @@
     "reportingEmail": "",
     "secondaryEmail": "",
     "phone": "",
+    "addressLine1": "",
+    "city": "",
+    "region": "",
+    "postalCode": "",
+    "country": "",
     "originalWorkUrl": ""
   },
   "access": {

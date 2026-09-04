@@ -2,16 +2,14 @@ export function createRogueWorkflow({
   base64ToBlob,
   ensureRogueScreenshotFolder,
   getAuthToken,
-  logRogueToSheet,
-  uploadToDrive
+  uploadToDrive,
+  getCustomerProfile,
+  recordCustomerEvent
 }) {
   const sniffedNetworkTraffic = new Map();
 
   chrome.webRequest.onBeforeRequest.addListener(
     (details) => {
-      const url = details.url.toLowerCase();
-      if (url.includes('flosports') || url.includes('varsity') || url.includes('milesplit')) return;
-
       if (details.url.startsWith('wss://')) {
         sniffedNetworkTraffic.set(details.url, 'WebSocket/C2');
       }
@@ -22,14 +20,6 @@ export function createRogueWorkflow({
   chrome.webRequest.onResponseStarted.addListener(
     (details) => {
       const url = details.url.toLowerCase();
-      if (
-        url.includes('flosports') ||
-        url.includes('varsity') ||
-        url.includes('milesplit') ||
-        url.includes('lom.flosports.net')
-      ) {
-        return;
-      }
 
       if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts')) {
         sniffedNetworkTraffic.set(details.url, details.ip || 'IP Hidden/Cloudflare');
@@ -56,12 +46,14 @@ export function createRogueWorkflow({
   }
 
   async function log(data, notes = '') {
+    const customerProfile = await getCustomerProfile();
+    const customerEventId = crypto.randomUUID();
     const token = await getAuthToken();
-    let finalNotes = notes;
+    let evidenceUrl = '';
 
     if (data.screenshot) {
       const imageBlob = base64ToBlob(data.screenshot);
-      const folderId = await ensureRogueScreenshotFolder(token);
+      const folderId = await ensureRogueScreenshotFolder(token, customerProfile.integrations);
       const urlObj = new URL(data.url);
       const domain = urlObj.hostname.replace(/^www\./, '').toLowerCase();
       const dateStr = new Date()
@@ -72,12 +64,26 @@ export function createRogueWorkflow({
         'stream';
       const filename = `${domain}.${safeLink}.${dateStr}.jpg`;
 
-      const uploadRes = await uploadToDrive(token, folderId, filename, imageBlob, 'image/jpeg');
-      finalNotes += `\n\nEvidence Screenshot: ${uploadRes.webViewLink}`;
+      const uploadRes = await uploadToDrive(token, folderId, filename, imageBlob, 'image/jpeg', {
+        customerId: customerProfile.customerId,
+        userId: customerProfile.userId,
+        eventId: customerEventId
+      });
+      evidenceUrl = uploadRes.webViewLink;
     }
 
-    await logRogueToSheet(token, data, finalNotes);
-    return { success: true };
+    const domain = new URL(data.url).hostname.replace(/^www\./, '').toLowerCase();
+    const accepted = await recordCustomerEvent(customerProfile, 'rogue.evidence_logged', {
+      target_url: data.url,
+      domain,
+      notes,
+      evidence_url: evidenceUrl,
+      network_observation_count: Array.isArray(data.networkTraffic) ? data.networkTraffic.length : 0,
+      embedded_video_count: Array.isArray(data.videos) ? data.videos.length : 0,
+      iframe_count: Array.isArray(data.iframes) ? data.iframes.length : 0,
+      email_count: Array.isArray(data.emails) ? data.emails.length : 0
+    }, { eventId: customerEventId });
+    return { success: true, eventId: accepted.event_id };
   }
 
   return {

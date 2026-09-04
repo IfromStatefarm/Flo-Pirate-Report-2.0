@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   CUSTOMER_CONFIG_SHEET_HEADERS,
+  customerConfigToSheetRow,
   NEUTRAL_CUSTOMER_CONFIG,
   cloneNeutralCustomerConfig,
   resolveCustomerConfig,
@@ -34,6 +35,11 @@ function validCandidate() {
     reportingEmail: 'RIGHTS@EXAMPLE.COM',
     secondaryEmail: 'legal@example.com',
     phone: '+1 555 010 1000',
+    addressLine1: '100 Main Street',
+    city: 'Austin',
+    region: 'Texas',
+    postalCode: '78701',
+    country: 'United States',
     originalWorkUrl: 'https://www.example.com/'
   };
   config.access = {
@@ -84,6 +90,11 @@ function rowFor(candidate) {
     'Reporting Email': candidate.legal.reportingEmail,
     'Secondary Email': candidate.legal.secondaryEmail,
     'Reporting Phone': candidate.legal.phone,
+    'Address Line 1': candidate.legal.addressLine1,
+    City: candidate.legal.city,
+    Region: candidate.legal.region,
+    'Postal Code': candidate.legal.postalCode,
+    Country: candidate.legal.country,
     'Original Work URL': candidate.legal.originalWorkUrl,
     'Allowed Email Domains': candidate.access.allowedEmailDomains.join(','),
     'Enabled Platforms': candidate.capabilities.enabledPlatforms.join(','),

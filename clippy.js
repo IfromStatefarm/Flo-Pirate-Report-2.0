@@ -7,7 +7,7 @@
 
     const isOptionsPage = window.location.href.toLowerCase().includes('options.html');
     const optionsPageUrl = chrome.runtime.getURL('options.html');
-    const setupGuideUrl = 'https://flocasts.atlassian.net/wiki/spaces/FSM/pages/5634621448/FloSports+Pirate+Reporter+3.3.1+Pirate+AI#Options-Set-Up';
+    const assistantName = () => globalThis.RightsReporterTheme?.value('assistantName') || 'Reporting Assistant';
 
     let clippyHost;
     let clippyShadow;
@@ -72,15 +72,15 @@
 
     function getOptionsSetupMessages() {
         return [
-            `Hi! I'm your FloSports Piracy Assistant.<br><br>Please paste your <b>Folder ID</b>, <b>Foundation Sheet ID</b>, and <b>Config Sheet ID</b> into the boxes above.<br><br><a href="${setupGuideUrl}" target="_blank" style="color: #ce0e2d; font-weight: bold; text-decoration: underline;">Open the setup guide</a> if you need help finding them.`,
-            `Setup is still missing one or more IDs.<br><br>Fill in the <b>three boxes above</b>, then click <b>Save Intelligence Settings</b>.<br><br>You can also <a href="${setupGuideUrl}" target="_blank" style="color: #ce0e2d; font-weight: bold; text-decoration: underline;">check the guide here</a>.`,
-            `Almost there.<br><br>This page needs all <b>three Google IDs</b> before Pirate AI can fully operate.<br><br>Use the fields above, then save. If needed, <a href="${setupGuideUrl}" target="_blank" style="color: #ce0e2d; font-weight: bold; text-decoration: underline;">follow the setup instructions</a>.`
+            `Hi! I'm your ${assistantName()}.<br><br>Please paste your <b>Folder ID</b>, <b>Reporting Sheet ID</b>, and <b>Event Sheet ID</b> into the boxes above.`,
+            `Setup is still missing one or more IDs.<br><br>Fill in the <b>three boxes above</b>, then click <b>Save Intelligence Settings</b>.`,
+            `Almost there.<br><br>This page needs all <b>three Google IDs</b> before reporting tools can fully operate.<br><br>Use the fields above, then save.`
         ];
     }
 
     function getContentSetupMessages() {
         return [
-            `Pirate AI needs its <b>three setup IDs</b> before this tab can be used.<br><br><a href="${optionsPageUrl}" target="_blank" style="color: #ce0e2d; font-weight: bold; text-decoration: underline;">Open the Enforcement Center</a> and fill in the Folder ID, Foundation Sheet ID, and Config Sheet ID.<br><br>If you need help, <a href="${setupGuideUrl}" target="_blank" style="color: #ce0e2d; font-weight: bold; text-decoration: underline;">use the setup guide</a>.`
+            `Reporting tools need their <b>three setup IDs</b> before this tab can be used.<br><br><a href="${optionsPageUrl}" target="_blank" style="color: var(--brand-primary); font-weight: bold; text-decoration: underline;">Open Settings</a> and fill in the Folder ID, Reporting Sheet ID, and Event Sheet ID.`
         ];
     }
 
@@ -91,7 +91,7 @@
         if (reasonKey === 'needs-config-content') {
             return getContentSetupMessages();
         }
-        return idlePhrases.map((phrase) => `<strong>Clippy Says:</strong><br><br>${phrase}`);
+        return idlePhrases.map((phrase) => `<strong>${assistantName()} Says:</strong><br><br>${phrase}`);
     }
 
     function pickInitialMessageIndex(reasonKey, pool) {
@@ -154,7 +154,7 @@
             ">×</button>
             <div id="flo-clippy-bubble" style="
                 background: #ffffff;
-                border: 2px solid #ce0e2d;
+                border: 2px solid var(--brand-primary);
                 border-radius: 12px 12px 0 12px;
                 padding: 15px 20px;
                 box-shadow: 0 8px 25px rgba(0,0,0,0.2);

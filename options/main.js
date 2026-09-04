@@ -5,7 +5,6 @@ import {
   hasPlatformAccess,
   roleLabel
 } from '../utils/access_control.js';
-import { PLATFORM_CATALOG } from '../utils/platform_catalog.js';
 
 <<<<<<< Updated upstream
 const DEFAULT_BRIEFING_STATS = {
@@ -50,6 +49,7 @@ const status = document.getElementById('status');
 let currentAccessProfile = null;
 let selectedAccessUser = null;
 let accessSearchTimer = null;
+let currentAccessUtilization = null;
 
 const CONNECTIVITY_FIELDS = Object.freeze([
   { inputId: 'piracy_folder_id', storageKey: 'piracy_folder_id', profileId: 'driveRootId', profileLabel: 'driveRootLabel' },
@@ -171,7 +171,7 @@ const SELECTOR_HELP_TEXT = Object.freeze({
             'fields.rights_owner_name': 'Instagram report form: fills the rights owner / authorized representative field.',
             'fields.country_select': 'Instagram report form: selects where rights are being asserted.',
             'fields.work_type_select': 'Instagram report form: selects the copyrighted work type.',
-            'fields.source_url': 'Instagram report form: fills the original FloSports source URL.',
+            'fields.source_url': 'Instagram report form: fills the configured rights-owner source URL.',
             'fields.copyrighted_work_description': 'Instagram report form: fills the event or copyrighted work description.',
             'fields.content_type_post': 'Instagram report form: checks the post content type.',
             'fields.content_type_story': 'Instagram report form: checks the story content type.',
@@ -437,7 +437,7 @@ function renderDoubleXpEventList() {
       });
 
       renderDoubleXpEventList();
-      setBriefingContentStatus(`Removed "${target.eventName}" from Double XP.`, '#b45309');
+      setBriefingContentStatus(`Removed "${target.eventName}" from Double XP.`, 'var(--status-warning)');
     });
   });
 }
@@ -468,7 +468,7 @@ async function loadBriefingContentEditor() {
     setBriefingContentStatus('');
   } catch (error) {
     console.error('Failed to load briefing content editor:', error);
-    setStatusMessage('Unable to load shared briefing content.', '#ce0e2d', 'looking');
+    setStatusMessage('Unable to load shared briefing content.', 'var(--brand-primary)', 'looking');
     clearStatusMessage();
   } finally {
     saveBtn.disabled = false;
@@ -481,13 +481,13 @@ function addDoubleXpEventFromInputs() {
   const eventName = eventNameInput.value.trim();
 
   if (!verticalName || !eventName) {
-    setBriefingContentStatus('Choose a vertical and enter an event name first.', '#ce0e2d');
+    setBriefingContentStatus('Choose a vertical and enter an event name first.', 'var(--brand-primary)');
     return;
   }
 
   const matchingVertical = editorVerticals.find((vertical) => vertical.name === verticalName);
   if (!matchingVertical) {
-    setBriefingContentStatus('That vertical is missing from config.', '#ce0e2d');
+    setBriefingContentStatus('That vertical is missing from config.', 'var(--brand-primary)');
     return;
   }
 
@@ -496,7 +496,7 @@ function addDoubleXpEventFromInputs() {
   );
 
   if (existingEvent?.double_xp) {
-    setBriefingContentStatus('That Double XP event is already live.', '#b45309');
+    setBriefingContentStatus('That Double XP event is already live.', 'var(--status-warning)');
     return;
   }
 
@@ -537,7 +537,7 @@ async function saveBriefingContentEdits() {
     clearStatusMessage();
   } catch (error) {
     console.error('Failed to save briefing content:', error);
-    setBriefingContentStatus(error.message || 'Failed to save briefing content.', '#ce0e2d');
+    setBriefingContentStatus(error.message || 'Failed to save briefing content.', 'var(--brand-primary)');
   } finally {
     saveBtn.disabled = false;
   }
@@ -726,7 +726,7 @@ function renderSelectorEditorCategories() {
 
       const newPath = input.value.trim();
       if (!newPath) {
-        setSelectorEditorStatus('Enter a value path before adding it.', '#ce0e2d');
+        setSelectorEditorStatus('Enter a value path before adding it.', 'var(--brand-primary)');
         return;
       }
 
@@ -744,7 +744,7 @@ function renderSelectorEditorCategories() {
         droppedPath
           ? `Saved new path for ${category.title}. Oldest path was removed to keep the most recent ${SELECTOR_EDITOR_MAX_PATHS}.`
           : `Saved new path for ${category.title}.`,
-        droppedPath ? '#b45309' : 'green'
+        droppedPath ? 'var(--status-warning)' : 'green'
       );
     });
   });
@@ -802,7 +802,7 @@ async function loadSelectorPathEditor() {
     setSelectorEditorStatus('');
   } catch (error) {
     console.error('Failed to load selector editor:', error);
-    setStatusMessage('Unable to load selector path editor.', '#ce0e2d', 'looking');
+    setStatusMessage('Unable to load selector path editor.', 'var(--brand-primary)', 'looking');
     clearStatusMessage();
   } finally {
     saveBtn.disabled = false;
@@ -823,7 +823,7 @@ async function saveSelectorPathEdits() {
     clearStatusMessage();
   } catch (error) {
     console.error('Failed to save selector paths:', error);
-    setSelectorEditorStatus(error.message || 'Failed to save selector paths.', '#ce0e2d');
+    setSelectorEditorStatus(error.message || 'Failed to save selector paths.', 'var(--brand-primary)');
   } finally {
     saveBtn.disabled = false;
   }
@@ -842,7 +842,7 @@ function confirmSelectorDelete() {
 
   const { input } = getDeleteConfirmElements();
   if (input.value.trim().toLowerCase() !== pendingSelectorDelete.fruit.toLowerCase()) {
-    setDeleteConfirmStatus(`Type "${pendingSelectorDelete.fruit}" exactly to confirm this delete.`, '#ce0e2d');
+    setDeleteConfirmStatus(`Type "${pendingSelectorDelete.fruit}" exactly to confirm this delete.`, 'var(--brand-primary)');
     return;
   }
 
@@ -858,7 +858,7 @@ function confirmSelectorDelete() {
 
   closeSelectorDeleteConfirmModal();
   renderSelectorEditorCategories();
-  setSelectorEditorStatus(`Deleted one saved path from ${category.title}.`, '#b45309');
+  setSelectorEditorStatus(`Deleted one saved path from ${category.title}.`, 'var(--status-warning)');
 }
 
 function showSettingsAccessState({ title, message, state = '', showRetry = false }) {
@@ -904,170 +904,62 @@ function setAuthStatus(message = '', color = '#475569') {
 }
 
 function setAuthFormsDisabled(disabled) {
-  document.querySelectorAll('#access-login-form input, #access-login-form select, #access-login-form button, #access-create-form input, #access-create-form button')
-    .forEach((control) => { control.disabled = disabled; });
-}
-
-function hideLoginEmailSelection() {
-  const group = document.getElementById('login-email-group');
-  const select = document.getElementById('login_email');
-  group.hidden = true;
-  select.required = false;
-  select.replaceChildren(new Option('Choose your email…', ''));
-}
-
-function showMiddleNameChallenge(formPrefix, message) {
-  const group = document.getElementById(`${formPrefix}-middle-name-group`);
-  const input = document.getElementById(`${formPrefix}_middle_name`);
-  group.hidden = false;
-  input.required = true;
-  setAuthFormsDisabled(false);
-  setAuthStatus(message || 'Another user has the same first and last name. Enter your middle name or initial.', '#92400e');
-  input.focus();
-}
-
-function showLoginEmailChallenge(emails, message) {
-  const group = document.getElementById('login-email-group');
-  const select = document.getElementById('login_email');
-  select.replaceChildren(new Option('Choose your email…', ''));
-  (Array.isArray(emails) ? emails : []).forEach((email) => {
-    select.appendChild(new Option(email, email));
-  });
-  group.hidden = false;
-  select.required = true;
-  setAuthFormsDisabled(false);
-  setAuthStatus(message || 'Select your email, then log in with your password.', '#92400e');
-  select.focus();
+  const button = document.getElementById('bootstrap_access_user');
+  if (button) button.disabled = disabled;
 }
 
 function renderExtensionAuthState(profile) {
-  const isLoggedOut = !profile || profile.status === 'logged_out';
+  const isReady = profile?.status === 'ready';
   const loggedOut = document.getElementById('auth-logged-out');
   const loggedIn = document.getElementById('auth-logged-in');
-  loggedOut.hidden = !isLoggedOut;
-  loggedIn.hidden = isLoggedOut;
+  loggedOut.hidden = isReady;
+  loggedIn.hidden = !isReady;
 
-  if (isLoggedOut) {
-    setAuthStatus('Log in with an existing account or create a new user.');
+  if (!profile || profile.status === 'logged_out') {
+    setAuthStatus('Verify your Google account to load an approved customer membership.');
     return;
   }
 
-  document.getElementById('auth-session-name').textContent = profile.name || 'Extension user';
-  const accessLabel = ['ready', 'waiting_approval'].includes(profile.status)
-    ? roleLabel(profile.role)
-    : 'Access unavailable';
-  document.getElementById('auth-session-details').textContent = `${profile.email || 'Google identity unavailable'} · ${accessLabel}`;
-
-  if (profile.status === 'waiting_approval') {
-    setAuthStatus('Waiting for administrator approval. After an admin updates the sheet, use Retry / Refresh Access or reopen Settings.', '#92400e');
-  } else if (profile.status === 'identity_error') {
-    setAuthStatus('The active Google account does not match this extension session. Log out, switch accounts, and try again.', '#991b1b');
-  } else if (profile.status !== 'ready') {
-    setAuthStatus('The current extension session could not be verified. You can log out and try again.', '#991b1b');
-  } else {
-    setAuthStatus('Signed in. Your access level was refreshed from the registry.', '#166534');
+  if (isReady) {
+    document.getElementById('auth-session-name').textContent = profile.name || 'Google user';
+    document.getElementById('auth-session-details').textContent = `${profile.email} · ${roleLabel(profile.role)} · ${profile.customerId}`;
+    setAuthStatus('Google identity and customer membership are verified.', 'var(--status-success)');
+    return;
   }
+
+  const statusMessages = {
+    stale: 'The last customer profile is available for display, but it is expired. Protected actions remain locked until verification succeeds.',
+    not_a_member: 'This Google account is not an approved member of an active customer.',
+    ambiguous_customer: 'This Google account is assigned to more than one active customer. An administrator must correct the membership data.',
+    identity_error: 'The customer API could not verify the active Google identity.',
+    invalid_profile: 'The customer API returned a profile that failed extension validation.',
+    configuration_error: 'The customer bootstrap endpoint has not been configured for this build.'
+  };
+  setAuthStatus(profile.message || statusMessages[profile.status] || 'Customer access could not be verified.', '#991b1b');
 }
 
 function bindExtensionAuthEvents() {
-  const loginForm = document.getElementById('access-login-form');
-  const createForm = document.getElementById('access-create-form');
-  const loginMiddleNameGroup = document.getElementById('login-middle-name-group');
-  const createMiddleNameGroup = document.getElementById('create-middle-name-group');
+  const bootstrapButton = document.getElementById('bootstrap_access_user');
   const refreshButton = document.getElementById('refresh_access_user');
   const logoutButton = document.getElementById('logout_access_user');
 
-  ['login_first_name', 'login_last_name'].forEach((id) => {
-    document.getElementById(id).addEventListener('input', () => {
-      loginMiddleNameGroup.hidden = true;
-      document.getElementById('login_middle_name').required = false;
-      document.getElementById('login_middle_name').value = '';
-      hideLoginEmailSelection();
-    });
-  });
-  document.getElementById('login_middle_name').addEventListener('input', hideLoginEmailSelection);
-  ['create_first_name', 'create_last_name'].forEach((id) => {
-    document.getElementById(id).addEventListener('input', () => {
-      createMiddleNameGroup.hidden = true;
-      document.getElementById('create_middle_name').required = false;
-      document.getElementById('create_middle_name').value = '';
-    });
-  });
-
-  loginForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const firstName = document.getElementById('login_first_name').value.trim();
-    const lastName = document.getElementById('login_last_name').value.trim();
-    const middleName = document.getElementById('login_middle_name').value.trim();
-    const email = document.getElementById('login_email').value;
-    const passwordInput = document.getElementById('login_password');
+  bootstrapButton?.addEventListener('click', async () => {
     setAuthFormsDisabled(true);
-    setAuthStatus('Logging in and refreshing access…', '#2563eb');
+    setAuthStatus('Verifying Google identity and customer membership…', '#2563eb');
     try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'loginAccessUser',
-        credentials: { firstName, lastName, middleName, email, password: passwordInput.value }
-      });
-      if (!response?.success) throw new Error(response?.error || 'Login failed.');
-      if (response.challenge === 'middle_name') {
-        showMiddleNameChallenge('login', response.message);
-        return;
-      }
-      if (response.challenge === 'email_selection') {
-        showLoginEmailChallenge(response.emails, response.message);
-        return;
-      }
-      if (!response.profile) throw new Error('Login did not return an access profile.');
-      passwordInput.value = '';
+      const response = await chrome.runtime.sendMessage({ action: 'bootstrapCustomerAccess' });
+      if (!response?.success) throw new Error(response?.error || 'Customer access verification failed.');
       await refreshSidepanelAccessView();
       window.location.reload();
     } catch (error) {
-      passwordInput.value = '';
-      setAuthStatus(error.message || 'Login failed.', '#991b1b');
+      setAuthStatus(error.message || 'Customer access verification failed.', '#991b1b');
       setAuthFormsDisabled(false);
     }
   });
 
-  createForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const firstName = document.getElementById('create_first_name').value.trim();
-    const lastName = document.getElementById('create_last_name').value.trim();
-    const middleName = document.getElementById('create_middle_name').value.trim();
-    const passwordInput = document.getElementById('create_password');
-    const confirmInput = document.getElementById('create_password_confirm');
-    if (passwordInput.value !== confirmInput.value) {
-      setAuthStatus('Passwords do not match.', '#991b1b');
-      return;
-    }
-
-    setAuthFormsDisabled(true);
-    setAuthStatus('Creating your account…', '#2563eb');
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'createAccessUser',
-        credentials: { firstName, lastName, middleName, password: passwordInput.value }
-      });
-      if (!response?.success) throw new Error(response?.error || 'Account creation failed.');
-      if (response.challenge === 'middle_name') {
-        showMiddleNameChallenge('create', response.message);
-        return;
-      }
-      if (!response.profile) throw new Error('Account creation did not return an access profile.');
-      passwordInput.value = '';
-      confirmInput.value = '';
-      await refreshSidepanelAccessView();
-      window.location.reload();
-    } catch (error) {
-      passwordInput.value = '';
-      confirmInput.value = '';
-      setAuthStatus(error.message || 'Account creation failed.', '#991b1b');
-      setAuthFormsDisabled(false);
-    }
-  });
-
-  refreshButton.addEventListener('click', async () => {
+  refreshButton?.addEventListener('click', async () => {
     refreshButton.disabled = true;
-    setAuthStatus('Refreshing your access level from the registry…', '#2563eb');
+    setAuthStatus('Refreshing verified customer access…', '#2563eb');
     try {
       const response = await chrome.runtime.sendMessage({ action: 'refreshAccessProfile' });
       if (!response?.success) throw new Error(response?.error || 'Access refresh failed.');
@@ -1079,9 +971,9 @@ function bindExtensionAuthEvents() {
     }
   });
 
-  logoutButton.addEventListener('click', async () => {
+  logoutButton?.addEventListener('click', async () => {
     logoutButton.disabled = true;
-    setAuthStatus('Logging out…', '#2563eb');
+    setAuthStatus('Clearing cached customer access…', '#2563eb');
     try {
       const response = await chrome.runtime.sendMessage({ action: 'logoutAccessUser' });
       if (!response?.success) throw new Error(response?.error || 'Logout failed.');
@@ -1110,53 +1002,113 @@ function setAccessManagerStatus(message, color = '#374151') {
   statusElement.style.color = color;
 }
 
-function syncAllPlatformsControl() {
-  const allPlatforms = document.getElementById('access_all_platforms');
-  document.querySelectorAll('#access_platform_grid input[type="checkbox"]').forEach((checkbox) => {
-    checkbox.disabled = Boolean(allPlatforms?.checked);
-  });
+function formatSeatCounter(label, counter) {
+  if (!counter) return `${label}: unavailable`;
+  const suffix = counter.enabled === false ? ' (disabled)' : '';
+  return `${label}: ${counter.used} / ${counter.limit}${suffix}`;
+}
+
+function renderAccessUtilization(utilization) {
+  currentAccessUtilization = utilization || null;
+  const activeUsers = document.getElementById('access_active_users_usage');
+  const roleUsage = document.getElementById('access_role_usage');
+  if (!activeUsers || !roleUsage) return;
+
+  if (!utilization?.activeUsers || !utilization?.roles) {
+    activeUsers.textContent = 'Active users: unavailable';
+    roleUsage.textContent = 'Role seats: unavailable';
+    return;
+  }
+
+  activeUsers.textContent = `Active users: ${utilization.activeUsers.used} / ${utilization.activeUsers.limit}`;
+  roleUsage.textContent = [
+    formatSeatCounter('Employees', utilization.roles.employee),
+    formatSeatCounter('Managers', utilization.roles.manager),
+    formatSeatCounter('Administrators', utilization.roles.admin)
+  ].join(' · ');
+}
+
+function inferMembershipMutation(user, desiredRole, desiredStatus) {
+  const base = {
+    memberId: user.memberId,
+    expectedVersion: user.version
+  };
+
+  if (desiredStatus === 'disabled') {
+    return user.status === 'active' ? { ...base, action: 'disable' } : null;
+  }
+  if (user.status === 'pending') return { ...base, action: 'approve', role: desiredRole };
+  if (user.status === 'approved') return { ...base, action: 'activate', role: desiredRole };
+  if (user.status === 'disabled') return { ...base, action: 'reactivate', role: desiredRole };
+  if (user.status === 'active' && user.role !== desiredRole) {
+    return { ...base, action: 'change_role', role: desiredRole };
+  }
+  return null;
+}
+
+function getMembershipMutationWarning(user, mutation) {
+  const utilization = currentAccessUtilization;
+  if (!utilization || !mutation) return '';
+
+  const activatesUser = ['approve', 'activate', 'reactivate'].includes(mutation.action) && user.status !== 'active';
+  if (activatesUser && utilization.activeUsers.used >= utilization.activeUsers.limit) {
+    return `The active-user limit is already ${utilization.activeUsers.used} / ${utilization.activeUsers.limit}.`;
+  }
+
+  const addsRoleSeat = activatesUser ||
+    (mutation.action === 'change_role' && user.role !== mutation.role);
+  const roleCounter = mutation.role ? utilization.roles[mutation.role] : null;
+  if (addsRoleSeat && roleCounter?.enabled === false) {
+    return `${roleLabel(mutation.role)} is disabled for this customer.`;
+  }
+  if (addsRoleSeat && roleCounter && roleCounter.used >= roleCounter.limit) {
+    return `The ${roleLabel(mutation.role)} seat limit is already ${roleCounter.used} / ${roleCounter.limit}.`;
+  }
+
+  const removesActiveAdmin = user.status === 'active' && user.role === 'admin' &&
+    (mutation.action === 'disable' || (mutation.action === 'change_role' && mutation.role !== 'admin'));
+  if (removesActiveAdmin && utilization.roles.admin?.used <= 1) {
+    return 'The customer must retain at least one active administrator.';
+  }
+  return '';
+}
+
+function updateMembershipSaveLabel() {
+  const saveButton = document.getElementById('save_access_user');
+  if (!saveButton || !selectedAccessUser) return;
+  const desiredStatus = document.getElementById('access_user_status')?.value;
+  const action = inferMembershipMutation(
+    selectedAccessUser,
+    document.getElementById('access_user_role')?.value,
+    desiredStatus
+  )?.action;
+  const labels = {
+    approve: 'Approve User',
+    activate: 'Activate User',
+    reactivate: 'Reactivate User',
+    change_role: 'Change Role',
+    disable: 'Disable User'
+  };
+  saveButton.textContent = labels[action] || 'No Changes';
 }
 
 function populateAccessUserEditor(user) {
   selectedAccessUser = user;
   const editor = document.getElementById('access_user_editor');
-  document.getElementById('access_user_first_name').value = user.firstName || '';
-  document.getElementById('access_user_last_name').value = user.lastName || '';
-  document.getElementById('access_user_middle_name').value = user.middleName || '';
+  document.getElementById('access_user_first_name').value = user.name || '';
+  document.getElementById('access_user_last_name').value = '';
+  document.getElementById('access_user_middle_name').value = '';
   document.getElementById('access_user_email').value = user.email || '';
-  document.getElementById('access_user_role').value = user.role || 'waiting_approval';
-  const managedConfig = user.managedConfig || {};
-  document.getElementById('access_drive_root_id').value = managedConfig.driveRootId || '';
-  document.getElementById('access_drive_root_label').value = managedConfig.driveRootLabel || '';
-  document.getElementById('access_report_sheet_id').value = managedConfig.reportSheetId || '';
-  document.getElementById('access_report_sheet_label').value = managedConfig.reportSheetLabel || '';
-  document.getElementById('access_event_sheet_id').value = managedConfig.eventSheetId || '';
-  document.getElementById('access_event_sheet_label').value = managedConfig.eventSheetLabel || '';
-
-  const allPlatforms = document.getElementById('access_all_platforms');
-  const assignedPlatforms = new Set(user.platforms || []);
-  allPlatforms.checked = assignedPlatforms.has('all');
-
-  const platformGrid = document.getElementById('access_platform_grid');
-  platformGrid.replaceChildren();
-  PLATFORM_CATALOG.forEach((platform) => {
-    const label = document.createElement('label');
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.value = platform.key;
-    checkbox.checked = assignedPlatforms.has(platform.key);
-    const copy = document.createElement('span');
-    copy.textContent = platform.label;
-    label.append(checkbox, copy);
-    platformGrid.appendChild(label);
-  });
-
-  syncAllPlatformsControl();
+  document.getElementById('access_user_role').value = ['employee', 'manager', 'admin'].includes(user.role)
+    ? user.role
+    : 'employee';
+  document.getElementById('access_user_status').value = user.status === 'disabled' ? 'disabled' : 'active';
   editor.hidden = false;
   document.getElementById('save_access_user').disabled = false;
   document.querySelectorAll('.access-user-result').forEach((button) => {
-    button.classList.toggle('is-selected', button.dataset.email === user.email);
+    button.classList.toggle('is-selected', button.dataset.memberId === user.memberId);
   });
+  updateMembershipSaveLabel();
   setAccessManagerStatus('');
 }
 
@@ -1176,14 +1128,11 @@ function renderAccessUsers(users) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'access-user-result';
-    button.dataset.email = user.email;
+    button.dataset.memberId = user.memberId;
     const name = document.createElement('strong');
-    name.textContent = user.middleName
-      ? `${user.name || 'Unnamed user'} · Middle: ${user.middleName}`
-      : user.name || 'Unnamed user';
+    name.textContent = user.name || 'Unnamed user';
     const details = document.createElement('span');
-    const platformSummary = user.platforms?.includes('all') ? 'All platforms' : (user.platforms || []).join(', ') || 'No platforms';
-    details.textContent = `${user.email} · ${roleLabel(user.role)} · ${platformSummary}`;
+    details.textContent = `${user.email} · ${roleLabel(user.role)} · ${user.status}`;
     button.append(name, details);
     button.addEventListener('click', () => populateAccessUserEditor(user));
     results.appendChild(button);
@@ -1197,22 +1146,25 @@ async function loadAccessUsers(query = '') {
 
   try {
     const response = await chrome.runtime.sendMessage({ action: 'listAccessUsers', query });
-    if (!response?.success) throw new Error(response?.error || 'Unable to load users.');
-    renderAccessUsers(response.users);
+    if (!response?.success) {
+      if (response?.utilization) renderAccessUtilization(response.utilization);
+      throw new Error(response?.error || 'Unable to load users.');
+    }
+    renderAccessUtilization(response.utilization);
+    renderAccessUsers(response.members);
   } catch (error) {
     results.replaceChildren();
     const failure = document.createElement('div');
     failure.className = 'editor-empty-state';
     failure.textContent = error.message || 'Unable to load users.';
     results.appendChild(failure);
-    setAccessManagerStatus('Access registry lookup failed.', '#ce0e2d');
+    setAccessManagerStatus(error.message || 'Customer membership lookup is unavailable.', 'var(--brand-primary)');
   }
 }
 
 function bindAccessManagerEvents() {
   const modal = document.getElementById('access-manager-modal');
   const search = document.getElementById('access_user_search');
-  const allPlatforms = document.getElementById('access_all_platforms');
   const saveButton = document.getElementById('save_access_user');
 
   document.getElementById('open_access_manager')?.addEventListener('click', () => {
@@ -1235,46 +1187,27 @@ function bindAccessManagerEvents() {
     accessSearchTimer = setTimeout(() => void loadAccessUsers(search.value), 250);
   });
 
-  allPlatforms.addEventListener('change', syncAllPlatformsControl);
+  document.getElementById('access_user_role')?.addEventListener('change', updateMembershipSaveLabel);
+  document.getElementById('access_user_status')?.addEventListener('change', updateMembershipSaveLabel);
 
   saveButton.addEventListener('click', async () => {
     if (!selectedAccessUser) return;
-    const firstName = document.getElementById('access_user_first_name').value.trim();
-    const lastName = document.getElementById('access_user_last_name').value.trim();
-    const middleName = document.getElementById('access_user_middle_name').value.trim();
-    const email = document.getElementById('access_user_email').value.trim();
     const role = document.getElementById('access_user_role').value;
-    const platforms = allPlatforms.checked
-      ? ['all']
-      : Array.from(document.querySelectorAll('#access_platform_grid input[type="checkbox"]:checked'))
-        .map((checkbox) => checkbox.value);
-    const managedConfig = {
-      driveRootId: document.getElementById('access_drive_root_id').value.trim(),
-      driveRootLabel: document.getElementById('access_drive_root_label').value.trim(),
-      reportSheetId: document.getElementById('access_report_sheet_id').value.trim(),
-      reportSheetLabel: document.getElementById('access_report_sheet_label').value.trim(),
-      eventSheetId: document.getElementById('access_event_sheet_id').value.trim(),
-      eventSheetLabel: document.getElementById('access_event_sheet_label').value.trim()
-    };
-
-    if (!firstName || !lastName) {
-      setAccessManagerStatus('Enter the user\'s first and last name.', '#ce0e2d');
+    const desiredStatus = document.getElementById('access_user_status').value;
+    const mutation = inferMembershipMutation(selectedAccessUser, role, desiredStatus);
+    if (!mutation) {
+      setAccessManagerStatus('No membership changes to apply.');
       return;
     }
 
-    const changesOwnUsername = email === currentAccessProfile?.email &&
-      (
-        firstName !== (currentAccessProfile.firstName || '') ||
-        lastName !== (currentAccessProfile.lastName || '') ||
-        middleName !== (currentAccessProfile.middleName || '')
-      );
-    const changesOwnRole = email === currentAccessProfile?.email && role !== currentAccessProfile.role;
-    const changesOwnPlatforms = email === currentAccessProfile?.email &&
-      [...platforms].sort().join(',') !== [...(currentAccessProfile.platforms || [])].sort().join(',');
-    const changesOwnConnectivity = email === currentAccessProfile?.email &&
-      JSON.stringify(managedConfig) !== JSON.stringify(currentAccessProfile.managedConfig || {});
-    if (changesOwnUsername || changesOwnRole || changesOwnPlatforms || changesOwnConnectivity) {
-      const confirmed = confirm('You are changing your own name, access level, platform access, or managed connectivity. Continue?');
+    const warning = getMembershipMutationWarning(selectedAccessUser, mutation);
+    if (warning) {
+      setAccessManagerStatus(`${warning} The API will verify the current totals.`, 'var(--brand-primary)');
+      return;
+    }
+
+    if (selectedAccessUser.email === currentAccessProfile?.email) {
+      const confirmed = confirm('You are changing your own role or membership status. Continue?');
       if (!confirmed) return;
     }
 
@@ -1283,23 +1216,27 @@ function bindAccessManagerEvents() {
     try {
       const response = await chrome.runtime.sendMessage({
         action: 'updateAccessUser',
-        user: { email, firstName, lastName, middleName, role, platforms, managedConfig }
+        mutation
       });
-      if (!response?.success) throw new Error(response?.error || 'Unable to update this user.');
-      selectedAccessUser = response.user;
-      setAccessManagerStatus('Access updated successfully.', 'green');
+      if (!response?.success) {
+        if (response?.utilization) renderAccessUtilization(response.utilization);
+        throw new Error(response?.error || 'Unable to update this user.');
+      }
+      selectedAccessUser = response.member;
+      renderAccessUtilization(response.utilization);
+      setAccessManagerStatus(`Access updated. Audit ${response.audit.auditId}.`, 'green');
 
-      if (email === currentAccessProfile?.email) {
+      if (selectedAccessUser.email === currentAccessProfile?.email) {
         setTimeout(() => window.location.reload(), 700);
         return;
       }
 
       await loadAccessUsers(search.value);
       const refreshedButton = Array.from(document.querySelectorAll('.access-user-result'))
-        .find((button) => button.dataset.email === email);
+        .find((button) => button.dataset.memberId === selectedAccessUser.memberId);
       refreshedButton?.click();
     } catch (error) {
-      setAccessManagerStatus(error.message || 'Unable to update this user.', '#ce0e2d');
+      setAccessManagerStatus(error.message || 'Unable to update this user.', 'var(--brand-primary)');
     } finally {
       saveButton.disabled = false;
     }
@@ -1308,7 +1245,7 @@ function bindAccessManagerEvents() {
 
 function openEvidenceLocker() {
   if (!hasPermission(currentAccessProfile, PERMISSIONS.SETTINGS_OPEN_LOCKER)) {
-    status.style.color = '#ce0e2d';
+    status.style.color = 'var(--brand-primary)';
     status.innerText = 'Your access level does not allow opening the Evidence Locker.';
     return;
   }
@@ -1320,7 +1257,7 @@ function openEvidenceLocker() {
   }
 
   setClippyState('looking');
-  status.style.color = '#ce0e2d';
+  status.style.color = 'var(--brand-primary)';
   status.innerText = 'Please enter a Folder ID first to open the locker.';
   setTimeout(() => {
     status.innerText = '';
@@ -1351,7 +1288,7 @@ function bindCoreOptionsEvents() {
 
     if (!text) {
       setClippyState('looking');
-      sugStatus.style.color = '#ce0e2d';
+      sugStatus.style.color = 'var(--brand-primary)';
       sugStatus.innerText = 'Field is empty!';
       return;
     }
@@ -1368,7 +1305,7 @@ function bindCoreOptionsEvents() {
         document.getElementById('suggestion_text').value = '';
       } else {
         setClippyState('default');
-        sugStatus.style.color = '#ce0e2d';
+        sugStatus.style.color = 'var(--brand-primary)';
         sugStatus.innerText = '❌ Uplink failed.';
       }
     });
@@ -1382,11 +1319,11 @@ function bindCoreOptionsEvents() {
 
     if (!folderId || !sheetId || !eventSheetId) {
       setClippyState('talking');
-      status.style.color = '#ce0e2d';
+      status.style.color = 'var(--brand-primary)';
       status.innerText = 'Missing IDs! Check Clippy for details.';
 
       if (window.showClippyMessage) {
-        window.showClippyMessage('Missing IDs! Please check the <a href="https://flocasts.atlassian.net/wiki/spaces/FSM/pages/5634621448/FloSports+Pirate+Reporter+3.3.1+Pirate+AI#Options-Set-up" target="_blank" style="color: #2563eb; text-decoration: underline;">Setup Guide</a> to fill out all boxes.');
+        window.showClippyMessage('Missing IDs! Fill in the Folder ID, Reporting Sheet ID, and Event Sheet ID above.');
       }
       return;
     }
@@ -1578,7 +1515,7 @@ function renderDoubleXpEventList() {
             });
 
             renderDoubleXpEventList();
-            setBriefingContentStatus(`Removed "${target.eventName}" from Double XP. Save to apply it.`, '#b45309');
+            setBriefingContentStatus(`Removed "${target.eventName}" from Double XP. Save to apply it.`, 'var(--status-warning)');
         });
     });
 }
@@ -1614,8 +1551,8 @@ async function loadBriefingContentEditor() {
         setBriefingContentStatus('');
     } catch (error) {
         console.error('Failed to load briefing content editor:', error);
-        setBriefingContentStatus(error.message || 'Unable to load shared briefing content.', '#ce0e2d');
-        setStatusMessage('Unable to load shared briefing content.', '#ce0e2d', 'looking');
+        setBriefingContentStatus(error.message || 'Unable to load shared briefing content.', 'var(--brand-primary)');
+        setStatusMessage('Unable to load shared briefing content.', 'var(--brand-primary)', 'looking');
         clearStatusMessage(4500);
     } finally {
         if (saveBtn) saveBtn.disabled = !loaded;
@@ -1628,13 +1565,13 @@ function addDoubleXpEventFromInputs() {
     const eventName = eventNameInput?.value.trim() || '';
 
     if (!verticalName || !eventName) {
-        setBriefingContentStatus('Choose a vertical and enter an event name first.', '#ce0e2d');
+        setBriefingContentStatus('Choose a vertical and enter an event name first.', 'var(--brand-primary)');
         return;
     }
 
     const matchingVertical = editorVerticals.find((vertical) => vertical.name === verticalName);
     if (!matchingVertical) {
-        setBriefingContentStatus('That vertical is missing from config.', '#ce0e2d');
+        setBriefingContentStatus('That vertical is missing from config.', 'var(--brand-primary)');
         return;
     }
 
@@ -1643,7 +1580,7 @@ function addDoubleXpEventFromInputs() {
     );
 
     if (existingEvent?.double_xp) {
-        setBriefingContentStatus('That Double XP event is already live.', '#b45309');
+        setBriefingContentStatus('That Double XP event is already live.', 'var(--status-warning)');
         return;
     }
 
@@ -1683,7 +1620,7 @@ async function saveBriefingContentEdits() {
         clearStatusMessage();
     } catch (error) {
         console.error('Failed to save briefing content:', error);
-        setBriefingContentStatus(error.message || 'Failed to save briefing content.', '#ce0e2d');
+        setBriefingContentStatus(error.message || 'Failed to save briefing content.', 'var(--brand-primary)');
     } finally {
         if (saveBtn) saveBtn.disabled = false;
     }
@@ -1935,7 +1872,7 @@ function renderSelectorEditorCategories() {
 
             const newPath = input.value.trim();
             if (!newPath) {
-                setSelectorEditorStatus('Enter a value path before adding it.', '#ce0e2d');
+                setSelectorEditorStatus('Enter a value path before adding it.', 'var(--brand-primary)');
                 return;
             }
 
@@ -1953,7 +1890,7 @@ function renderSelectorEditorCategories() {
                 droppedPath
                     ? `Saved new path for ${category.title}. Oldest path was removed to keep the most recent ${SELECTOR_EDITOR_MAX_PATHS}.`
                     : `Saved new path for ${category.title}. Save to apply it.`,
-                droppedPath ? '#b45309' : 'green'
+                droppedPath ? 'var(--status-warning)' : 'green'
             );
         });
     });
@@ -2017,8 +1954,8 @@ async function loadSelectorPathEditor() {
         setSelectorEditorStatus('');
     } catch (error) {
         console.error('Failed to load selector editor:', error);
-        setSelectorEditorStatus(error.message || 'Unable to load selector path editor.', '#ce0e2d');
-        setStatusMessage('Unable to load selector path editor.', '#ce0e2d', 'looking');
+        setSelectorEditorStatus(error.message || 'Unable to load selector path editor.', 'var(--brand-primary)');
+        setStatusMessage('Unable to load selector path editor.', 'var(--brand-primary)', 'looking');
         clearStatusMessage(4500);
     } finally {
         if (saveBtn) saveBtn.disabled = !loaded;
@@ -2039,7 +1976,7 @@ async function saveSelectorPathEdits() {
         clearStatusMessage();
     } catch (error) {
         console.error('Failed to save selector paths:', error);
-        setSelectorEditorStatus(error.message || 'Failed to save selector paths.', '#ce0e2d');
+        setSelectorEditorStatus(error.message || 'Failed to save selector paths.', 'var(--brand-primary)');
     } finally {
         if (saveBtn) saveBtn.disabled = false;
     }
@@ -2058,7 +1995,7 @@ function confirmSelectorDelete() {
 
     const { input } = getDeleteConfirmElements();
     if (input.value.trim().toLowerCase() !== pendingSelectorDelete.word.toLowerCase()) {
-        setDeleteConfirmStatus(`Type "${pendingSelectorDelete.word}" exactly to confirm this delete.`, '#ce0e2d');
+        setDeleteConfirmStatus(`Type "${pendingSelectorDelete.word}" exactly to confirm this delete.`, 'var(--brand-primary)');
         return;
     }
 
@@ -2074,7 +2011,7 @@ function confirmSelectorDelete() {
 
     closeSelectorDeleteConfirmModal();
     renderSelectorEditorCategories();
-    setSelectorEditorStatus(`Deleted one saved path from ${category.title}. Save to apply it.`, '#b45309');
+    setSelectorEditorStatus(`Deleted one saved path from ${category.title}. Save to apply it.`, 'var(--status-warning)');
 }
 
 function getCurrentSettingsSnapshot() {
@@ -2099,7 +2036,7 @@ function updateSaveHint() {
     saveHint.textContent = hasUnsavedChanges
         ? 'Unsaved changes are waiting. Save to sync them across the extension.'
         : 'Changes are stored in Chrome sync for this extension.';
-    saveHint.style.color = hasUnsavedChanges ? '#b45309' : '#6b7280';
+    saveHint.style.color = hasUnsavedChanges ? 'var(--status-warning)' : '#6b7280';
 }
 
 function updateSetupStatus() {
@@ -2305,12 +2242,12 @@ function attachSharedConfigEditorListeners() {
         if (userInput) userInput.value = '';
         if (descInput) descInput.value = '';
         if (bonusInput) bonusInput.value = '';
-        setBriefingContentStatus('Community highlight cleared. Save to apply it.', '#b45309');
+        setBriefingContentStatus('Community highlight cleared. Save to apply it.', 'var(--status-warning)');
     });
     getEl('clear_lab_instructions')?.addEventListener('click', () => {
         const { labInput } = getBriefingContentModalElements();
         if (labInput) labInput.value = '';
-        setBriefingContentStatus('Lab instructions cleared. Save to apply it.', '#b45309');
+        setBriefingContentStatus('Lab instructions cleared. Save to apply it.', 'var(--status-warning)');
     });
     getEl('add_double_xp_event')?.addEventListener('click', addDoubleXpEventFromInputs);
     getEl('double_xp_event_name')?.addEventListener('keydown', (event) => {
@@ -2391,7 +2328,7 @@ function attachCoreActionListeners() {
             window.open(`https://drive.google.com/drive/folders/${folderId}`, '_blank');
         } else {
             setClippyState('looking');
-            status.style.color = '#ce0e2d';
+            status.style.color = 'var(--brand-primary)';
             status.innerText = 'Please enter a Folder ID first to open the locker.';
             setTimeout(() => {
                 status.innerText = '';
@@ -2425,7 +2362,7 @@ function attachFeedbackListener() {
 
         if (!text) {
             setClippyState('looking');
-            sugStatus.style.color = '#ce0e2d';
+            sugStatus.style.color = 'var(--brand-primary)';
             sugStatus.innerText = 'Field is empty!';
             return;
         }
@@ -2443,7 +2380,7 @@ function attachFeedbackListener() {
                 updateSuggestionCounter();
             } else {
                 setClippyState('default');
-                sugStatus.style.color = '#ce0e2d';
+                sugStatus.style.color = 'var(--brand-primary)';
                 sugStatus.innerText = 'Uplink failed.';
             }
         });
@@ -2460,11 +2397,11 @@ function attachSaveListener() {
 
         if (!folderId || !sheetId || !eventSheetId) {
             setClippyState('talking');
-            status.style.color = '#ce0e2d';
+            status.style.color = 'var(--brand-primary)';
             status.innerText = 'Missing IDs! Check Clippy for details.';
 
             if (window.showClippyMessage) {
-                window.showClippyMessage('Missing IDs! Please check the <a href="https://flocasts.atlassian.net/wiki/spaces/FSM/pages/5634621448/FloSports+Pirate+Reporter+3.3.1+Pirate+AI#Options-Set-up" target="_blank" style="color: #2563eb; text-decoration: underline;">Setup Guide</a> to fill out all boxes.');
+                window.showClippyMessage('Missing IDs! Fill in the Folder ID, Reporting Sheet ID, and Event Sheet ID above.');
             }
             return;
         }
@@ -2559,12 +2496,12 @@ function bindBriefingContentModalEvents() {
     userInput.value = '';
     descInput.value = '';
     bonusInput.value = '';
-    setBriefingContentStatus('Community highlight cleared. Save to apply it.', '#b45309');
+    setBriefingContentStatus('Community highlight cleared. Save to apply it.', 'var(--status-warning)');
   });
   document.getElementById('clear_lab_instructions')?.addEventListener('click', () => {
     const { labInput } = getBriefingContentModalElements();
     labInput.value = '';
-    setBriefingContentStatus('Lab instructions cleared. Save to apply it.', '#b45309');
+    setBriefingContentStatus('Lab instructions cleared. Save to apply it.', 'var(--status-warning)');
   });
   document.getElementById('add_double_xp_event')?.addEventListener('click', addDoubleXpEventFromInputs);
   document.getElementById('double_xp_event_name')?.addEventListener('keydown', (event) => {
@@ -2661,7 +2598,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       new Promise((_, reject) => setTimeout(() => reject(new Error('Access check timed out.')), 12000))
     ]);
     if (!accessResponse?.success || !accessResponse.profile) {
-      throw new Error(accessResponse?.error || 'The access registry did not return a profile.');
+      throw new Error(accessResponse?.error || 'The customer API did not return a profile.');
     }
 
     currentAccessProfile = accessResponse.profile;
@@ -2702,12 +2639,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (hasPermission(currentAccessProfile, PERMISSIONS.SETTINGS_ADMIN_ACCESS)) {
       bindAccessManagerEvents();
     }
-
     await loadInitialOptionsState({ loadIntelligenceConfig: canUseIntelligenceTools });
   } catch (error) {
     console.error('Settings access initialization failed:', error);
     renderExtensionAuthState(currentAccessProfile || {
-      status: 'registry_error',
+      status: 'bootstrap_error',
       role: 'waiting_approval',
       name: 'Extension session',
       email: '',
@@ -2715,7 +2651,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     showSettingsAccessState({
       title: 'Access could not be verified',
-      message: error.message || 'Check your Google sign-in and access to the user registry.',
+      message: error.message || 'Check your Google sign-in and customer API configuration.',
       state: 'error',
       showRetry: true
     });

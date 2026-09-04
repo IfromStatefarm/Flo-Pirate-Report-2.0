@@ -80,12 +80,7 @@ const SUPPORTED_PLATFORM_ORDER = Object.freeze([
 import { PLATFORM_CATALOG, PLATFORM_CATALOG_BY_KEY } from './platform_catalog.js';
 >>>>>>> Stashed changes
 
-const INTERNAL_MANAGED_DOMAIN_FRAGMENTS = Object.freeze([
-  'varsity.com',
-  'flosports',
-  'floracing',
-  'milesplit'
-]);
+const INTERNAL_MANAGED_DOMAIN_FRAGMENTS = Object.freeze([]);
 
 export function normalizePlatformKey(platform) {
   const normalized = String(platform || '').toLowerCase().trim();

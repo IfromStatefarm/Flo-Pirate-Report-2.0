@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "customerId": "flosports",
+  "configVersion": 1,
+  "product": {
+    "productName": "FloSports Pirate Reporter",
+    "displayName": "FloSports Reporter",
+    "shortName": "FloReporter",
+    "assistantName": "FloSports Piracy Assistant",
+    "tagline": "Capture evidence, manage reports, and track outcomes."
+  },
+  "theme": {
+    "logoUrl": "",
+    "logoAltText": "FloSports Reporter",
+    "colors": {
+      "primary": "#CE0E2D",
+      "primaryHover": "#A80B24",
+      "accent": "#CE0E2D",
+      "onPrimary": "#FFFFFF",
+      "background": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "text": "#111827",
+      "muted": "#64748B",
+      "border": "#E5E7EB",
+      "success": "#166534",
+      "warning": "#B45309",
+      "danger": "#B91C1C"
+    }
+  },
+  "legal": {
+    "ownerName": "FloSports",
+    "companyName": "FloSports, Inc.",
+    "reportingEmail": "copyright@flosports.tv",
+    "secondaryEmail": "social@flosports.tv",
+    "phone": "5122702356",
+    "addressLine1": "",
+    "city": "Austin",
+    "region": "Texas",
+    "postalCode": "78701",
+    "country": "United States",
+    "originalWorkUrl": "https://www.flosports.tv/"
+  },
+  "access": {
+    "allowedEmailDomains": ["flosports.tv"],
+    "totalUserCap": 50,
+    "enabledRoles": ["employee", "manager", "admin"],
+    "roleSeatCaps": {
+      "employee": 43,
+      "manager": 5,
+      "admin": 2
+    }
+  },
+  "capabilities": {
+    "enabledPlatforms": [
+      "youtube", "tiktok", "twitter", "instagram", "facebook", "kick", "twitch", "rumble",
+      "trovo", "dlive", "sooplive", "chzzk", "bigolive", "nimotv", "huya", "douyu",
+      "younow", "twitcasting", "tango", "mildom", "mirrativ", "nonolive", "rooter",
+      "snapchat", "threads", "linkedin", "pinterest", "bluesky", "truthsocial", "likee",
+      "triller", "tumblr", "gab", "gettr", "vk", "ok", "bilibili", "kuaishou", "niconico",
+      "navertv", "kakaotv", "rutube", "wechatchannels", "moj", "yandexvideo", "reddit",
+      "telegram", "discord", "whatsapp", "signal", "line", "mastodon", "viber", "band",
+      "dailymotion", "vimeo", "streamable", "odysee", "bitchute", "locals", "veoh", "mega",
+      "googledrive", "archiveorg", "peertube", "dtube", "mediafire", "other"
+    ],
+    "enabledFeatures": [
+      "report", "scoreboard", "automate", "intel", "repair", "feedback", "gamification",
+      "briefing", "selector_editor"
+    ]
+  },
+  "destinations": {
+    "driveRootFolderId": "15J7gor-Z1mWvdy4csIgI5A-oUhM2oDjM",
+    "reportSpreadsheetId": "1hiU5jBIiSJzt8KUYIB66vJduIsmYLaTgJKYZhUd1K0A",
+    "eventSpreadsheetId": "1K9QigjjGPexSIW3hsc2WQNjJvz9anT6_WfyTdPfiflE"
+  },
+  "stats": {
+    "dashboardId": "stats_flosports"
+  }
+}

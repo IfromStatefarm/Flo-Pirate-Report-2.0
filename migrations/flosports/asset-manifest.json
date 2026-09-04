@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "customerId": "flosports",
+  "assets": [
+    {
+      "kind": "logo",
+      "sourcePath": "../../FloReporter_logo.png",
+      "mimeType": "image/png",
+      "sha256": "05c63eb55affad5e55ecd66a4d634c6e09ddd45c3700cd790bace12371deb56c",
+      "publishToApprovedHttpsUrl": true
+    }
+  ]
+}

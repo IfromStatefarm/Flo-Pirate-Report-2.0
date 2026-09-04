@@ -102,7 +102,7 @@ export function renderGamificationStats(stats, { doc = document } = {}) {
   if (header) {
     header.style.display = 'block';
 
-    let themeColor = '#ce0e2d';
+    let themeColor = 'var(--brand-primary)';
     if ((scoutPointsValue !== null && scoutPointsValue > 1000) || (enforcerPointsValue !== null && enforcerPointsValue > 1000)) {
       themeColor = '#9333ea';
     } else if ((scoutPointsValue !== null && scoutPointsValue > 500) || (enforcerPointsValue !== null && enforcerPointsValue > 500)) {

@@ -59,6 +59,11 @@ export const CUSTOMER_CONFIG_SHEET_HEADERS = Object.freeze([
   'Reporting Email',
   'Secondary Email',
   'Reporting Phone',
+  'Address Line 1',
+  'City',
+  'Region',
+  'Postal Code',
+  'Country',
   'Original Work URL',
   'Allowed Email Domains',
   'Enabled Platforms',
@@ -101,7 +106,10 @@ const TOP_LEVEL_KEYS = Object.freeze([
 const OBJECT_KEYS = Object.freeze({
   product: Object.freeze(['productName', 'displayName', 'shortName', 'assistantName', 'tagline']),
   theme: Object.freeze(['logoUrl', 'logoAltText', 'colors']),
-  legal: Object.freeze(['ownerName', 'companyName', 'reportingEmail', 'secondaryEmail', 'phone', 'originalWorkUrl']),
+  legal: Object.freeze([
+    'ownerName', 'companyName', 'reportingEmail', 'secondaryEmail', 'phone',
+    'addressLine1', 'city', 'region', 'postalCode', 'country', 'originalWorkUrl'
+  ]),
   access: Object.freeze(['allowedEmailDomains', 'totalUserCap', 'enabledRoles', 'roleSeatCaps']),
   capabilities: Object.freeze(['enabledPlatforms', 'enabledFeatures']),
   destinations: Object.freeze(['driveRootFolderId', 'reportSpreadsheetId', 'eventSpreadsheetId']),
@@ -153,6 +161,11 @@ export const NEUTRAL_CUSTOMER_CONFIG = deepFreeze({
     reportingEmail: '',
     secondaryEmail: '',
     phone: '',
+    addressLine1: '',
+    city: '',
+    region: '',
+    postalCode: '',
+    country: '',
     originalWorkUrl: ''
   },
   access: {
@@ -352,6 +365,11 @@ function validateLegal(value, errors) {
       maxLength: 40,
       allowFormulaPrefix: true
     }),
+    addressLine1: readPlainText(legal.addressLine1, 'legal.addressLine1', errors, { required: false, maxLength: 160 }),
+    city: readPlainText(legal.city, 'legal.city', errors, { required: false, maxLength: 80 }),
+    region: readPlainText(legal.region, 'legal.region', errors, { required: false, maxLength: 80 }),
+    postalCode: readPlainText(legal.postalCode, 'legal.postalCode', errors, { required: false, maxLength: 24 }),
+    country: readPlainText(legal.country, 'legal.country', errors, { required: false, maxLength: 80 }),
     originalWorkUrl: readHttpsUrl(legal.originalWorkUrl, 'legal.originalWorkUrl', errors, { required: true })
   };
 }
@@ -586,6 +604,11 @@ export function customerConfigCandidateFromSheetRow(headers, row) {
       reportingEmail: String(cell('Reporting Email')),
       secondaryEmail: String(cell('Secondary Email')),
       phone: String(cell('Reporting Phone')),
+      addressLine1: String(cell('Address Line 1')),
+      city: String(cell('City')),
+      region: String(cell('Region')),
+      postalCode: String(cell('Postal Code')),
+      country: String(cell('Country')),
       originalWorkUrl: String(cell('Original Work URL'))
     },
     access: {
@@ -626,6 +649,64 @@ export function resolveCustomerConfigFromSheetRow(headers, row) {
     };
   }
   return resolveCustomerConfig(parsed.candidate, 'customer-sheet');
+}
+
+export function customerConfigToSheetRow(candidate) {
+  const validated = validateCustomerConfig(candidate);
+  if (!validated.valid) {
+    const error = new Error('Customer configuration cannot be exported because it is invalid.');
+    error.validationErrors = validated.errors;
+    throw error;
+  }
+  const config = validated.config;
+  const values = {
+    'Schema Version': config.schemaVersion,
+    'Customer ID': config.customerId,
+    'Configuration Version': config.configVersion,
+    'Product Name': config.product.productName,
+    'Display Name': config.product.displayName,
+    'Short Name': config.product.shortName,
+    'Assistant Name': config.product.assistantName,
+    'Tagline': config.product.tagline,
+    'Logo URL': config.theme.logoUrl,
+    'Logo Alt Text': config.theme.logoAltText,
+    'Theme Primary': config.theme.colors.primary,
+    'Theme Primary Hover': config.theme.colors.primaryHover,
+    'Theme Accent': config.theme.colors.accent,
+    'Theme On Primary': config.theme.colors.onPrimary,
+    'Theme Background': config.theme.colors.background,
+    'Theme Surface': config.theme.colors.surface,
+    'Theme Text': config.theme.colors.text,
+    'Theme Muted': config.theme.colors.muted,
+    'Theme Border': config.theme.colors.border,
+    'Theme Success': config.theme.colors.success,
+    'Theme Warning': config.theme.colors.warning,
+    'Theme Danger': config.theme.colors.danger,
+    'Legal Owner Name': config.legal.ownerName,
+    'Legal Company Name': config.legal.companyName,
+    'Reporting Email': config.legal.reportingEmail,
+    'Secondary Email': config.legal.secondaryEmail,
+    'Reporting Phone': config.legal.phone,
+    'Address Line 1': config.legal.addressLine1,
+    'City': config.legal.city,
+    'Region': config.legal.region,
+    'Postal Code': config.legal.postalCode,
+    'Country': config.legal.country,
+    'Original Work URL': config.legal.originalWorkUrl,
+    'Allowed Email Domains': config.access.allowedEmailDomains.join(', '),
+    'Enabled Platforms': config.capabilities.enabledPlatforms.join(', '),
+    'Enabled Features': config.capabilities.enabledFeatures.join(', '),
+    'Total User Cap': config.access.totalUserCap,
+    'Enabled Roles': config.access.enabledRoles.join(', '),
+    'Employee Seat Cap': config.access.roleSeatCaps.employee,
+    'Manager Seat Cap': config.access.roleSeatCaps.manager,
+    'Admin Seat Cap': config.access.roleSeatCaps.admin,
+    'Drive Root Folder ID': config.destinations.driveRootFolderId,
+    'Report Spreadsheet ID': config.destinations.reportSpreadsheetId,
+    'Event Spreadsheet ID': config.destinations.eventSpreadsheetId,
+    'Stats Dashboard ID': config.stats.dashboardId
+  };
+  return Object.freeze(CUSTOMER_CONFIG_SHEET_HEADERS.map((header) => values[header]));
 }
 
 export function cloneNeutralCustomerConfig() {

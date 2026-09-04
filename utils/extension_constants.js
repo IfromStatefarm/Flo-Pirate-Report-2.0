@@ -1,4 +1,5 @@
-export const ALLOWED_EMAIL_DOMAIN = '@flosports.tv';
+// Legacy gate retained only for compatibility. The API-backed customer profile is authoritative.
+export const ALLOWED_EMAIL_DOMAIN = '@example.invalid';
 
 export const SIDEPANEL_CLIPPY_PHRASES = Object.freeze([
   "Alright, let’s make the internet a better place—one report at a time.",

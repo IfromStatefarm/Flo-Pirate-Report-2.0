@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "test:customer-config": "node --test tests/customer_config.test.mjs"
+    "test:customer-config": "node --test tests/customer_config.test.mjs",
+    "test:migration": "node --test tests/customer_migration.test.mjs tests/flosports_migration.test.mjs",
+    "audit:flosports-fallbacks": "node scripts/audit_flosports_fallbacks.mjs"
   }
 }

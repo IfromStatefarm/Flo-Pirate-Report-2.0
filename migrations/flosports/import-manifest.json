@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "migrationId": "flosports-legacy-access-v1",
+  "customerId": "flosports",
+  "customerConfig": "customer.json",
+  "memberships": "memberships.json",
+  "assetManifest": "asset-manifest.json",
+  "legacyAccessWorkbookId": "1kp5n1F0cO57P3mbUsgmssXTRIQ3UPdkO6vOKUjV_XvY",
+  "legacyAccessWorksheetGid": 0,
+  "newWriteMode": "customer_api",
+  "comparisonMode": "compare",
+  "cutoverRequirements": {
+    "apiEndpointsConfigured": false,
+    "activeAdministratorAssigned": false,
+    "logoPublishedToApprovedHttpsUrl": false,
+    "requiredConsecutiveParityMatches": 10
+  }
+}

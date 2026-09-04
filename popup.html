@@ -1,23 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <link rel="stylesheet" href="style.css">
+  <title data-theme-text="displayName">Rights Reporter</title>
   <style>
-    body { width: 400px; padding: 20px; font-family: sans-serif; color: #333; }
-    h2 { margin-top: 0; color: #ce0e2d; }
+    :root { --brand-primary:#334155; --brand-on-primary:#fff; --page-background:#f8fafc; --surface:#fff; --text-primary:#111827; --text-muted:#64748b; --border:#e5e7eb; --status-success:#166534; }
+    body { width: 400px; padding: 20px; font-family: sans-serif; color: var(--text-primary); background: var(--page-background); }
+    h2 { margin-top: 0; color: var(--brand-primary); }
     .row { margin-bottom: 15px; }
     label { display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; }
     input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;}
     .btn { width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; margin-top: 10px; }
-    .primary { background: #ce0e2d; color: white; }
+    .primary { background: var(--brand-primary); color: var(--brand-on-primary); }
     .secondary { background: #eee; color: #333; margin-top: 10px; }
-    .status { margin-top: 10px; font-size: 12px; text-align: center; color: #666; }
-    .info-bar { background: #f9f9f9; padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center; border: 1px solid #eee; }
+    .status { margin-top: 10px; font-size: 12px; text-align: center; color: var(--text-muted); }
+    .info-bar { background: var(--surface); padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center; border: 1px solid var(--border); }
     .hidden { display: none; }
 
     /* Progress Bar Styles */
     #progress-container { width: 100%; background-color: #eee; border-radius: 10px; height: 10px; margin-top: 15px; overflow: hidden; display: none; }
-    #progress-bar { width: 0%; height: 100%; background-color: #4CAF50; transition: width 0.3s ease; }
+    #progress-bar { width: 0%; height: 100%; background-color: var(--status-success); transition: width 0.3s ease; }
   </style>
 </head>
 <body>

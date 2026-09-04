@@ -37,7 +37,7 @@ The result shape is:
   },
   legal: {
     ownerName, companyName, reportingEmail, secondaryEmail, phone,
-    originalWorkUrl
+    addressLine1, city, region, postalCode, country, originalWorkUrl
   },
   access: {
     allowedEmailDomains,
@@ -108,6 +108,11 @@ Legal Company Name
 Reporting Email
 Secondary Email
 Reporting Phone
+Address Line 1
+City
+Region
+Postal Code
+Country
 Original Work URL
 Allowed Email Domains
 Enabled Platforms

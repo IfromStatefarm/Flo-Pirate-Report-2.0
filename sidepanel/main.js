@@ -18,58 +18,19 @@ let configData = null;
 let currentAccessProfile = null;
 let sidepanelAccessRefreshScheduled = false;
 const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
-const ENFORCER_ALLOWED_EMAILS = ['social@flosports.tv', 'copyright@flosports.tv', 'copyrights@flosports.tv'];
 const ENFORCER_PLATFORM_DEFAULTS = Object.freeze({
   youtube: {
-    authorizedHandles: [
-      '@flosocial4531',
-      '@floelite',
-      '@flocollegevolleyball',
-      '@florugby',
-      '@flocollegebasketball',
-      '@floflomarching',
-      '@florodeo',
-      '@floracingwk4fk',
-      '@flogrppling',
-      '@floswimming',
-      '@milesplit',
-      '@flovoice',
-      '@floclimbing1847',
-      '@flobowling',
-      '@flodance',
-      '@flodragracing',
-      '@flosports'
-    ],
-    authorizedChannelIds: [
-      'uci1khgc-guvaoej1qpy7sba',
-      'ucjemiyjzlelf1xmfuzemzq',
-      'ucjl8uhcmj3gfmtde5_miggg',
-      'uc3mj0nm-7groyzuqgo-lhmq',
-      'ucjfcsyefs4g-rjhxzoba9ng',
-      'ucbcjdshcwmyzvyofmqfot8q',
-      'ucanzxt5pmv8phtmsnavn7qg',
-      'ucx7mxflg3dxdjtzi5mjriow',
-      'ucngvn3lc9pnoovjsq9x-ldq',
-      'ucrroh-g-vdcl57u-agy3ymq',
-      'uc80xbt9erxjjdlvmter1toq',
-      'ucj8-bad2gi7cn4zuans8qjg',
-      'uc4qlqyxfiebf-xuxrhrbjfg',
-      'ucfjgrug4y7t3zf6fy38mauw'
-    ],
-    authorizedStudioManagerIds: [
-      'vcbdhoyo0l5szyprzc85ia',
-      'an9wotyzuy413s3j75rs0a'
-    ]
+    authorizedHandles: [],
+    authorizedChannelIds: [],
+    authorizedStudioManagerIds: []
   },
   tiktok: {
-    authorizedHandles: [
-      '@flosocial3'
-    ]
+    authorizedHandles: []
   }
 });
 
 <<<<<<< Updated upstream
-const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, or an approved FloSports platform account session.";
+const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode is not enabled for this verified customer profile or platform session.";
 =======
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void sender;
@@ -83,7 +44,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode requires social@flosports.tv, copyright@flosports.tv, copyrights@flosports.tv, ivan.mcclay@flosports.tv, or an approved FloSports platform account session.";
+const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode is not enabled for this verified customer profile or platform session.";
 >>>>>>> Stashed changes
 const ENFORCER_SESSION_SELECTOR_DEFAULTS = Object.freeze({
   youtube: {
@@ -397,10 +358,7 @@ async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAc
 }
 
 async function canUseEnforcerMode() {
-  const currentUserEmail = ((await getUserEmail()) || '').toLowerCase();
-  if (ENFORCER_ALLOWED_EMAILS.includes(currentUserEmail)) {
-    return true;
-  }
+  if (hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_REPORT)) return true;
 
   const accessConfig = getEnforcerAccessConfig();
   const tabs = await chrome.tabs.query({});
@@ -789,14 +747,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     ]);
 
     if (!accessResponse?.success || !accessResponse.profile) {
-      throw new Error(accessResponse?.error || 'The access registry did not return a profile.');
+      throw new Error(accessResponse?.error || 'The customer API did not return a profile.');
     }
 
     currentAccessProfile = accessResponse.profile;
     if (currentAccessProfile.status === 'logged_out') {
       showSidepanelAccessState({
-        title: 'Extension login required',
-        message: 'Open Settings to log in or create a user account.',
+        title: 'Google verification required',
+        message: 'Open Settings to verify your Google identity and customer membership.',
         showSettings: true
       });
       if (loadingEl) loadingEl.textContent = 'Signed out';
@@ -817,8 +775,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (currentAccessProfile.status !== 'ready') {
       showSidepanelAccessState({
-        title: 'Waiting for approval',
-        message: `${currentAccessProfile.name || currentAccessProfile.email || 'This account'} is waiting for an administrator to assign an access level and platforms.`,
+        title: 'Customer access unavailable',
+        message: currentAccessProfile.message || `${currentAccessProfile.name || currentAccessProfile.email || 'This account'} does not currently have a verified active customer membership.`,
         state: 'pending',
         showRetry: true,
         showSettings: true
@@ -980,11 +938,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const confirmBtn = modal.querySelector('#rumble-workflow-confirm');
     const statusEl = modal.querySelector('#rumble-workflow-progress-status');
 
-    if (statusEl) statusEl.style.color = isError ? '#ce0e2d' : '#166534';
+    if (statusEl) statusEl.style.color = isError ? 'var(--brand-primary)' : 'var(--status-success)';
     actions.style.display = 'flex';
     cancelBtn.style.display = 'none';
     confirmBtn.textContent = 'Close';
-    confirmBtn.style.background = isError ? '#ce0e2d' : '#166534';
+    confirmBtn.style.background = isError ? 'var(--brand-primary)' : 'var(--status-success)';
     closeBtn.style.display = 'block';
 
     const close = () => {
@@ -1470,7 +1428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const updateRogueButtonState = (isEnabled) => {
         if (!nukeStreamBtn) return;
-        nukeStreamBtn.style.backgroundColor = isEnabled ? '#ce0e2d' : '#1a1a1a';
+        nukeStreamBtn.style.backgroundColor = isEnabled ? 'var(--brand-primary)' : '#1a1a1a';
         nukeStreamBtn.style.color = 'white';
         nukeStreamBtn.innerText = isEnabled ? '☢️ Show 3rd Party Nuke Overlay' : '🛡️ 3rd Party Safety: ON';
         nukeStreamBtn.style.cursor = isEnabled ? 'pointer' : 'not-allowed';
@@ -1507,7 +1465,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
-                files: ['content_scraper.js']
+                files: ['utils/theme_loader.js', 'content_scraper.js']
             });
 
             await chrome.tabs.sendMessage(tab.id, message);
@@ -1526,7 +1484,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (!tab) throw new Error("No active tab");
 
           // Verify domain to prevent accidental self-nuking
-          const isSafeDomain = tab.url.match(/(flosports\.tv|varsity\.com|milesplit\.com)/i);
+          const officialWorkUrl = currentAccessProfile?.legal?.originalWorkUrl || '';
+          const officialHost = officialWorkUrl ? new URL(officialWorkUrl).hostname : '';
+          const isSafeDomain = officialHost && new URL(tab.url).hostname.endsWith(officialHost);
           if (isSafeDomain && !confirm(`⚠️ WARNING: You are on an official domain.\n\nAre you sure you want to NUKE ${new URL(tab.url).hostname}?`)) {
               btn.innerText = originalText;
               btn.disabled = false;
@@ -1601,9 +1561,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 // --- NEW: SCOUT / ENFORCER ACCESS FILTER ---
 <<<<<<< Updated upstream
-                const currentUserEmail = await getUserEmail();
-                if (isScout && (!currentUserEmail || !currentUserEmail.endsWith('@flosports.tv'))) {
-                    alert("Access Denied: Scout mode requires a @flosports.tv email address.");
+                if (isScout && !canUseScoutMode()) {
+                    alert("Access Denied: Your assigned access level does not include reporting.");
 =======
                 if (isScout && !canUseScoutMode()) {
                     alert("Access Denied: Your assigned access level does not include reporting.");
@@ -1676,7 +1635,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           // 3. Save Context for Content Script
           const reporterInfo = {
               name: reporterName,
-              email: await getUserEmail() || "copyright@flosports.tv",
+              email: currentAccessProfile?.legal?.reportingEmail || await getUserEmail() || '',
               eventName: eventName,
               vertical: vertical,
               sourceUrl: sourceUrl || ""
@@ -1759,7 +1718,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           chrome.tabs.onUpdated.removeListener(listener);
                           chrome.scripting.executeScript({
                               target: { tabId: tabId },
-                              files: ['content_autofill.js']
+                              files: ['utils/theme_loader.js', 'content_autofill.js']
                           }).then(() => console.log("Autofill script injected for TikTok"))
                             .catch(err => console.warn("Injection failed:", err));
                       }
@@ -2044,7 +2003,7 @@ if (startMacroBtn && stopMacroBtn) {
           if (recordingBadge) recordingBadge.style.display = 'inline-block';
           
           if (patchStatus) {
-              patchStatus.style.color = "#ce0e2d";
+              patchStatus.style.color = "var(--brand-primary)";
               patchStatus.innerText = "🔴 RECORDING: Click elements on the video page.";
           }
 
@@ -2132,7 +2091,7 @@ if (startMacroBtn && stopMacroBtn) {
                       if (selectorPatchUI) selectorPatchUI.style.display = 'none';
                       saveSelectorBtn.disabled = false;
                       saveSelectorBtn.innerText = "Patch Cloud Config";
-                      if (patchStatus) patchStatus.style.color = "#b91c1c";
+                      if (patchStatus) patchStatus.style.color = "var(--status-danger)";
                   }, 2500);
               } else {
                   if (patchStatus) {
@@ -2169,7 +2128,9 @@ if (startMacroBtn && stopMacroBtn) {
       const urlStr = data?.url || 'Unknown URL';
       
       if (dmcaNoticeArea) {
-          dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - FloSports\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of FloSports regarding unauthorized broadcasting of our copyrighted content.\n\nInfringing URL: ${urlStr}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\nFloSports Anti-Piracy Team`;
+          const ownerName = currentAccessProfile?.legal?.ownerName || 'Rights Owner';
+          const companyName = currentAccessProfile?.legal?.companyName || ownerName;
+          dmcaNoticeArea.value = `Subject: DMCA Takedown Notice - ${ownerName}\n\nTo Whom It May Concern (Abuse Dept: ${abuseEmails}),\n\nWe are contacting you on behalf of ${companyName} regarding unauthorized distribution of copyrighted content.\n\nInfringing URL: ${urlStr}\nEmbedded Players/Iframes:\n${iframesStr}\nRaw Media Feeds:\n${sniffedStr}\n\nPlease remove or disable access to this material immediately.\n\nRegards,\n${companyName} Rights Protection Team`;
       }
   }
 
@@ -2268,7 +2229,8 @@ function evaluateWorkflowFocus(cartSize) {
       generateDmcaBtn.addEventListener('click', () => {
           const emails = (currentRogueData?.emails?.length > 0) ? currentRogueData.emails.join(',') : '';
           const body = encodeURIComponent(dmcaNoticeArea ? dmcaNoticeArea.value : '');
-          window.open(`mailto:${emails}?subject=DMCA Takedown Notice - FloSports&body=${body}`);
+          const ownerName = currentAccessProfile?.legal?.ownerName || 'Rights Owner';
+          window.open(`mailto:${emails}?subject=${encodeURIComponent(`DMCA Takedown Notice - ${ownerName}`)}&body=${body}`);
       });
   }
 

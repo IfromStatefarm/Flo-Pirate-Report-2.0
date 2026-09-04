@@ -69,10 +69,10 @@ function ensureIdentityOverlay() {
     backdrop-filter: blur(5px);
   `;
   overlay.innerHTML = `
-    <div style="background:white; padding:20px; border-radius:8px; border:2px solid #ce0e2d; box-shadow:0 4px 15px rgba(0,0,0,0.2); width: 80%;">
-      <h3 style="color: #ce0e2d; margin: 0 0 10px 0;">Restricted</h3>
-      <p style="margin: 0 0 10px 0; font-size:13px;">Log in to the extension and obtain approved Report access.</p>
-      <button id="flo-login-retry-pop" style="padding: 8px 15px; background: #ce0e2d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Open Settings</button>
+    <div style="background:white; padding:20px; border-radius:8px; border:2px solid var(--brand-primary); box-shadow:0 4px 15px rgba(0,0,0,0.2); width: 80%;">
+      <h3 style="color: var(--brand-primary); margin: 0 0 10px 0;">Restricted</h3>
+      <p style="margin: 0 0 10px 0; font-size:13px;">Verify your Google identity and approved customer membership.</p>
+      <button id="flo-login-retry-pop" style="padding: 8px 15px; background: var(--brand-primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Open Settings</button>
       <div id="flo-lock-status-pop" style="margin-top:10px; font-size:12px; min-height:15px; color:#666;"></div>
     </div>
   `;
@@ -103,7 +103,7 @@ async function enforceIdentity() {
     overlay.style.display = 'flex';
     if (statusEl) {
       if (profile?.status === 'logged_out') {
-        statusEl.innerText = 'Open Settings to log in or create a user.';
+        statusEl.innerText = 'Open Settings to verify your Google account.';
         statusEl.style.color = '#666';
       } else if (profile?.email) {
         statusEl.innerText = profile.status === 'waiting_approval'
@@ -111,7 +111,7 @@ async function enforceIdentity() {
           : `Access denied: ${profile.email}`;
         statusEl.style.color = 'red';
       } else {
-        statusEl.innerText = response?.error || 'Google identity or access registry unavailable.';
+        statusEl.innerText = response?.error || 'Google identity or customer membership unavailable.';
       }
     }
 

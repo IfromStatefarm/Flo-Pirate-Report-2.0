@@ -98,13 +98,13 @@ function createUploadOverlay(data) {
     <style>
       #flo-upload-overlay {
         position: fixed; top: 20px; right: 20px; width: 350px;
-        background: white; border: 2px solid #fe2c55; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        background: var(--surface, white); border: 2px solid var(--brand-primary, #334155); box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         z-index: 999999; padding: 20px; font-family: sans-serif; border-radius: 8px; cursor: move; user-select: none;
       }
       .flo-step { margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-      .flo-btn { background: #fe2c55; color: white; border: none; padding: 6px 10px; cursor: pointer; border-radius: 4px; }
+      .flo-btn { background: var(--brand-primary, #334155); color: var(--brand-on-primary, white); border: none; padding: 6px 10px; cursor: pointer; border-radius: 4px; }
     </style>
-    <h3 id="flo-overlay-header" style="cursor: move; user-select: none;">FloSports Helper ✥</h3>
+    <h3 id="flo-overlay-header" style="cursor: move; user-select: none;"></h3>
 
     <div class="flo-step">
       <strong>Step 1: Rights Evidence</strong><br>
@@ -125,6 +125,7 @@ function createUploadOverlay(data) {
   `;
 
   document.body.appendChild(overlay);
+  overlay.querySelector('#flo-overlay-header').textContent = `${globalThis.RightsReporterTheme?.value('assistantName') || 'Reporting Assistant'} ✥`;
 
   // --- DRAG LOGIC (WHOLE BOX) ---
   let isDragging = false;

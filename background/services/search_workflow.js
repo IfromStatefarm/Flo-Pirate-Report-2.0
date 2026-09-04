@@ -1,7 +1,9 @@
 export function createSearchWorkflow({
   addNewEventToSheet,
   getEventData,
-  updateEventUrl
+  updateEventUrl,
+  getCustomerProfile,
+  recordCustomerEvent
 }) {
   function normalizeUrl(url) {
     try {
@@ -72,7 +74,7 @@ export function createSearchWorkflow({
     const session = await chrome.storage.session.get(['activeSearchTabId']);
     if (session.activeSearchTabId !== tabId) return;
 
-    await handleBotSearchFailed('Search was closed before a FloSports page was selected.');
+    await handleBotSearchFailed('Search was closed before an official source page was selected.');
   });
 
   async function handleDynamicSearch(data) {
@@ -99,7 +101,8 @@ export function createSearchWorkflow({
       }
 
       const { eventName, vertical } = data;
-      const sheetData = await getEventData(vertical);
+      const customerProfile = await getCustomerProfile();
+      const sheetData = await getEventData(vertical, customerProfile.integrations);
       const searchBaseUrl = sheetData.searchUrl;
       if (!searchBaseUrl) {
         return { success: false, error: 'No Search URL found in Sheet.' };
@@ -115,7 +118,9 @@ export function createSearchWorkflow({
           vertical,
           eventName,
           originalName: eventName,
-          rowIndex: existingEvent ? existingEvent.rowIndex : 'APPEND'
+          rowIndex: existingEvent ? existingEvent.rowIndex : 'APPEND',
+          customerId: customerProfile.customerId,
+          userId: customerProfile.userId
         }
       });
 
@@ -132,10 +137,20 @@ export function createSearchWorkflow({
 
     if (activeEventDetails) {
       const { vertical, rowIndex, originalName } = activeEventDetails;
+      const customerProfile = await getCustomerProfile();
+      if (customerProfile.customerId !== activeEventDetails.customerId || customerProfile.userId !== activeEventDetails.userId) {
+        throw new Error('The active search belongs to a different customer session.');
+      }
+      await recordCustomerEvent(customerProfile, 'event.source_url_updated', {
+        platform: 'tiktok',
+        target_url: url,
+        source_event_name: originalName,
+        vertical
+      });
       if (rowIndex === 'APPEND') {
-        await addNewEventToSheet(vertical, originalName, url);
+        await addNewEventToSheet(vertical, originalName, url, 'tiktok', customerProfile.integrations);
       } else {
-        await updateEventUrl(vertical, rowIndex, url);
+        await updateEventUrl(vertical, rowIndex, url, 'tiktok', customerProfile.integrations);
       }
 
       await chrome.storage.session.remove([

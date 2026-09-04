@@ -1,30 +1,26 @@
 // content_scraper.js
 
-(function() { // Wrap in IIFE to prevent variable leaks
-  
+(async function() { // Wrap in IIFE to prevent variable leaks
+
      // Guard against IFrame/Ad injection (Only run in main window)
   if (window.self !== window.top) return;
-  
+
   const forceOverlayRun = window.__floForceOverlay === true;
 
   // Guard against re-injection
   if (window.hasFloScraperRun) return;
   window.hasFloScraperRun = true;
 
-  // --- EXTENSION ACCESS ENFORCEMENT ---
-  // Global Exemption List: Prevents overlay from opening and logic from running
-  const EXEMPT_WEBSITES = [
-    'varsity.com', 'flosports.tv', 'floracing.tv', 'milesplit.com', 'houston.flosports.net', 
-    'google.com', 'amazon.com', 'flocasts.atlassian.net', 'gemini.google.com', 
-    'chatgpt.com', 'fso-heatmap.vercel.app', 'gmail.com', 'app.slack.com', '10.43.29.8', 
-    'flosports.okta.com', 'hockeytech.zen.zixi.com', 'workforcenow.adp.com', 'flosports.kazoohr.com', 'flosports.tv', 'go.flosports.tv', 'floracing.com', 'flocollege.com', 'flowrestling.org', 
-    'arena.flowrestling.com', 'flograppling.com', 'flohockey.tv', 'flocheer.com', 'varsity.tv', 'tv.varsity.com', 'flotrack.org', 'milesplit.com', 'milesplit.live', 'flomarching.com', 'florugby.com',
-    'flobikes.com', 'flofootball.com', 'flohoops.com', 'flobaseball.tv', 'flosoftball.com', 'flofc.com', 'flovolleyball.tv', 'floswimming.com', 'flolive.tv', 'flobowling.com', 'flodance.com', 'flovoice.com', 
-    'florodeo.com', 'flocombat.com', 'floelite.com', 'flogymnastics.com', 'dirtondirt.com', 'trackwrestling.com', 'directathletics.com', 'tfrrs.org', 'tfmeetpro.com', 'hockeytech.com', 'hockeytv.com', 'lucasdirt.com',
-    'flosports', 'app.hibob.com', 'dashboard.airbase.io', 'app.ashbyhq.com', 'flosports.ziphq.com', 'flowrestling.org', 'flograppling', 'floracing', 'flograppling', 'flocycling',  
-    'sites.google.com', 'flosports.latticehq.com', 'keep.google.com', 'github.com', 'flodogs.com','drive.google.com'
-  ];
-  if (!forceOverlayRun && EXEMPT_WEBSITES.some(domain => window.location.hostname.toLowerCase().includes(domain))) return;
+  // Prevent the overlay on the verified customer's own work domain and core workspace pages.
+  await globalThis.RightsReporterTheme?.loadTheme?.();
+  const originalWorkUrl = globalThis.RightsReporterTheme?.getTheme?.().legal?.originalWorkUrl || '';
+  let customerWorkHost = '';
+  try { customerWorkHost = originalWorkUrl ? new URL(originalWorkUrl).hostname.toLowerCase() : ''; } catch (error) { customerWorkHost = ''; }
+  const EXEMPT_WEBSITES = ['accounts.google.com', 'docs.google.com', 'drive.google.com', 'mail.google.com'];
+  if (customerWorkHost) EXEMPT_WEBSITES.push(customerWorkHost);
+  const currentHost = window.location.hostname.toLowerCase();
+  const isExemptHost = EXEMPT_WEBSITES.some((domain) => currentHost === domain || currentHost.endsWith(`.${domain}`));
+  if (!forceOverlayRun && isExemptHost) return;
 
   let currentCount = 0;
 
@@ -206,7 +202,7 @@
   })();
 // Utility to check if the extension context is still valid (handles cases where the page might have navigated or reloaded)
   function isExtensionValid() {
-    try { return !!chrome.runtime && !!chrome.runtime.id; } 
+    try { return !!chrome.runtime && !!chrome.runtime.id; }
     catch (e) { return false; }
   }
 
@@ -233,9 +229,9 @@
           } else {
               return document.querySelector(selector);
           }
-      } catch (e) { 
+      } catch (e) {
           // console.warn("Selector error:", e);
-          return null; 
+          return null;
       }
   }
 
@@ -848,7 +844,7 @@
     const host = window.location.hostname;
     const url = window.location.href;
     const timestamp = new Date().toISOString();
-    let views = "N/A"; 
+    let views = "N/A";
 
     console.log("PIRATE AI: Attempting scrape on", host, url);
 
@@ -886,7 +882,7 @@
           try {
               const jsonConfig = SCRAPER_CONFIG.tiktok.json_data;
               const scriptIds = jsonConfig?.script_ids || ["__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"];
-              
+
               for (const id of scriptIds) {
                   const el = document.getElementById(id);
                   if (el && el.textContent) {
@@ -894,7 +890,7 @@
                       // Basic handle extraction attempt from deeply nested JSON
                       const getVal = (obj, path) => path.split('.').reduce((o, k) => (o || {})[k], obj);
                       const possiblePaths = jsonConfig?.fields?.handle || ["author.uniqueId", "webapp.video-detail.itemInfo.itemStruct.author.uniqueId"];
-                      
+
                       for(const p of possiblePaths) {
                           const val = getVal(json, p) || getVal(json.__DEFAULT_SCOPE__, p);
                           if(val) { handle = val; matched = true; break; }
@@ -906,10 +902,10 @@
       }
 
       if (!matched && (url === "https://www.tiktok.com/" || url === "https://www.tiktok.com")) return null;
-      
+
       if (!matched) {
           console.warn("PIRATE AI: No valid video ID found in URL.");
-          return null; 
+          return null;
       }
 
       // *** SCRAPING CHANGE ***
@@ -919,12 +915,12 @@
 
       console.log(`PIRATE AI: Scrape Success! Handle: ${handle}, Views: PENDING`);
 
-      return { 
-        platform: "TikTok", 
-        url, 
-        handle: handle, 
-        views, 
-        timestamp 
+      return {
+        platform: "TikTok",
+        url,
+        handle: handle,
+        views,
+        timestamp
       };
     }
 
@@ -932,27 +928,27 @@
     else if (host.includes('youtube.com')) {
       const params = new URLSearchParams(window.location.search);
       const videoId = params.get('v');
-      
+
       if (!videoId && !url.includes('/shorts/') && !url.includes('/live/')) {
           return null;
       }
 
       const channelLink = document.querySelector(SCRAPER_CONFIG.youtube.channel_link);
       let channel = "Unknown";
-      
+
       if (channelLink) {
           const href = channelLink.getAttribute('href') || "";
           if (href.includes('/@')) {
-              channel = href.split('/@')[1]; 
+              channel = href.split('/@')[1];
           } else {
-              channel = channelLink.innerText; 
+              channel = channelLink.innerText;
           }
       }
 
-      const viewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_std); 
-      const shortViewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_shorts); 
+      const viewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_std);
+      const shortViewSelector = document.querySelector(SCRAPER_CONFIG.youtube.views_shorts);
       const shortDescButton = document.querySelector('button[aria-label*="views"]');
-      
+
       if (viewSelector && viewSelector.innerText) {
           views = viewSelector.innerText.replace(' views', '');
       } else if (shortViewSelector && shortViewSelector.innerText) {
@@ -966,17 +962,17 @@
       if (!targetId && url.includes('/shorts/')) targetId = url.split('/shorts/')[1];
       if (!targetId && url.includes('/live/')) targetId = url.split('/live/')[1];
 
-      
+
       const cleanId = targetId ? targetId.split('?')[0] : null;
       const screenshot = cleanId ? `https://img.youtube.com/vi/${cleanId}/maxresdefault.jpg` : null;
 
-      return { 
-        platform: "YouTube", 
-        url, 
-        handle: channel, 
-        screenshot: screenshot, 
-        views, 
-        timestamp 
+      return {
+        platform: "YouTube",
+        url,
+        handle: channel,
+        screenshot: screenshot,
+        views,
+        timestamp
       };
     }
 
@@ -1018,14 +1014,14 @@
               : (embeddedData.likes || extractReadableLikeCount(metaDescription) || getInstagramLikeCountFromDom(instagramConfig));
           views = viewCount || likeCount || "N/A";
       }
-      
-      return { 
-        platform: "Instagram", 
-        url, 
+
+      return {
+        platform: "Instagram",
+        url,
         handle: normalizeScrapedHandle(handle) || "InstagramUser",
         views,
         contentType: url.includes('/reel/') ? 'reel' : (url.includes('/tv/') ? 'video' : (isStoryUrl ? 'story' : 'post')),
-        timestamp 
+        timestamp
       };
     }
 
@@ -1040,13 +1036,13 @@
 
       const viewEl = document.querySelector(SCRAPER_CONFIG.twitter.views);
       const views = viewEl ? viewEl.innerText.trim() : "N/A";
-      
-      return { 
-        platform: "Twitter", 
-        url, 
-        handle, 
-        views, 
-        timestamp 
+
+      return {
+        platform: "Twitter",
+        url,
+        handle,
+        views,
+        timestamp
       };
     }
 
@@ -1070,25 +1066,25 @@
       const vodViews = getTwitchViewCount(twitchConfig.vod_views);
       const clipViews = getTwitchViewCount(twitchConfig.clip_views);
 
-      return { 
-        platform: "Twitch", 
-        url, 
+      return {
+        platform: "Twitch",
+        url,
         handle,
         views: (isClip ? clipViews : (isVod ? vodViews : liveViews)) || liveViews || vodViews || clipViews || "N/A",
         contentType: isClip ? 'clip' : (isLive ? 'live' : 'vod'),
         isLive,
-        timestamp 
+        timestamp
       };
     }
 
     // --- FACEBOOK ---
     else if (host.includes('facebook.com')) {
-      return { 
-        platform: "Facebook", 
-        url, 
-        handle: "FacebookUser", 
-        views: "N/A", 
-        timestamp 
+      return {
+        platform: "Facebook",
+        url,
+        handle: "FacebookUser",
+        views: "N/A",
+        timestamp
       };
     }
 
@@ -1141,12 +1137,12 @@
 
     // --- DISCORD ---
     else if (host.includes('discord.com')) {
-      return { 
-        platform: "Discord", 
-        url, 
-        handle: "DiscordUser", 
-        views: "N/A", 
-        timestamp 
+      return {
+        platform: "Discord",
+        url,
+        handle: "DiscordUser",
+        views: "N/A",
+        timestamp
       };
     }
 
@@ -1158,20 +1154,20 @@
     // ==========================================
     let isTrainingMode = false;
     let trainingPlatform = null;
-    
+
     /**
  * Determines if an ID attribute is likely auto-generated or temporary.
  * Targets patterns like ":r1:", "tux-1234", or long random hashes.
  */
 function isLikelyTemporaryId(id) {
     if (!id) return true;
-    
+
     // Pattern 1: React/MUI/Next.js style colon IDs (e.g., ":r1:", ":R2:")
     if (id.includes(':')) return true;
-    
+
     // Pattern 2: Sequential or numeric-heavy IDs (e.g., "id-12345", "button-5")
     if (/\d{4,}/.test(id)) return true;
-    
+
     // Pattern 3: Framework prefixes known for dynamic IDs
     const tempPrefixes = ['tux-', 'ember', 'view', 'gen-', 'react-'];
     if (tempPrefixes.some(prefix => id.toLowerCase().startsWith(prefix))) return true;
@@ -1195,28 +1191,28 @@ function generateStableSelector(el) {
     if (target.hasAttribute('data-e2e')) {
         strategies.push(`[data-e2e="${target.getAttribute('data-e2e')}"]`);
     }
-    
+
     // Strategy 2: ID-based Path (Filtered to ignore temporary IDs)
     if (target.id && !isLikelyTemporaryId(target.id)) {
         strategies.push(`#${target.id}`);
     }
-    
+
     // Strategy 3: Full CSS Path (The fallback)
     let path = [];
     let current = target;
     while (current && current.nodeType === Node.ELEMENT_NODE) {
         let selector = current.nodeName.toLowerCase();
-        
+
         // Pierce through dynamic IDs even in the hierarchy
-        if (current.id && !isLikelyTemporaryId(current.id)) { 
-            selector += `#${current.id}`; 
-            path.unshift(selector); 
-            break; 
+        if (current.id && !isLikelyTemporaryId(current.id)) {
+            selector += `#${current.id}`;
+            path.unshift(selector);
+            break;
         }
-        
+
         let sibling = current, nth = 1;
-        while (sibling = sibling.previousElementSibling) { 
-            if (sibling.nodeName.toLowerCase() === selector) nth++; 
+        while (sibling = sibling.previousElementSibling) {
+            if (sibling.nodeName.toLowerCase() === selector) nth++;
         }
         if (nth !== 1) selector += `:nth-of-type(${nth})`;
         path.unshift(selector);
@@ -1227,14 +1223,14 @@ function generateStableSelector(el) {
 
     return strategies.filter(Boolean);
 }
-  
+
   function handleTrainingMouseOver(e) {
       if (!isTrainingMode) return;
         const target = (e.composedPath && e.composedPath()[0]) || e.target;
-        target.style.outline = '3px dashed #ce0e2d';
+        target.style.outline = '3px dashed var(--brand-primary)';
         target.style.cursor = 'crosshair';
     }
-  
+
     function handleTrainingMouseOut(e) {
         if (!isTrainingMode) return;
         const target = (e.composedPath && e.composedPath()[0]) || e.target;
@@ -1247,14 +1243,14 @@ function generateStableSelector(el) {
       const target = (e.composedPath && e.composedPath()[0]) || e.target;
       const selectors = generateStableSelector(target);
       if (!selectors || selectors.length === 0) return;
-      
+
       const step = {
           action: e.type === 'click' ? 'click' : 'input',
           selector: selectors[0],
           value: e.type === 'input' ? target.value : undefined,
           timestamp: Date.now()
       };
-      
+
       // Store locally instead of sending thousands of messages to background
       macroEvents.push(step);
   }
@@ -1264,7 +1260,7 @@ function generateStableSelector(el) {
       isMacroMode = true;
       trainingPlatform = platform;
       macroEvents = []; // Reset local array on start
-      
+
       document.addEventListener('click', handleMacroEvent, true);
       document.addEventListener('input', handleMacroEvent, true);
       console.log("PIRATE AI: Macro Recording started...");
@@ -1275,10 +1271,10 @@ function generateStableSelector(el) {
       if (!isMacroMode) return;
       isMacroMode = false;
       clearTimeout(macroTimeout);
-      
+
       document.removeEventListener('click', handleMacroEvent, true);
       document.removeEventListener('input', handleMacroEvent, true);
-      
+
       console.log("PIRATE AI: Macro Recording finished.");
 
       if (macroEvents.length === 0) {
@@ -1289,9 +1285,9 @@ function generateStableSelector(el) {
 
       // Compile the macro locally
       const processedMacro = macroEvents.map((ev, i) => ({
-          action: ev.action, 
-          selector: ev.selector, 
-          value: ev.value, 
+          action: ev.action,
+          selector: ev.selector,
+          value: ev.value,
           delay: i === 0 ? 0 : ev.timestamp - macroEvents[i-1].timestamp
       }));
 
@@ -1299,80 +1295,80 @@ function generateStableSelector(el) {
       showPatchUI(trainingPlatform, JSON.stringify(processedMacro, null, 2));
 
       // Notify side panel to reset its UI (turn off flashing borders)
-      chrome.runtime.sendMessage({ 
-          action: 'macroTrainingComplete', 
-          platform: trainingPlatform, 
-          macro: processedMacro 
+      chrome.runtime.sendMessage({
+          action: 'macroTrainingComplete',
+          platform: trainingPlatform,
+          macro: processedMacro
       }).catch(() => {});
   }
     // Inject a native UI right on the page to avoid Side Panel communication drops
   function showPatchUI(platform, selector) {
       const existing = document.getElementById('flo-patch-ui');
       if (existing) existing.remove();
-  
+
       // Setup strategies array
       const strategyList = Array.isArray(selector) ? selector : [selector];
       let currentStrategy = 0;
       const initialSelector = strategyList[0] || '';
-      
+
       // Identify if the payload is a Macro Array
       const isMacroData = typeof initialSelector === 'string' && initialSelector.trim().startsWith('[');
-  
+
       const ui = document.createElement('div');
       ui.id = 'flo-patch-ui';
       ui.style.cssText = `
           position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-          background: white; border: 3px solid #ce0e2d; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+          background: white; border: 3px solid var(--brand-primary); box-shadow: 0 10px 40px rgba(0,0,0,0.4);
           z-index: 2147483647; padding: 20px; font-family: sans-serif; border-radius: 8px; width: 350px;
       `;
 
       ui.innerHTML = `
-          <h3 style="margin: 0 0 10px 0; color: #ce0e2d; font-size: 18px;">Map Captured ${isMacroData ? 'Macro Sequence' : 'Selector'}</h3>
+          <h3 style="margin: 0 0 10px 0; color: var(--brand-primary); font-size: 18px;">Map Captured ${isMacroData ? 'Macro Sequence' : 'Selector'}</h3>
           <p style="font-size: 12px; color: #666; margin-bottom: 5px;">${isMacroData ? 'Steps compiled:' : 'Selector captured:'}</p>
           <textarea id="flo-patch-selector-input" style="width: 100%; height: 80px; padding: 8px; margin-bottom: 6px; font-family: monospace; font-size: 11px; box-sizing: border-box; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px; resize: vertical;">${initialSelector}</textarea>
           <button id="flo-patch-test" style="background: #0288d1; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 12px;">${isMacroData ? 'Verify Macro Replay' : 'Test Selection'}</button>
-  
+
 	          <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Section in Config:</label>
 	          <select id="flo-patch-section" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
 	              <option value="scraper" ${isMacroData ? '' : 'selected'}>Scraper (Views, Handles)</option>
 	              <option value="autofill" ${isMacroData ? 'selected' : ''}>Autofill (Wizard Steps)</option>
 	              <option value="session">Session (Account Checks)</option>
 	          </select>
-  
+
           <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Field Name:</label>
           <input type="text" id="flo-patch-field" placeholder="e.g., loginSequence, checkboxGroup" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
-          
+
           <div style="display: flex; justify-content: space-between;">
               <button id="flo-patch-cancel" style="background: #ccc; color: #333; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Cancel</button>
-              <button id="flo-patch-save" style="background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Save to Cloud</button>
+              <button id="flo-patch-save" style="background: var(--brand-primary); color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 48%; font-weight: bold;">Save to Cloud</button>
           </div>
           <div id="flo-patch-status" style="margin-top: 12px; font-size: 13px; font-weight: bold; text-align: center;"></div>
       `;
-  
+
         document.body.appendChild(ui);
         document.getElementById('flo-patch-cancel').addEventListener('click', () => ui.remove());
-  
+
       document.getElementById('flo-patch-test').addEventListener('click', () => {
           let testSel = document.getElementById('flo-patch-selector-input').value.trim();
           let searchSel = testSel;
           try { if (testSel.startsWith('[{')) searchSel = JSON.parse(testSel)[0]?.selector || testSel; } catch(e){}
           let el = findElement(searchSel);
           const status = document.getElementById('flo-patch-status');
-  
+
           // Cycle through strategies if not found
           if (!el && currentStrategy < strategyList.length - 1) {
               currentStrategy++;
               testSel = strategyList[currentStrategy];
               document.getElementById('flo-patch-selector-input').value = testSel;
-              
+
               searchSel = testSel;
               try { if (testSel.startsWith('[{')) searchSel = JSON.parse(testSel)[0]?.selector || testSel; } catch(e){}
               el = findElement(searchSel);
           }
-  
+
           if (el) {
               const origOutline = el.style.outline;
-              el.style.outline = '4px solid #ce0e2d'; // Red highlight
+              el.style.outline = '4px solid var(--brand-primary)'; // Red highlight
               console.log("PIRATE AI: Test Element Value/Text ->", el.value || el.innerText);
               status.innerText = `✅ Found Strategy ${currentStrategy + 1}! (Highlighted in red)`;
               status.style.color = "green";
@@ -1382,22 +1378,22 @@ function generateStableSelector(el) {
               status.style.color = "red";
           }
       });
-  
+
       document.getElementById('flo-patch-save').addEventListener('click', () => {
           const section = document.getElementById('flo-patch-section').value;
             const field = document.getElementById('flo-patch-field').value.trim();
             const actionType = document.getElementById('flo-patch-action')?.value || '';
             const finalSelector = document.getElementById('flo-patch-selector-input').value.trim();
-  
+
             if (!field) {
                 alert("Please enter a field name (e.g., agreementCheckbox).");
                 return;
             }
-  
+
             const status = document.getElementById('flo-patch-status');
             status.innerText = "Syncing to Cloud...";
-            status.style.color = "#ce0e2d";
-  
+            status.style.color = "var(--brand-primary)";
+
             chrome.runtime.sendMessage({
                 action: 'patchSelectorConfig',
                 platform: platform,
@@ -1417,15 +1413,15 @@ function generateStableSelector(el) {
             });
         });
     }
-  
+
      function handleTrainingClick(e) {
       if (!isTrainingMode) return;
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-  
+
       const target = (e.composedPath && e.composedPath()[0]) || e.target;
       const targetTag = target.tagName;
       const isGeneric = ['DIV', 'SPAN', 'SECTION', 'MAIN', 'BODY'].includes(targetTag) && !target.getAttribute('role');
-  
+
       if (isGeneric) {
           const confirmNuke = confirm(`⚠️ FAT FINGER WARNING:\nYou just clicked a generic ${targetTag} element.\n\nMapping background containers usually breaks the auto-reporter for the whole team.\n\nAre you sure you want to map this?`);
           if (!confirmNuke) {
@@ -1433,32 +1429,32 @@ function generateStableSelector(el) {
               return; // Exit without showing the Patch UI
           }
       }
-        
+
         e.target.style.outline = '';
         e.target.style.cursor = '';
         isTrainingMode = false;
-        
+
         // Visual feedback flash
         const originalBg = e.target.style.backgroundColor;
-        e.target.style.backgroundColor = 'rgba(206, 14, 45, 0.3)';
+        e.target.style.backgroundColor = 'color-mix(in srgb, var(--brand-primary) 30%, transparent)';
         setTimeout(() => e.target.style.backgroundColor = originalBg, 500);
-        
+
          document.removeEventListener('mouseover', handleTrainingMouseOver, true);
         document.removeEventListener('mouseout', handleTrainingMouseOut, true);
         document.removeEventListener('click', handleTrainingClick, true);
-  
+
         // Deep-scan to pierce through transparent overlays/wrappers and Shadow DOM
       const shadowTarget = (e.composedPath && e.composedPath()[0]) || e.target;
       const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
       const actualTarget = elementsAtPoint.find(el => el.matches('input, textarea, select, button, [role="checkbox"], [role="radio"]')) || shadowTarget;
-      
+
       const newSelectors = generateStableSelector(actualTarget);
-  
+
       console.log("PIRATE AI: Captured New Selectors ->", newSelectors);
-      
+
       // Bring up the in-page UI so we don't rely on the side panel being open!
       showPatchUI(trainingPlatform, newSelectors);
-      
+
       // Attempt to update the side panel silently as a backup, ignoring dropped connections
       chrome.runtime.sendMessage({
           action: 'selectorTrainingComplete',
@@ -1466,18 +1462,18 @@ function generateStableSelector(el) {
           selector: newSelectors[0]
       }).catch(() => {});
   }
-  
+
     function startSelectorTraining(platform) {
         if (isTrainingMode) return;
         isTrainingMode = true;
         trainingPlatform = platform;
-        
+
         document.addEventListener('mouseover', handleTrainingMouseOver, true);
         document.addEventListener('mouseout', handleTrainingMouseOut, true);
         document.addEventListener('click', handleTrainingClick, true);
         console.log("PIRATE AI: Selector Training Mode ACTIVE");
     }
-  
+
     let isMacroMode = false;
     let macroEvents = [];
     let macroEndTime = 0;
@@ -1489,7 +1485,7 @@ function generateStableSelector(el) {
         const target = (e.composedPath && e.composedPath()[0]) || e.target;
         const selectors = generateStableSelector(target);
         if (!selectors || selectors.length === 0) return;
-        
+
         const step = {
             action: e.type === 'click' ? 'click' : 'input',
             selector: selectors[0],
@@ -1499,15 +1495,15 @@ function generateStableSelector(el) {
         // Fire immediately to Service Worker (Dumb Sensor approach)
         chrome.runtime.sendMessage({ action: 'recordMacroStep', step: step }).catch(() => {});
     }
-  
+
     function startMacroTraining(platform) {
     if (isMacroMode) return;
     isMacroMode = true;
     trainingPlatform = platform;
-    
+
     // Clear old events
     chrome.runtime.sendMessage({ action: 'startMacroSession', platform: trainingPlatform }).catch(() => {});
-    
+
     document.addEventListener('click', handleMacroEvent, true);
     document.addEventListener('input', handleMacroEvent, true);
     console.log("PIRATE AI: Macro Recording started...");
@@ -1525,7 +1521,7 @@ function finishMacroTraining() {
 
     document.removeEventListener('click', handleMacroEvent, true);
     document.removeEventListener('input', handleMacroEvent, true);
-    
+
     // Tell background to compile the final macro and send to UI
     chrome.runtime.sendMessage({ action: 'compileMacro' }).catch(() => {});
     console.log("PIRATE AI: Macro Recording finished.");
@@ -1620,7 +1616,7 @@ function finishMacroTraining() {
 
   function handleAddToQueue(btnAdd) {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
-      
+
       let data = null;
       try {
           data = scrapePageStrategy();
@@ -1629,12 +1625,12 @@ function finishMacroTraining() {
           if (window.showClippyMessage) window.showClippyMessage("Error scraping page data. Check the console.");
           return;
       }
-      
-      if (!data) { 
+
+      if (!data) {
           if (window.showClippyMessage) window.showClippyMessage("No valid video detected on this page. Check logs.");
-          return; 
+          return;
       }
-      
+
       // --- TRACK A: SCOUT SCORING ---
       data.scoutScore = 10; // Standard Find
       let parsedViews = 0;
@@ -1642,19 +1638,19 @@ function finishMacroTraining() {
       if (vStr.includes('k')) parsedViews = parseFloat(vStr) * 1000;
       else if (vStr.includes('m')) parsedViews = parseFloat(vStr) * 1000000;
       else parsedViews = parseFloat(vStr.replace(/[^\d.]/g, '')) || 0;
-      
+
       // --- TRACK A: SCOUT SCORING (GOLD MINE MULTIPLIER) ---
       let baseScore = 10;
       if (parsedViews >= 100000) data.scoutScore = baseScore * 5; // 5x Viral Pirate
       else if (parsedViews >= 10000) data.scoutScore = baseScore * 2; // 2x High-Impact
       else data.scoutScore = baseScore; // 1x Standard
-      
+
       if (data.isLive || data.url.includes('/live/') || document.querySelector('[aria-label="LIVE"]')) data.scoutScore *= 2; // Live Event Bonus
-      
+
       const originalText = "+ Add";
       btnAdd.innerText = "Capturing...";
       btnAdd.disabled = true;
-      btnAdd.style.backgroundColor = "#ff9800"; 
+      btnAdd.style.backgroundColor = "#ff9800";
 
       // --- TIMEOUT PROTECTION ---
       let responseReceived = false;
@@ -1665,16 +1661,16 @@ function finishMacroTraining() {
               setTimeout(() => {
                   btnAdd.innerText = originalText;
                   btnAdd.disabled = false;
-                  btnAdd.style.backgroundColor = "#ce0e2d";
+                  btnAdd.style.backgroundColor = "var(--brand-primary)";
               }, 2000);
           }
       }, 8000); // 8 seconds to allow background capture + Google API call
 
       try {
           // Tell the background script to handle capture & verification simultaneously
-          chrome.runtime.sendMessage({ 
-              action: 'processNewItem', 
-              data: data 
+          chrome.runtime.sendMessage({
+              action: 'processNewItem',
+              data: data
           }, (res) => {
               responseReceived = true;
               clearTimeout(safetyTimeout);
@@ -1685,13 +1681,13 @@ function finishMacroTraining() {
                       handleContextInvalidated();
                       return;
                   }
-                  
+
                   // Graceful failure UI update
                   btnAdd.innerText = "Error";
-                  setTimeout(() => { 
-                      btnAdd.innerText = originalText; 
-                      btnAdd.disabled = false; 
-                      btnAdd.style.backgroundColor = "#ce0e2d";
+                  setTimeout(() => {
+                      btnAdd.innerText = originalText;
+                      btnAdd.disabled = false;
+                      btnAdd.style.backgroundColor = "var(--brand-primary)";
                   }, 1500);
                   return;
               }
@@ -1700,45 +1696,45 @@ function finishMacroTraining() {
                   // Render penalty toast directly in the DOM instead of blocking alert()
                   if (res.milestoneHit) {
                       const toast = document.createElement('div');
-                      toast.style.cssText = `position:fixed; bottom:30px; right:30px; background:#ce0e2d; color:#fff; padding:15px 20px; border-radius:8px; font-weight:bold; box-shadow:0 6px 20px rgba(0,0,0,0.4); z-index:2147483647; font-family:sans-serif; pointer-events:none; transition: all 0.3s ease-in-out;`;
+                      toast.style.cssText = `position:fixed; bottom:30px; right:30px; background:var(--brand-primary); color:#fff; padding:15px 20px; border-radius:8px; font-weight:bold; box-shadow:0 6px 20px rgba(0,0,0,0.4); z-index:2147483647; font-family:sans-serif; pointer-events:none; transition: all 0.3s ease-in-out;`;
                       toast.innerHTML = `🚨 Penalty Applied!<br><span style="font-size:12px; font-weight:normal;">${res.milestoneMessage}</span>`;
                       document.body.appendChild(toast);
                       setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 4000);
                   }
-                  
+
                   btnAdd.innerText = "Whitelisted";
-                  btnAdd.style.backgroundColor = "#666"; 
-                  
+                  btnAdd.style.backgroundColor = "#666";
+
                   setTimeout(() => {
                       btnAdd.innerText = originalText;
                       btnAdd.disabled = false;
-                      btnAdd.style.backgroundColor = "#ce0e2d"; 
+                      btnAdd.style.backgroundColor = "var(--brand-primary)";
                   }, 2000);
               } else if (res && res.success) {
                   // --- MILESTONE TOAST ---
                   if (res.milestoneHit) {
                       const isLevelUp = res.milestoneMessage?.toLowerCase().includes("level");
-                      
+
                       // Notify Clippy to act as the Hype Man
-                      window.dispatchEvent(new CustomEvent('triggerClippyHype', { 
-                          detail: { message: res.milestoneMessage, isLevelUp } 
+                      window.dispatchEvent(new CustomEvent('triggerClippyHype', {
+                          detail: { message: res.milestoneMessage, isLevelUp }
                       }));
                   }
-                  
-                  btnAdd.innerText = "Saved!"; 
+
+                  btnAdd.innerText = "Saved!";
                   btnAdd.style.backgroundColor = "#4CAF50";
                   setTimeout(() => {
-                      btnAdd.innerText = originalText; 
-                      btnAdd.disabled = false; 
-                      btnAdd.style.backgroundColor = "#ce0e2d";
+                      btnAdd.innerText = originalText;
+                      btnAdd.disabled = false;
+                      btnAdd.style.backgroundColor = "var(--brand-primary)";
                   }, 1500);
               } else {
                   btnAdd.innerText = "Error";
                   console.error("Process Response Error:", res);
-                  setTimeout(() => { 
-                      btnAdd.innerText = originalText; 
-                      btnAdd.disabled = false; 
-                      btnAdd.style.backgroundColor = "#ce0e2d";
+                  setTimeout(() => {
+                      btnAdd.innerText = originalText;
+                      btnAdd.disabled = false;
+                      btnAdd.style.backgroundColor = "var(--brand-primary)";
                   }, 1500);
               }
           });
@@ -1758,8 +1754,8 @@ function finishMacroTraining() {
 
     // Auto-minimize if we are on a reporting/legal page
     const currentUrl = window.location.href.toLowerCase();
-    const isReportingPage = currentUrl.includes('/legal/report') || 
-                            currentUrl.includes('copyright_complaint_form') || 
+    const isReportingPage = currentUrl.includes('/legal/report') ||
+                            currentUrl.includes('copyright_complaint_form') ||
                             currentUrl.includes('ipr.tiktokforbusiness');
 
     const overlay = document.createElement('div');
@@ -1778,13 +1774,13 @@ function finishMacroTraining() {
         <button id="flo-min-btn" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #999; line-height: 1; padding: 0 5px;">−</button>
       </div>
       <div id="flo-main-content">
-        <div id="flo-count" style="font-size: 32px; color: #ce0e2d; font-weight: bold; margin-bottom: 15px; transition: color 0.3s; pointer-events: none;">...</div>
-        
+        <div id="flo-count" style="font-size: 32px; color: var(--brand-primary); font-weight: bold; margin-bottom: 15px; transition: color 0.3s; pointer-events: none;">...</div>
+
         <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-          <button id="flo-add" style="flex: 1; background: #ce0e2d; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
+          <button id="flo-add" style="flex: 1; background: var(--brand-primary); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">+ Add</button>
           <button id="flo-report" style="flex: 1; background: #333; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold;">Panel</button>
         </div>
-        
+
         <!-- NUKE BUTTON (Hidden by Default) -->
         <button id="flo-nuke" style="width: 100%; background: #1a1a1a; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight:bold; margin-bottom: 10px; display: none;">Nuke Stream</button>
 
@@ -1804,21 +1800,21 @@ function finishMacroTraining() {
     // 1. Panel Button Listener - Opens the side panel
     document.getElementById('flo-report').addEventListener('click', () => {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
-      try { chrome.runtime.sendMessage({ action: 'openPopup' }); } 
+      try { chrome.runtime.sendMessage({ action: 'openPopup' }); }
       catch(e) { handleContextInvalidated(); }
     });
     // 2. Reset Button Listener - Clears the cart with confirmation
     document.getElementById('flo-reset').addEventListener('click', () => {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
       if (currentCount > 0 && !confirm(`Delete ${currentCount} items from cart?`)) return;
-      try { chrome.runtime.sendMessage({ action: 'clearCart' }); } 
+      try { chrome.runtime.sendMessage({ action: 'clearCart' }); }
       catch(e) { handleContextInvalidated(); }
     });
     // 3. Undo Button Listener - Removes the most recently added item
     document.getElementById('flo-undo').addEventListener('click', () => {
       if (!isExtensionValid()) { handleContextInvalidated(); return; }
       if (currentCount > 0) {
-        try { chrome.runtime.sendMessage({ action: 'undoCart' }); } 
+        try { chrome.runtime.sendMessage({ action: 'undoCart' }); }
         catch(e) { handleContextInvalidated(); }
       }
     });
@@ -1858,7 +1854,7 @@ function finishMacroTraining() {
             chrome.runtime.sendMessage({ action: 'initRogueTakedown', data: data }, () => {
                 btnNuke.innerText = "Nuke Stream";
                 btnNuke.disabled = false;
-                
+
                 // Pop the side panel open to show the results
                 chrome.runtime.sendMessage({ action: 'openPopup' });
             });
@@ -1879,7 +1875,7 @@ function finishMacroTraining() {
             dragHandle.innerText = '✥';
             overlay.style.width = 'auto';
             overlay.style.padding = '8px';
-            overlay.style.left = 'auto'; 
+            overlay.style.left = 'auto';
             overlay.style.right = '0px'; // Snap to right edge as a tab
             overlay.style.borderTopRightRadius = '0';
             overlay.style.borderBottomRightRadius = '0';
@@ -1890,7 +1886,7 @@ function finishMacroTraining() {
             overlay.style.width = '220px';
             overlay.style.padding = '15px';
             overlay.style.borderRadius = '12px';
-            
+
             // Adjust position if it was snapped to the edge
             const rect = overlay.getBoundingClientRect();
             if (window.innerWidth - rect.right < 10) {
@@ -1918,15 +1914,15 @@ function finishMacroTraining() {
         isDragging = true;
         startX = e.clientX;
         startY = e.clientY;
-        
+
         const rect = overlay.getBoundingClientRect();
         initialLeft = rect.left;
         initialTop = rect.top;
-        
+
         overlay.style.right = 'auto';
         overlay.style.left = `${initialLeft}px`;
         overlay.style.top = `${initialTop}px`;
-        
+
         e.preventDefault();
     });
 
@@ -1958,7 +1954,7 @@ function finishMacroTraining() {
         }
       } catch (e) {
         console.error("Storage load error:", e);
-        updateCount(0); 
+        updateCount(0);
       }
   }
 
@@ -2015,10 +2011,10 @@ function finishMacroTraining() {
     if (el) {
       el.innerText = n;
       if (n === 0) {
-          el.style.color = "#4CAF50"; 
-          setTimeout(() => el.style.color = "#ce0e2d", 1000);
+          el.style.color = "#4CAF50";
+          setTimeout(() => el.style.color = "var(--brand-primary)", 1000);
       } else {
-          el.style.color = "#ce0e2d"; 
+          el.style.color = "var(--brand-primary)";
       }
     }
   }
@@ -2041,16 +2037,16 @@ function finishMacroTraining() {
       } catch (e) { console.warn("Could not attach storage listener"); }
   }
 
-  let lastUrl = location.href; 
+  let lastUrl = location.href;
       new MutationObserver(() => {
         if (location.href !== lastUrl) {
           lastUrl = location.href;
           if (!document.getElementById('flo-overlay')) initOverlay();
-          
+
           if (isMacroMode) finishMacroTraining(); // 🛑 Auto-stop on Lynx/SPA URL change
         }
       }).observe(document, {subtree: true, childList: true});
-  
+
       // --- MACRO RECOVERY ON LOAD ---
      /* const savedState = loadMacroState();
       if (savedState && savedState.isRecording) {
@@ -2058,12 +2054,12 @@ function finishMacroTraining() {
           macroEvents = savedState.events;
           finishMacroTraining(); // 🛑 Auto-stop on Hard Reload/Crash
       } */
-  
+
       if (forceOverlayRun) {
           window.__floForceOverlay = false;
           void showPirateOverlay({ showNukeButton: true, expand: true });
       } else {
           setTimeout(initOverlay, 1500);
       }
-  
+
   })();

@@ -1,11 +1,11 @@
 {
   "verticals": [
     { "name": "Var", "events": [] },
-    { "name": "FloRacing", "events": [] },
-    { "name": "FloCollege", "events": [] },
+    { "name": "Motorsports", "events": [] },
+    { "name": "College Sports", "events": [] },
     { "name": "FloTrack", "events": [] },
-    { "name": "MileSplit", "events": [] },
-    { "name": "FloMarching", "events": [] },
+    { "name": "Track & Field", "events": [] },
+    { "name": "Marching Arts", "events": [] },
     { "name": "FloBaseball", "events": [] },
     { "name": "FloRugby", "events": [] },
     { "name": "FloBikes", "events": [] },
@@ -14,33 +14,33 @@
     { "name": "FloHoops", "events": [] },
     { "name": "FloSoftball", "events": [] },
     { "name": "FloVolleyball", "events": [] },
-    { "name": "FloSwimming", "events": [] },
+    { "name": "Swimming", "events": [] },
     { "name": "FloLive", "events": [] },
     { "name": "FloCheer", "events": [] },
-    { "name": "FloWrestling", "events": [] },
-    { "name": "FloGrappling", "events": [] }
+    { "name": "Wrestling", "events": [] },
+    { "name": "Grappling", "events": [] }
   ],
   "platform_selectors": {
     "youtube": {
       "session": {
         "authorized_handles": [
-          "@flosocial4531",
-          "@floelite",
-          "@flocollegevolleyball",
-          "@florugby",
-          "@flocollegebasketball",
-          "@floflomarching",
-          "@florodeo",
-          "@floracingwk4fk",
-          "@flogrppling",
-          "@floswimming",
-          "@milesplit",
-          "@flovoice",
-          "@floclimbing1847",
-          "@flobowling",
-          "@flodance",
-          "@flodragracing",
-          "@flosports"
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "@rights owner"
         ],
         "authorized_channel_ids": [
           "UCI1KHGC-GuvaOej1qPY7sBA",
@@ -83,7 +83,7 @@
     "tiktok": {
       "session": {
         "authorized_handles": [
-          "@flosocial3"
+          ""
         ],
         "account_handle": [
           "a[data-e2e=\"nav-profile\"]",
@@ -231,8 +231,8 @@
       },
       "autofill": {
         "defaults": {
-          "contact_email": "social@flosports.tv",
-          "rights_owner_name": "FloSports",
+          "contact_email": "",
+          "rights_owner_name": "Rights Owner",
           "relationship": "I am reporting on behalf of my organization or client.",
           "country": "United States",
           "work_type": "Video",
@@ -240,7 +240,7 @@
           "content_type_story": "Story"
         },
         "templates": {
-          "infringement_explanation": "Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]). FloSports owns the exclusive copyright. Infringement is visually verifiable via our proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account."
+          "infringement_explanation": "Unauthorized distribution of a paywalled rights-owner broadcast ([Event Name] / [Vertical Name]). The rights owner owns the exclusive copyright. Infringement is visually verifiable via our proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account."
         },
         "fields": {
           "relationship_radio": [
@@ -377,16 +377,16 @@
           }
         },
         "defaults": {
-          "copyright_owner_name": "FloSports",
-          "company": "FloSports",
+          "copyright_owner_name": "Rights Owner",
+          "company": "Rights Owner",
           "job_title": "Stream Operations",
-          "street_address": "301 Congress ave #1500",
+          "street_address": "",
           "city": "Austin",
           "state": "Tx",
           "postal_code": "78701",
           "country": "United States",
-          "phone": "5122702356",
-          "original_work_url": "https://www.flosports.tv/",
+          "phone": "",
+          "original_work_url": "",
           "infringement_platform": "X",
           "work_type": "Video/Audiovisual Recording"
         },
@@ -503,15 +503,15 @@
       },
       "autofill": {
         "defaults": {
-          "contact_email": "social@flosports.tv",
-          "rights_owner_name": "FloSports",
+          "contact_email": "",
+          "rights_owner_name": "Rights Owner",
           "relationship": "I am reporting on behalf of my organization or client.",
           "country": "United States",
           "work_type": "Video",
           "content_type_post": "Photo, video or post"
         },
         "templates": {
-          "infringement_explanation": "Unauthorized distribution of a paywalled FloSports broadcast ([Event Name] / [Vertical Name]) on Facebook. FloSports owns the exclusive copyright. Infringement is visually verifiable via FloSports proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account."
+          "infringement_explanation": "Unauthorized distribution of a paywalled rights-owner broadcast ([Event Name] / [Vertical Name]) on Facebook. The rights owner owns the exclusive copyright. Infringement is visually verifiable via rights-owner proprietary watermarks and broadcast graphics included in the video. No license or permission has been granted to this account."
         },
         "fields": {
           "relationship_radio": [
@@ -622,9 +622,9 @@
       "autofill": {
         "defaults": {
           "recipient_email": "dmca@kick.com",
-          "contact_email": "social@flosports.tv",
-          "phone": "5122702356",
-          "address": "301 Congress ave #1500\nAustin Tx 78701",
+          "contact_email": "",
+          "phone": "",
+          "address": "",
           "title": "Authorized user"
         },
         "labels": {
@@ -636,7 +636,7 @@
           "subject_title": "Email Subject",
           "subject_help": "Copy this subject line into the Subject field so the Kick notice is easy to identify.",
           "body_title": "DMCA Notice Body",
-          "body_help": "Copy this full notice into the body of your email to Kick. The rendered box below shows the numbered sections and the original FloSports URL in bold.",
+          "body_help": "Copy this full notice into the body of your email to Kick. The rendered box below shows the numbered sections and the Original work URL in bold.",
           "copy_button": "Copy",
           "copy_body_button": "Copy Email",
           "copy_full_button": "Copy Full Notice",
@@ -648,11 +648,11 @@
         },
         "templates": {
           "greeting": "To Whom It May Concern at Kick,",
-          "submission_intro": "I am submitting this DMCA takedown notice on behalf of FloSports.",
-          "subject": "DMCA Takedown Notice - FloSports - [Event Name]",
-          "infringing_material_description": "Unauthorized Kick-hosted or Kick-linked distribution of FloSports material appearing at the URLs listed below.",
-          "ownership_evidence": "The infringing material often includes FloSports, MileSplit, or Varsity TV watermarks and proprietary broadcast graphics, all of which evidence FloSports ownership.",
-          "source_url_label": "Original FloSports URL being pirated:",
+          "submission_intro": "I am submitting this DMCA takedown notice on behalf of rights owner.",
+          "subject": "DMCA Takedown Notice - rights owner - [Event Name]",
+          "infringing_material_description": "Unauthorized Kick-hosted or Kick-linked distribution of rights-owner material appearing at the URLs listed below.",
+          "ownership_evidence": "The infringing material often includes rights owner, identifying watermarks and proprietary broadcast graphics, all of which evidence rights-owner ownership.",
+          "source_url_label": "Original work URL being pirated:",
           "reported_urls_label": "Reported Kick URLs:"
         }
       }
@@ -708,12 +708,12 @@
         "defaults": {
           "work_type": "Video",
           "relationship": "Authorized Agent",
-          "contact_email": "Social@flosports.tv",
+          "contact_email": "",
           "country": "United States",
           "city": "Austin",
-          "copyright_owner": "FloSports",
-          "phone": "5122702356",
-          "street": "301 Congress ave #1500",
+          "copyright_owner": "Rights Owner",
+          "phone": "",
+          "street": "",
           "state": "Texas",
           "zip": "78745"
         },

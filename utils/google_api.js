@@ -49,7 +49,14 @@ async function safeFetchJson(url, options, retries = 5, delay = 1000) {
 }
 
 // --- HELPER: GET USER OPTIONS ---
-const getOptions = async () => {
+const getOptions = async (integrations = null) => {
+  if (integrations) {
+    return {
+      driveRootId: String(integrations.driveRootFolderId || '').trim(),
+      reportSheetId: String(integrations.reportSpreadsheetId || '').trim(),
+      eventSheetId: String(integrations.eventSpreadsheetId || '').trim()
+    };
+  }
   const data = await chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id']);
   return {
     // We strictly trim here so if you accidentally pasted a space in the options page, 
@@ -64,7 +71,7 @@ function normalizeLeaderboardIdentity(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
-    .replace(/@flosports\.tv/g, '')
+    .replace(/@[^@\s]+$/g, '')
     .replace(/\./g, ' ');
 }
 
@@ -282,9 +289,9 @@ export async function findFileId(name, mimeType, parentId = null) {
 // 1. EVENT URL MANAGER (Dynamic Search)
 // ==========================================
 
-export async function getEventData(vertical) {
+export async function getEventData(vertical, integrations = null) {
   const token = await getAuthToken();
-  const { eventSheetId } = await getOptions();
+  const { eventSheetId } = await getOptions(integrations);
   
   if (!eventSheetId) throw new Error("Event Sheet ID not configured.");
   
@@ -343,10 +350,10 @@ export function getColumnLetter(platform) {
   return map[platform?.toLowerCase()] || 'B'; 
 }
 
-export async function checkIfAuthorized(platform, handle) {
+export async function checkIfAuthorized(platform, handle, integrations = null) {
   if (!handle) return false;
   const token = await getAuthToken();
-  const { eventSheetId } = await getOptions();
+  const { eventSheetId } = await getOptions(integrations);
   
   if (!eventSheetId) return false;
 
@@ -380,9 +387,9 @@ export async function checkIfAuthorized(platform, handle) {
   }
 }
 
-export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok') {
+export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tiktok', integrations = null) {
   const token = await getAuthToken();
-  const { eventSheetId } = await getOptions();
+  const { eventSheetId } = await getOptions(integrations);
   const colLetter = getColumnLetter(platform);
   const range = `'${vertical}'!${colLetter}${rowIndex}`;
   const body = { values: [[newUrl]] };
@@ -394,9 +401,9 @@ export async function updateEventUrl(vertical, rowIndex, newUrl, platform = 'tik
   });
 }
 
-export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok') {
+export async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tiktok', integrations = null) {
   const token = await getAuthToken();
-  const { eventSheetId } = await getOptions();
+  const { eventSheetId } = await getOptions(integrations);
   
   // 1. Find the true last row by fetching Column A
   const getRange = `'${vertical}'!A:A`;
@@ -434,24 +441,24 @@ export async function addNewEventToSheet(vertical, eventName, eventUrl, platform
 // 2. DRIVE & FOLDER MANAGEMENT
 // ==========================================
 
-export async function ensureRogueScreenshotFolder(token) {
-  const { driveRootId } = await getOptions();
+export async function ensureRogueScreenshotFolder(token, integrations = null) {
+  const { driveRootId } = await getOptions(integrations);
   if (!driveRootId) throw new Error("Drive Root ID not configured.");
   
   const currentYear = new Date().getFullYear();
   return await findOrCreateFolder(token, driveRootId, `${currentYear} 3rd party pirate screen shots`);
 }
 
-export async function ensureYearlyReportFolder(token, year) {
-  const { driveRootId } = await getOptions();
+export async function ensureYearlyReportFolder(token, year, integrations = null) {
+  const { driveRootId } = await getOptions(integrations);
   if (!driveRootId) throw new Error("Drive Root ID not configured.");
   
   const folderName = `Pirated Reports for ${year}`;
   return await findOrCreateFolder(token, driveRootId, folderName);
 }
 
-export async function ensureDailyScreenshotFolder(token, dateStr) {
-  const { driveRootId } = await getOptions();
+export async function ensureDailyScreenshotFolder(token, dateStr, integrations = null) {
+  const { driveRootId } = await getOptions(integrations);
   if (!driveRootId) throw new Error("Drive Root ID not configured.");
 
   const masterScreenshotFolderId = await findOrCreateFolder(token, driveRootId, "All Screenshots");
@@ -476,8 +483,15 @@ async function findOrCreateFolder(token, parentId, name) {
 // 3. FILE UPLOAD LOGIC
 // ==========================================
 
-export async function uploadToDrive(token, folderId, name, blob, mimeType) {
+export async function uploadToDrive(token, folderId, name, blob, mimeType, dataScope = null) {
   const metadata = { name: name, parents: [folderId] };
+  if (dataScope?.customerId && dataScope?.userId && dataScope?.eventId) {
+    metadata.appProperties = {
+      customer_id: String(dataScope.customerId),
+      user_id: String(dataScope.userId),
+      event_id: String(dataScope.eventId)
+    };
+  }
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', blob);
@@ -882,8 +896,8 @@ export async function fetchRightsPdf(token, eventName) {
 // 6. THE CLOSER: STATUS UPDATE
 // ==========================================
 
-export async function getColumnHDataWithFormatting() {
-  const { reportSheetId } = await getOptions();
+export async function getColumnHDataWithFormatting(integrations = null) {
+  const { reportSheetId } = await getOptions(integrations);
   if (!reportSheetId) throw new Error("Report Sheet ID not configured in Options.");
   
   const token = await getAuthToken();
@@ -949,8 +963,8 @@ export async function getColumnHData() {
   return data.values || [];
 }
 
-export async function getRecommendedStartRow() {
-  const { reportSheetId } = await getOptions();
+export async function getRecommendedStartRow(integrations = null) {
+  const { reportSheetId } = await getOptions(integrations);
   if (!reportSheetId) return 2;
   const token = await getAuthToken();
   const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
@@ -976,8 +990,8 @@ export async function getRecommendedStartRow() {
   return Math.max(2, lastFilledRow - 20);
 }
 
-export async function updateRowStatus(rowIndex, status) {
-  const { reportSheetId } = await getOptions();
+export async function updateRowStatus(rowIndex, status, integrations = null) {
+  const { reportSheetId } = await getOptions(integrations);
   const token = await getAuthToken();
   const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
 
@@ -991,13 +1005,13 @@ export async function updateRowStatus(rowIndex, status) {
   });
 
   if (status === "Resolved") {
-      await formatCellAsTakenDown(rowIndex);
+      await formatCellAsTakenDown(rowIndex, integrations);
   }
 }
 
 // --- THE CLOSER: ADD ENFORCER BONUS POINTS ---
-export async function addEnforcerBonusPoints(rowIndex, bonusPoints) {
-    const { reportSheetId } = await getOptions();
+export async function addEnforcerBonusPoints(rowIndex, bonusPoints, integrations = null) {
+    const { reportSheetId } = await getOptions(integrations);
     const token = await getAuthToken();
     const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
     
@@ -1013,8 +1027,8 @@ export async function addEnforcerBonusPoints(rowIndex, bonusPoints) {
     });
 }
 
-export async function formatCellAsTakenDown(rowIndex) {
-  const { reportSheetId } = await getOptions();
+export async function formatCellAsTakenDown(rowIndex, integrations = null) {
+  const { reportSheetId } = await getOptions(integrations);
   const token = await getAuthToken();
   const { sheetId } = await getTargetSheetInfo(token, reportSheetId);
 
@@ -1046,8 +1060,8 @@ export async function formatCellAsTakenDown(rowIndex) {
   });
 }
 
-export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns) {
-  const { reportSheetId } = await getOptions();
+export async function updateCellWithRichText(rowIndex, cellValue, textFormatRuns, integrations = null) {
+  const { reportSheetId } = await getOptions(integrations);
   const token = await getAuthToken();
   const { sheetId } = await getTargetSheetInfo(token, reportSheetId);
 

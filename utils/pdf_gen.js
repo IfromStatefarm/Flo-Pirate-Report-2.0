@@ -1,4 +1,25 @@
 import * as jsPDFModule from '../lib/jspdf.umd.min.js';
+import { buildRuntimeTheme } from './runtime_theme.js';
+
+export function resolvePdfTheme(context) {
+  if (context?.product && context?.colors) return context;
+  return buildRuntimeTheme(context);
+}
+
+function hexToRgb(value, fallback = [51, 65, 85]) {
+  const match = /^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i.exec(String(value || ''));
+  return match ? match.slice(1).map((part) => Number.parseInt(part, 16)) : fallback;
+}
+
+function applyDataScopeMetadata(doc, scope, title, creator) {
+  if (!scope?.customerId || !scope?.userId || !scope?.eventId || typeof doc.setProperties !== 'function') return;
+  doc.setProperties({
+    title,
+    subject: `Customer ${scope.customerId}; User ${scope.userId}; Event ${scope.eventId}`,
+    keywords: `customer_id:${scope.customerId},user_id:${scope.userId},event_id:${scope.eventId}`,
+    creator
+  });
+}
 
 // --- HELPER: Resolve jsPDF Constructor ---
 function getJsPdfConstructor() {
@@ -30,10 +51,20 @@ function getJsPdfConstructor() {
 }
 
 export async function generatePDF(data) {
+  const pdfTheme = resolvePdfTheme(data?.customerContext);
+  const brandRgb = hexToRgb(pdfTheme.colors.primary);
+  const ownerName = pdfTheme.legal.ownerName || pdfTheme.legal.companyName || 'Rights Owner';
+  const companyName = pdfTheme.legal.companyName || ownerName;
   try {
     const jsPDF = getJsPdfConstructor();
     
     const doc = new jsPDF();
+    applyDataScopeMetadata(
+      doc,
+      data?.dataScope,
+      `${pdfTheme.product.displayName} Report ${data?.reportId || ''}`.trim(),
+      pdfTheme.product.productName
+    );
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
@@ -73,8 +104,11 @@ export async function generatePDF(data) {
     // --- TITLE ---
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.setTextColor(206, 14, 45); 
-    doc.text("FLO PIRACY REPORT", pageWidth / 2, y, { align: "center" });
+    doc.setTextColor(...brandRgb);
+    doc.text(`${pdfTheme.product.displayName.toUpperCase()} REPORT`, pageWidth / 2, y, { align: "center" });
+    if (pdfTheme.logoDataUrl) {
+      try { doc.addImage(pdfTheme.logoDataUrl, 15, 10, 18, 18); } catch (error) { console.warn('PDF logo skipped:', error.message); }
+    }
     y += 15;
 
     // --- HEADER INFO ---
@@ -161,7 +195,7 @@ export async function generatePDF(data) {
     // --- CEASE & DESIST LETTER ---
     ensureSpace(30); 
 
-    const reportId = data.reportId || `FS-${Math.floor(Math.random()*10000)}`;
+    const reportId = data.reportId || `RR-${Math.floor(Math.random()*10000)}`;
     const fullDate = new Date().toLocaleDateString("en-US", { year: 'numeric', month: 'long', day: 'numeric' });
 
     doc.setFont("helvetica", "bold");
@@ -175,13 +209,13 @@ export async function generatePDF(data) {
     doc.text(`DATE: ${fullDate}`, margin, y); y += 5;
     doc.text(`NOTICE ID: ${reportId}`, margin, y); y += 10;
 
-    drawWrappedText("RE: IMMEDIATE CEASE AND DESIST – UNAUTHORIZED DISTRIBUTION OF FLOSPORTS PROPRIETARY CONTENT", margin, pageWidth - (margin * 2), 10);
+    drawWrappedText(`RE: IMMEDIATE CEASE AND DESIST – UNAUTHORIZED DISTRIBUTION OF ${ownerName.toUpperCase()} PROPRIETARY CONTENT`, margin, pageWidth - (margin * 2), 10);
 
     doc.setFont("helvetica", "normal");
-    const p1 = "This notice is served by FloSports, Inc. to formally notify you that your social media account is in direct violation of the Digital Millennium Copyright Act (DMCA) and governing intellectual property laws.";
+    const p1 = `This notice is served by ${companyName} to formally notify you that your social media account is in direct violation of the Digital Millennium Copyright Act (DMCA) and governing intellectual property laws.`;
     drawWrappedText(p1, margin, pageWidth - (margin * 2), 6);
 
-    const p2 = "FloSports has documented the unauthorized use of its copyrighted broadcast material on your profile. This content is the exclusive property of FloSports, and no license or permission has been granted for its redistribution, public performance, or display.";
+    const p2 = `${ownerName} has documented the unauthorized use of its copyrighted material on your profile. This content is the exclusive property of ${ownerName}, and no license or permission has been granted for its redistribution, public performance, or display.`;
     drawWrappedText(p2, margin, pageWidth - (margin * 2), 10);
 
     ensureSpace(25);
@@ -192,9 +226,9 @@ export async function generatePDF(data) {
     doc.text("Effective immediately, you are required to:", margin, y);
     y += 6;
     
-    drawWrappedText("1. CEASE all live streaming, uploading, or linking to FloSports proprietary content.", margin + 5, pageWidth - (margin * 2) - 5, 3);
+    drawWrappedText(`1. CEASE all live streaming, uploading, or linking to ${ownerName} proprietary content.`, margin + 5, pageWidth - (margin * 2) - 5, 3);
     drawWrappedText("2. REMOVE all existing infringing materials from your account history and archives.", margin + 5, pageWidth - (margin * 2) - 5, 3);
-    drawWrappedText("3. DESIST from any future use of FloSports intellectual property.", margin + 5, pageWidth - (margin * 2) - 5, 8);
+    drawWrappedText(`3. DESIST from any future use of ${ownerName} intellectual property.`, margin + 5, pageWidth - (margin * 2) - 5, 8);
 
     ensureSpace(30);
     doc.setFont("helvetica", "bold");
@@ -216,15 +250,17 @@ export async function generatePDF(data) {
     const p4 = "This is a notice of violation. No response is required provided that all infringing content is removed immediately and no further violations occur.";
     drawWrappedText(p4, margin, pageWidth - (margin * 2), 15);
 
-    ensureSpace(35);
+    ensureSpace(55);
     doc.setFont("helvetica", "bold");
-    doc.text("Authorized Representative of FloSports", margin, y); y += 5;
+    doc.text(`Authorized Representative of ${companyName}`, margin, y); y += 5;
     doc.setFont("helvetica", "normal");
-    doc.text("301 Congress Ave #1500", margin, y); y += 5;
-    doc.text("Austin, TX 78701", margin, y); y += 5;
-    doc.text("Primary Contact: copyright@flosports.tv", margin, y); y += 5;
-    doc.text("Secondary Contact: social@flosports.tv", margin, y); y += 5;
-    doc.text("Phone: 512-270-2356", margin, y);
+    if (pdfTheme.legal.addressLine1) { doc.text(pdfTheme.legal.addressLine1, margin, y); y += 5; }
+    const locality = [pdfTheme.legal.city, pdfTheme.legal.region, pdfTheme.legal.postalCode].filter(Boolean).join(', ');
+    if (locality) { doc.text(locality, margin, y); y += 5; }
+    if (pdfTheme.legal.country) { doc.text(pdfTheme.legal.country, margin, y); y += 5; }
+    if (pdfTheme.legal.reportingEmail) { doc.text(`Primary Contact: ${pdfTheme.legal.reportingEmail}`, margin, y); y += 5; }
+    if (pdfTheme.legal.secondaryEmail) { doc.text(`Secondary Contact: ${pdfTheme.legal.secondaryEmail}`, margin, y); y += 5; }
+    if (pdfTheme.legal.phone) doc.text(`Phone: ${pdfTheme.legal.phone}`, margin, y);
 
     return doc.output('blob');
 
@@ -232,11 +268,14 @@ export async function generatePDF(data) {
     console.error("PDF Gen Failed, using Text fallback:", error);
     
     const textContent = `
-    FLO PIRACY REPORT (FALLBACK TEXT VERSION)
+    ${pdfTheme.product.displayName.toUpperCase()} REPORT (FALLBACK TEXT VERSION)
     --------------------------------------------------
     INFRINGER: @${data.handle}
     DATE: ${new Date().toLocaleString()}
     REPORT ID: ${data.reportId || "Unknown"}
+    CUSTOMER ID: ${data.dataScope?.customerId || "Unknown"}
+    USER ID: ${data.dataScope?.userId || "Unknown"}
+    EVENT ID: ${data.dataScope?.eventId || "Unknown"}
     REPORTER: ${data.reporterName}
     
     EVENT: ${data.eventName}
@@ -248,16 +287,16 @@ export async function generatePDF(data) {
     --------------------------------------------------
     FORMAL NOTICE OF COPYRIGHT INFRINGEMENT
     
-    This notice is served by FloSports, Inc. to formally notify you that your social media account is in direct violation of the Digital Millennium Copyright Act (DMCA).
+    This notice is served by ${companyName} to formally notify you that your social media account is in direct violation of the Digital Millennium Copyright Act (DMCA).
     
     MANDATORY REQUIREMENTS:
-    1. CEASE all live streaming/uploading of FloSports content.
+    1. CEASE all live streaming/uploading of ${ownerName} content.
     2. REMOVE all infringing materials immediately.
     3. DESIST from future use.
     
-    Authorized Representative of FloSports
-    301 Congress Ave #1500, Austin, TX 78701
-    copyright@flosports.tv
+    Authorized Representative of ${companyName}
+    ${[pdfTheme.legal.addressLine1, pdfTheme.legal.city, pdfTheme.legal.region, pdfTheme.legal.postalCode, pdfTheme.legal.country].filter(Boolean).join(', ')}
+    ${pdfTheme.legal.reportingEmail || ''}
     `;
     
      return new Blob([textContent], { type: 'text/plain' });
@@ -268,7 +307,9 @@ export async function generatePDF(data) {
 // TACTICAL INTELLIGENCE BRIEFING (PDF)
 // ==========================================
 
-export async function generateIntelligencePDF(stats) {
+export async function generateIntelligencePDF(stats, customerContext, dataScope = null) {
+  const pdfTheme = resolvePdfTheme(customerContext);
+  const brandRgb = hexToRgb(pdfTheme.colors.primary);
   try {
     const syncData = await chrome.storage.sync.get(['briefing_config']);
     const defaultStats = {
@@ -287,6 +328,12 @@ export async function generateIntelligencePDF(stats) {
     const jsPDF = getJsPdfConstructor();
 
     const doc = new jsPDF();
+    applyDataScopeMetadata(
+      doc,
+      dataScope,
+      `${pdfTheme.product.displayName} Intelligence Briefing`,
+      pdfTheme.product.productName
+    );
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
@@ -564,10 +611,13 @@ export async function generateIntelligencePDF(stats) {
     doc.setFillColor(30, 41, 59);
     doc.rect(0, 0, pageWidth, 45, 'F');
 
-    doc.setTextColor(206, 14, 45);
+    doc.setTextColor(...brandRgb);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.text("EXECUTIVE INTELLIGENCE BRIEFING", pageWidth / 2, 22, { align: "center" });
+    doc.text(`${pdfTheme.product.displayName.toUpperCase()} INTELLIGENCE BRIEFING`, pageWidth / 2, 22, { align: "center" });
+    if (pdfTheme.logoDataUrl) {
+      try { doc.addImage(pdfTheme.logoDataUrl, 12, 9, 26, 26); } catch (error) { console.warn('Briefing logo skipped:', error.message); }
+    }
 
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
@@ -722,8 +772,8 @@ export async function generateIntelligencePDF(stats) {
             doc.line(margin, topY, margin + maxTextWidth, topY);
             doc.line(margin, midY, margin + maxTextWidth, midY);
 
-            doc.setDrawColor(206, 14, 45); 
-            doc.setFillColor(206, 14, 45);
+            doc.setDrawColor(...brandRgb);
+            doc.setFillColor(...brandRgb);
             doc.setLineWidth(1);
 
             let prevX = null;

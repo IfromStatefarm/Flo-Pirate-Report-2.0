@@ -21,8 +21,6 @@ const PLATFORM_BATCH_LIMITS = Object.freeze({
   youtube: 10,
   instagram: 30
 });
-<<<<<<< Updated upstream
-
 const TWITCH_SCRAPE_SETTLE_MS = 1500;
 
 function sleep(ms) {
@@ -90,22 +88,21 @@ function mergeScrapedTwitchData(item, scrapedData) {
   return merged;
 }
 
-=======
->>>>>>> Stashed changes
 export function createReportingWorkflow({
-  appendToSheet,
   checkIfAuthorized,
   clearImages,
   ensureDailyScreenshotFolder,
   ensureYearlyReportFolder,
   generatePDF,
+  getCustomerProfile,
+  getCustomerTheme,
   getAuthToken,
   getEventData,
   getImage,
   getUserEmail,
   saveImage,
   saveUrlToSheet,
-  setColumnKRichText,
+  recordCustomerEvent,
   uploadToDrive,
   base64ToBlob
 }) {
@@ -152,7 +149,7 @@ export function createReportingWorkflow({
     try {
       await chrome.scripting.executeScript({
         target: { tabId, allFrames: false },
-        files: ['content_scraper.js']
+        files: ['utils/theme_loader.js', 'content_scraper.js']
       });
     } catch (error) {
       console.warn('Twitch scrape helper injection skipped/failed:', error);
@@ -322,6 +319,7 @@ export function createReportingWorkflow({
     void tab;
 
     try {
+      const customerProfile = await getCustomerProfile();
       const screenshotUrl = await captureVisibleTabImage();
       const screenshotId = crypto.randomUUID();
       if (screenshotUrl) {
@@ -340,6 +338,12 @@ export function createReportingWorkflow({
       const cart = storage.piracy_cart || [];
 
       if (!cart.some((item) => item.url === data.url)) {
+        await recordCustomerEvent(customerProfile, 'activity.item_added', {
+          platform: detectPlatformDetails(data.url).key,
+          target_url: data.url,
+          source_event_name: data.eventName || '',
+          vertical: data.vertical || ''
+        });
         cart.push(newItem);
         await chrome.storage.local.set({ piracy_cart: cart });
       }
@@ -354,35 +358,19 @@ export function createReportingWorkflow({
     void tab;
 
     try {
+      const customerProfile = await getCustomerProfile();
       const screenshotUrl = await captureVisibleTabImage();
 
       try {
-        const isAuthorized = await checkIfAuthorized(data.platform, data.handle);
+        const isAuthorized = await checkIfAuthorized(data.platform, data.handle, customerProfile.integrations);
         if (isAuthorized) {
-          const userEmail = (await getUserEmail()) || 'Unknown';
-          await appendToSheet(await getAuthToken(), {
-            values: [
-              new Date().toLocaleDateString('en-US'),
-              data.vertical || 'Unknown',
-              'Penalty',
-              data.platform,
-              'N/A',
-              '0',
-              userEmail,
-              data.url,
-              'Whitelist Penalty',
-              'Failed',
-              '',
-              userEmail,
-              userEmail,
-              -15,
-              0,
-              '',
-              '',
-              '',
-              '',
-              'PENALTY'
-            ]
+          await recordCustomerEvent(customerProfile, 'report.whitelist_penalty', {
+            platform: detectPlatformDetails(data.url).key,
+            target_url: data.url,
+            handle: data.handle || '',
+            source_event_name: data.eventName || '',
+            vertical: data.vertical || '',
+            scout_points: -15
           });
 
           return {
@@ -412,6 +400,12 @@ export function createReportingWorkflow({
       const storage = await chrome.storage.local.get('piracy_cart');
       const cart = storage.piracy_cart || [];
       if (!cart.some((item) => item.url === data.url)) {
+        await recordCustomerEvent(customerProfile, 'activity.item_added', {
+          platform: detectPlatformDetails(data.url).key,
+          target_url: data.url,
+          source_event_name: data.eventName || '',
+          vertical: data.vertical || ''
+        });
         cart.push(newItem);
         await chrome.storage.local.set({ piracy_cart: cart });
       }
@@ -424,11 +418,12 @@ export function createReportingWorkflow({
 
   async function handleBatchReport(formData) {
     try {
+      const customerProfile = await getCustomerProfile();
+      const customerTheme = await getCustomerTheme();
       const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
       let cart = storage.piracy_cart || [];
       const savedName = storage.last_reporter || 'Unknown User';
       const finalReporterName = formData.reporterName || savedName;
-      const enforcedByEmail = (await getUserEmail()) || 'Unknown';
 
       if (cart.some((item) => isTwitchUrl(item.url))) {
         cart = await refreshTwitchQueueMetadata(formData?.tabOptions || {});
@@ -489,9 +484,8 @@ export function createReportingWorkflow({
       const token = await getAuthToken();
       const currentYear = new Date().getFullYear();
       const dateStr = new Date().toISOString().split('T')[0];
-      const todayFormatted = new Date().toLocaleDateString('en-US');
-      const yearFolderId = await ensureYearlyReportFolder(token, currentYear);
-      const screenshotsFolderId = await ensureDailyScreenshotFolder(token, dateStr);
+      const yearFolderId = await ensureYearlyReportFolder(token, currentYear, customerProfile.integrations);
+      const screenshotsFolderId = await ensureDailyScreenshotFolder(token, dateStr, customerProfile.integrations);
 
       const grouped = {};
       cart.forEach((item) => {
@@ -514,6 +508,7 @@ export function createReportingWorkflow({
       });
 
       const groups = Object.values(grouped);
+      const recordedEventIds = [];
       for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
         const group = groups[groupIndex];
         const handle = group.handle;
@@ -525,9 +520,9 @@ export function createReportingWorkflow({
 
         const items = group.items;
         const urls = items.map((item) => item.url);
-        const urlString = urls.join('\n');
         const viewString = items.reduce((sum, item) => sum + parseViewCount(item.views), 0);
         const reportId = generateReportId();
+        const customerEventId = crypto.randomUUID();
         const platformDetails = detectPlatformDetails(urls[0]);
         const savedProfileUrl = items.find((item) => item.profileUrl || item.channelUrl)?.profileUrl ||
           items.find((item) => item.profileUrl || item.channelUrl)?.channelUrl || '';
@@ -550,7 +545,12 @@ export function createReportingWorkflow({
                     screenshotsFolderId,
                     `${reportId}_Evidence_${index + 1}_@${handle}.jpg`,
                     imageBlob,
-                    'image/jpeg'
+                    'image/jpeg',
+                    {
+                      customerId: customerProfile.customerId,
+                      userId: customerProfile.userId,
+                      eventId: customerEventId
+                    }
                   );
                   screenshotLink = upload.webViewLink;
                 }
@@ -573,7 +573,13 @@ export function createReportingWorkflow({
           reporterName: finalReporterName,
           handle,
           items: evidenceLinks,
-          reportId
+          reportId,
+          customerContext: customerTheme,
+          dataScope: {
+            customerId: customerProfile.customerId,
+            userId: customerProfile.userId,
+            eventId: customerEventId
+          }
         });
 
         const pdfUpload = await uploadToDrive(
@@ -581,7 +587,12 @@ export function createReportingWorkflow({
           yearFolderId,
           `Report_${reportId}_@${handle}.pdf`,
           pdfBlob,
-          'application/pdf'
+          'application/pdf',
+          {
+            customerId: customerProfile.customerId,
+            userId: customerProfile.userId,
+            eventId: customerEventId
+          }
         );
 
         const streakRes = await chrome.storage.local.get([
@@ -617,53 +628,37 @@ export function createReportingWorkflow({
         const queueMult = cart.length > 50 ? 1.2 : 1;
         const enforcerScore =
           Math.floor(items.length * 20 * xpMult * queueMult) + (currentStreak >= 3 ? 50 : 0);
-        const scoutedByEmails = [...new Set(items.map((item) => item.scoutedBy || 'Unknown'))].join(', ');
         const totalScoutScore = items.reduce(
           (sum, item) => sum + ((item.scoutScore || 10) * xpMult),
           0
         );
 
-        const appendResponse = await appendToSheet(token, {
-          values: [
-            todayFormatted,
-            formData.vertical,
-            formData.eventConfig?.eventName || formData.eventName || 'Unknown Event',
-            platformDetails.label,
-            contentTypeLabel,
-            viewString > 0 ? viewString.toLocaleString() : 'N/A',
-            finalReporterName,
-            urlString,
-            'DMCA takedown request',
-            formData.mode === 'scout' ? 'Open' : 'Reported',
-            `Report #: ${reportId}\nGenerating Links...`,
-            scoutedByEmails,
-            enforcedByEmail,
-            reportId,
-            '',
-            '',
-            '',
-            '',
-            '',
-            totalScoutScore,
-            enforcerScore
-          ]
+        const acceptedReportEvent = await recordCustomerEvent(customerProfile, 'report.submitted', {
+          platform: platformDetails.key,
+          urls,
+          handle,
+          source_event_name: formData.eventConfig?.eventName || formData.eventName || 'Unknown Event',
+          vertical: formData.vertical || 'Unknown',
+          report_id: reportId,
+          mode: formData.mode === 'scout' ? 'scout' : 'enforcer',
+          url_count: urls.length,
+          estimated_views: Math.max(0, Math.round(viewString)),
+          scout_points: totalScoutScore,
+          enforcer_points: enforcerScore,
+          pdf_url: pdfUpload.webViewLink,
+          channel_url: channelUrl,
+          content_type: contentTypeLabel
+        }, { eventId: customerEventId });
+        recordedEventIds.push(acceptedReportEvent.event_id);
+        const acceptedOutcomeEvent = await recordCustomerEvent(customerProfile, 'platform.report_outcome', {
+          platform: platformDetails.key,
+          outcome: formData.mode === 'scout' ? 'queued' : 'reported',
+          report_id: reportId,
+          source_event_name: formData.eventConfig?.eventName || formData.eventName || 'Unknown Event',
+          vertical: formData.vertical || 'Unknown',
+          url_count: urls.length
         });
-
-        const updatedRange = appendResponse?.updates?.updatedRange;
-        if (updatedRange) {
-          const rangePart = updatedRange.split('!')[1] || updatedRange;
-          const match = rangePart.match(/\d+/);
-          if (match) {
-            const rowIndex = parseInt(match[0], 10) - 1;
-            await setColumnKRichText(
-              rowIndex,
-              channelUrl,
-              handle,
-              pdfUpload.webViewLink || 'https://drive.google.com',
-              reportId
-            );
-          }
-        }
+        recordedEventIds.push(acceptedOutcomeEvent.event_id);
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
@@ -675,7 +670,7 @@ export function createReportingWorkflow({
         await clearImages();
       }
 
-      return { success: true };
+      return { success: true, eventIds: recordedEventIds };
     } catch (error) {
       console.error('Batch Report Error:', error);
       return { success: false, error: error.message };
@@ -683,14 +678,21 @@ export function createReportingWorkflow({
   }
 
   async function handleUrlSave(data) {
+    const customerProfile = await getCustomerProfile();
     const { vertical, eventName, url, platform } = data;
-    const sheetData = await getEventData(vertical);
+    const sheetData = await getEventData(vertical, customerProfile.integrations);
     const eventInfo = sheetData.eventMap[eventName.toLowerCase()];
 
+    await recordCustomerEvent(customerProfile, 'event.source_url_updated', {
+      platform,
+      target_url: url,
+      source_event_name: eventName,
+      vertical
+    });
     if (eventInfo && eventInfo.rowIndex) {
-      await saveUrlToSheet(vertical, eventInfo.rowIndex, url, platform);
+      await saveUrlToSheet(vertical, eventInfo.rowIndex, url, platform, false, customerProfile.integrations);
     } else {
-      await saveUrlToSheet(vertical, eventName, url, platform, true);
+      await saveUrlToSheet(vertical, eventName, url, platform, true, customerProfile.integrations);
     }
   }
 

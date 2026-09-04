@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "migrationId": "flosports-legacy-access-v1",
+  "customerId": "flosports",
+  "source": {
+    "workbookId": "1kp5n1F0cO57P3mbUsgmssXTRIQ3UPdkO6vOKUjV_XvY",
+    "worksheetGid": 0,
+    "snapshotDate": "2026-09-03",
+    "passwordColumnsImported": false
+  },
+  "memberships": [
+    {
+      "memberId": "usr_f708c86ef306ffaadb1763a9",
+      "email": "ivan.mcclay@flosports.com",
+      "name": "Ivan McClay",
+      "role": "waiting_approval",
+      "status": "pending",
+      "platformAssignment": "all_current",
+      "sourceRow": 2
+    },
+    {
+      "memberId": "usr_9ffedc9ed3536dd81453fa16",
+      "email": "ivan.mcclay@flosports.tv",
+      "name": "ivan mcclay",
+      "role": "manager",
+      "status": "active",
+      "platformAssignment": "all_current",
+      "sourceRow": 3
+    }
+  ]
+}

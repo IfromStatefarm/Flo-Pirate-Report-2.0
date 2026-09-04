@@ -110,7 +110,7 @@ Third-party destinations such as `dmca@kick.com` are platform constants, not cus
 | Current resource | Location | Destination |
 | --- | --- | --- |
 | FloSports Atlassian setup guide | `clippy.js:10,75-83`, `options/main.js:1439` | Customer help URL or generic documentation URL |
-| Access workbook `1kp5n1F0cO57P3mbUsgmssXTRIQ3UPdkO6vOKUjV_XvY` | `utils/access_control.js:3`, `ACCESS_CONTROL_OUTLINE.md` | Control-plane configuration, never a hardcoded customer registry |
+| Legacy access workbook `1kp5n1F0cO57P3mbUsgmssXTRIQ3UPdkO6vOKUjV_XvY` | Removed from runtime in Step 3; retained only in the stabilization archive | Historical customer-specific registry; do not restore or use as an authentication store |
 | Three Drive-hosted celebration videos | `utils/gamification_ui.js:13-15` | Generic/product configuration or customer media configuration |
 | Customer source pages detected by `flosports`, `varsity`, `milesplit` substring | `background/main.js:206-213` | Configured owned-source patterns |
 

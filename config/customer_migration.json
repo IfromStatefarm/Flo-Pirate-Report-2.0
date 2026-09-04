@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "customerId": "flosports",
+  "readMode": "compare",
+  "writeMode": "customer_api",
+  "requiredReadKinds": ["scoreboard", "intelligence"],
+  "requiredConsecutiveMatches": 10,
+  "maxHistory": 100
+}

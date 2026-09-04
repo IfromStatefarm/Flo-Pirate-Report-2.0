@@ -1,22 +1,17 @@
 import { getAuthToken, getUserEmail } from '../utils/auth.js';
 import {
   addNewEventToSheet,
-  appendToSheet,
   checkIfAuthorized,
   ensureRogueScreenshotFolder,
   fetchConfig,
-  fetchIntelligenceData,
-  fetchLeaderboardData,
   getColumnHDataWithFormatting,
   getEventData,
   getRecommendedStartRow,
-  logRogueToSheet,
   patchConfigSelector,
   submitSuggestionToSheet,
   updateCellWithRichText,
   updateEventUrl,
   updateRowStatus,
-  setColumnKRichText,
   addEnforcerBonusPoints,
   updateConfigSections,
   uploadToDrive,
@@ -32,8 +27,13 @@ import { createReportingWorkflow } from './services/reporting_workflow.js';
 import { createRogueWorkflow } from './services/rogue_workflow.js';
 import { createRumbleWorkflow } from './services/rumble_workflow.js';
 import { createSearchWorkflow } from './services/search_workflow.js';
-import { createAccessRegistry } from '../services/access_registry.js';
+import { createCustomerBootstrapService } from '../services/customer_bootstrap_service.js';
 import { createCustomerConfigService } from '../services/customer_config_service.js';
+import { createThemeAssetService } from '../services/theme_asset_service.js';
+import { createCustomerMembershipService } from '../services/customer_membership_service.js';
+import { createCustomerDataService } from '../services/customer_data_service.js';
+import { createCustomerMigrationService } from '../services/customer_migration_service.js';
+import { buildRuntimeTheme } from '../utils/runtime_theme.js';
 import {
   PERMISSIONS,
   hasPermission,
@@ -43,13 +43,27 @@ import {
 import { detectPlatformDetails } from '../utils/platforms.js';
 
 const ALARM_NAME = 'theCloser';
-<<<<<<< Updated upstream
-const GAMIFICATION_STATS_CACHE_KEY = 'gamification_stats_cache';
-=======
+const LEGACY_GAMIFICATION_STATS_CACHE_KEY = 'gamification_stats_cache';
 const ACCESS_CONTEXT = Symbol('accessContext');
 
-const accessRegistry = createAccessRegistry({ getAuthToken, getUserEmail });
+const accessRegistry = createCustomerBootstrapService({ getAuthToken, getUserEmail });
 const customerConfigService = createCustomerConfigService();
+const themeAssetService = createThemeAssetService();
+const customerMembershipService = createCustomerMembershipService({ getAuthToken });
+const customerDataService = createCustomerDataService({ getAuthToken });
+const customerMigrationService = createCustomerMigrationService({ customerDataService });
+
+async function resolveRuntimeTheme(profile) {
+  let logoDataUrl = '';
+  if (profile?.status === 'ready' && profile.theme?.logoUrl) {
+    logoDataUrl = await themeAssetService.resolveLogo({
+      customerId: profile.customerId,
+      configVersion: profile.configVersion,
+      logoUrl: profile.theme.logoUrl
+    });
+  }
+  return buildRuntimeTheme(profile, logoDataUrl);
+}
 
 const ACTION_ACCESS_POLICIES = Object.freeze({
   checkWhitelist: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
@@ -80,14 +94,15 @@ const ACTION_ACCESS_POLICIES = Object.freeze({
   triggerCloser: { permission: PERMISSIONS.SIDEPANEL_AUTOMATE },
   stopSheetScanner: { permission: PERMISSIONS.SIDEPANEL_AUTOMATE },
   generateIntelligenceReport: { permission: PERMISSIONS.SIDEPANEL_INTEL },
+  getMigrationStatus: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
+  listAccessUsers: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
+  updateAccessUser: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
   updateSharedConfig: { permission: PERMISSIONS.SETTINGS_INTELLIGENCE_TOOLS },
   submitSuggestion: { permission: PERMISSIONS.SETTINGS_FEEDBACK_COMMS },
   patchSelectorConfig: { permission: PERMISSIONS.SIDEPANEL_REPAIR, platformScoped: true },
   startMacroSession: { permission: PERMISSIONS.SIDEPANEL_REPAIR, platformScoped: true },
   compileMacro: { permission: PERMISSIONS.SIDEPANEL_REPAIR },
-  recordMacroStep: { permission: PERMISSIONS.SIDEPANEL_REPAIR },
-  listAccessUsers: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
-  updateAccessUser: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS }
+  recordMacroStep: { permission: PERMISSIONS.SIDEPANEL_REPAIR }
 });
 
 function platformKeyFromUrl(url) {
@@ -154,51 +169,56 @@ async function authorizeAction(action, request) {
   request[ACCESS_CONTEXT] = profile;
   return profile;
 }
->>>>>>> Stashed changes
 
 const sheetScanner = createSheetScanner({
   getColumnHDataWithFormatting,
   updateRowStatus,
   updateCellWithRichText,
   addEnforcerBonusPoints,
-  getUserEmail
+  getUserEmail,
+  getCustomerProfile: () => accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_AUTOMATE),
+  recordCustomerEvent: (...args) => customerDataService.recordEvent(...args)
 });
 
 const searchWorkflow = createSearchWorkflow({
   addNewEventToSheet,
   getEventData,
-  updateEventUrl
+  updateEventUrl,
+  getCustomerProfile: () => accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_REPORT),
+  recordCustomerEvent: (...args) => customerDataService.recordEvent(...args)
 });
 
 const rogueWorkflow = createRogueWorkflow({
   base64ToBlob,
   ensureRogueScreenshotFolder,
   getAuthToken,
-  logRogueToSheet,
-  uploadToDrive
+  uploadToDrive,
+  getCustomerProfile: () => accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_REPORT),
+  recordCustomerEvent: (...args) => customerDataService.recordEvent(...args)
 });
 
 const macroWorkflow = createMacroWorkflow();
 
 const reportingWorkflow = createReportingWorkflow({
-  appendToSheet,
   checkIfAuthorized,
   clearImages,
   ensureDailyScreenshotFolder,
   ensureYearlyReportFolder,
   generatePDF,
+  getCustomerTheme: async () => resolveRuntimeTheme(await accessRegistry.getCurrentProfile()),
+  getCustomerProfile: () => accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_REPORT),
   getAuthToken,
   getEventData,
   getImage,
   getUserEmail,
   saveImage,
-  saveUrlToSheet: async (vertical, rowOrEventName, url, platform, shouldAppend = false) => {
+  saveUrlToSheet: async (vertical, rowOrEventName, url, platform, shouldAppend = false, integrations = null) => {
     if (shouldAppend) {
-      return addNewEventToSheet(vertical, rowOrEventName, url, platform);
+      return addNewEventToSheet(vertical, rowOrEventName, url, platform, integrations);
     }
-    return updateEventUrl(vertical, rowOrEventName, url, platform);
+    return updateEventUrl(vertical, rowOrEventName, url, platform, integrations);
   },
-  setColumnKRichText,
+  recordCustomerEvent: (...args) => customerDataService.recordEvent(...args),
   uploadToDrive,
   base64ToBlob
 });
@@ -207,14 +227,17 @@ const rumbleWorkflow = createRumbleWorkflow({
   handleBatchReport: reportingWorkflow.handleBatchReport
 });
 
-function maybeBroadcastManagedSourceUrl(url) {
-  const normalizedUrl = String(url || '').toLowerCase();
-  if (
-    normalizedUrl.includes('flosports') ||
-    normalizedUrl.includes('varsity') ||
-    normalizedUrl.includes('milesplit')
-  ) {
-    chrome.runtime.sendMessage({ action: 'activeUrlChanged', url }).catch(() => {});
+async function maybeBroadcastManagedSourceUrl(url) {
+  try {
+    const profile = await accessRegistry.getDisplayProfile();
+    if (profile.status !== 'ready' || !profile.legal?.originalWorkUrl) return;
+    const activeHost = new URL(String(url || '')).hostname.toLowerCase();
+    const officialHost = new URL(profile.legal.originalWorkUrl).hostname.toLowerCase();
+    if (activeHost === officialHost || activeHost.endsWith(`.${officialHost}`)) {
+      chrome.runtime.sendMessage({ action: 'activeUrlChanged', url }).catch(() => {});
+    }
+  } catch (error) {
+    // Ignore browser-internal and malformed URLs.
   }
 }
 
@@ -224,7 +247,7 @@ function setupBrowserEventListeners() {
   chrome.tabs.onActivated.addListener(async (activeInfo) => {
     try {
       const tab = await chrome.tabs.get(activeInfo.tabId);
-      maybeBroadcastManagedSourceUrl(tab.url);
+      await maybeBroadcastManagedSourceUrl(tab.url);
     } catch (error) {
       console.warn('Active tab lookup failed:', error);
     }
@@ -233,7 +256,7 @@ function setupBrowserEventListeners() {
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     void tabId;
     if (changeInfo.url && tab?.active) {
-      maybeBroadcastManagedSourceUrl(changeInfo.url);
+      void maybeBroadcastManagedSourceUrl(changeInfo.url);
     }
   });
 
@@ -249,17 +272,16 @@ function setupBrowserEventListeners() {
       'closer_duration_minutes'
     ]);
     if (closer_enabled) {
-<<<<<<< Updated upstream
-      await sheetScanner.run(1, { durationMinutes: closer_duration_minutes });
-=======
       try {
         const profile = await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_AUTOMATE);
-        const allowedPlatforms = profile.platforms.includes('all') ? null : profile.platforms;
-        await sheetScanner.run(1, 4, allowedPlatforms);
+        await sheetScanner.run(1, {
+          durationMinutes: closer_duration_minutes,
+          allowedPlatforms: profile.platforms,
+          customerProfile: profile
+        });
       } catch (error) {
         console.warn('Scheduled Closer skipped:', error.message);
       }
->>>>>>> Stashed changes
     }
   });
 
@@ -287,10 +309,16 @@ function setupBrowserEventListeners() {
   });
 }
 
-async function handleGamificationStats() {
+function getGamificationCacheKey(profile) {
+  return `gamification_stats_cache:${profile.customerId}:${profile.userId}`;
+}
+
+async function handleGamificationStats(profile) {
   try {
-    const email = await getUserEmail();
-    const stats = await fetchLeaderboardData(email || '');
+    const query = { period: 'current_month' };
+    const result = await customerDataService.queryStatistics(profile, 'scoreboard', query);
+    await customerMigrationService.compareStatistics(profile, 'scoreboard', query, result);
+    const stats = result.data;
     const hydratedStats = {
       ...createEmptyGamificationStats(),
       ...stats,
@@ -305,17 +333,20 @@ async function handleGamificationStats() {
 
     if (!hydratedStats.error) {
       await chrome.storage.local.set({
-        [GAMIFICATION_STATS_CACHE_KEY]: {
+        [getGamificationCacheKey(profile)]: {
+          customerId: profile.customerId,
+          userId: profile.userId,
           stats: hydratedStats,
           fetchedAt: hydratedStats.lastUpdated
         }
       });
+      await chrome.storage.local.remove(LEGACY_GAMIFICATION_STATS_CACHE_KEY);
     }
 
     return hydratedStats;
   } catch (error) {
     console.error('Leaderboard fetch error:', error);
-    return getCachedGamificationStats(error.message);
+    return getCachedGamificationStats(profile, error.message);
   }
 }
 
@@ -339,10 +370,14 @@ function createEmptyGamificationStats(overrides = {}) {
   };
 }
 
-async function getCachedGamificationStats(errorMessage = '') {
+async function getCachedGamificationStats(profile, errorMessage = '') {
   const normalizedErrorMessage = String(errorMessage || '');
-  const cache = await chrome.storage.local.get(GAMIFICATION_STATS_CACHE_KEY);
-  const cachedStats = cache[GAMIFICATION_STATS_CACHE_KEY]?.stats;
+  const cacheKey = getGamificationCacheKey(profile);
+  const cache = await chrome.storage.local.get(cacheKey);
+  const envelope = cache[cacheKey];
+  const cachedStats = envelope?.customerId === profile.customerId && envelope?.userId === profile.userId
+    ? envelope.stats
+    : null;
 
   if (cachedStats) {
     return {
@@ -365,15 +400,29 @@ async function getCachedGamificationStats(errorMessage = '') {
 async function handleGenerateIntelligenceReport(request) {
   const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_INTEL);
   const token = await getAuthToken();
-  const allowedPlatforms = profile.platforms.includes('all') ? null : profile.platforms;
-  const stats = await fetchIntelligenceData(request.startDate, request.endDate, allowedPlatforms);
+  const allowedPlatforms = profile.platforms.includes('all') ? [] : profile.platforms;
+  const result = await customerDataService.queryStatistics(profile, 'intelligence', {
+    start_date: request.startDate,
+    end_date: request.endDate,
+    platforms: allowedPlatforms
+  });
+  await customerMigrationService.compareStatistics(profile, 'intelligence', {
+    start_date: request.startDate,
+    end_date: request.endDate,
+    platforms: allowedPlatforms
+  }, result);
+  const stats = result.data;
   if (!stats) {
     throw new Error('No data available for this timeframe.');
   }
 
-  const pdfBlob = await generateIntelligencePDF(stats);
-  const storage = await chrome.storage.sync.get('piracy_folder_id');
-  const driveRootId = storage.piracy_folder_id;
+  const briefingEventId = crypto.randomUUID();
+  const pdfBlob = await generateIntelligencePDF(stats, await resolveRuntimeTheme(profile), {
+    customerId: profile.customerId,
+    userId: profile.userId,
+    eventId: briefingEventId
+  });
+  const driveRootId = profile.integrations?.driveRootFolderId;
   if (!driveRootId) {
     throw new Error('Drive Root ID not configured.');
   }
@@ -408,7 +457,16 @@ async function handleGenerateIntelligenceReport(request) {
   }
 
   const filename = `Intelligence_Briefing_${request.startDate}_to_${request.endDate}.pdf`;
-  const uploadRes = await uploadToDrive(token, folderId, filename, pdfBlob, 'application/pdf');
+  const uploadRes = await uploadToDrive(token, folderId, filename, pdfBlob, 'application/pdf', {
+    customerId: profile.customerId,
+    userId: profile.userId,
+    eventId: briefingEventId
+  });
+  await customerDataService.recordEvent(profile, 'report.intelligence_generated', {
+    start_date: request.startDate,
+    end_date: request.endDate,
+    pdf_url: uploadRes.webViewLink
+  }, { eventId: briefingEventId });
   chrome.tabs.create({ url: uploadRes.webViewLink });
 
   return { success: true, url: uploadRes.webViewLink };
@@ -430,6 +488,11 @@ function createActionHandlers() {
       return { success: true, ...resolved };
     },
 
+    async getRuntimeTheme() {
+      const profile = await accessRegistry.getDisplayProfile();
+      return { success: true, theme: await resolveRuntimeTheme(profile) };
+    },
+
     async getAccessProfile(request) {
       const profile = await accessRegistry.getCurrentProfile({
         forceRefresh: request.forceRefresh === true
@@ -437,29 +500,19 @@ function createActionHandlers() {
       return { success: true, profile };
     },
 
-    async createAccessUser(request) {
-      const result = await accessRegistry.createAccount(request.credentials || {});
-      return result?.challenge
-        ? { success: true, ...result }
-        : { success: true, profile: result };
-    },
-
-    async loginAccessUser(request) {
-      const result = await accessRegistry.login(request.credentials || {});
-      return result?.challenge
-        ? { success: true, ...result }
-        : { success: true, profile: result };
+    async bootstrapCustomerAccess() {
+      const profile = await accessRegistry.bootstrap();
+      return { success: profile.status === 'ready', profile, error: profile.message || '' };
     },
 
     async logoutAccessUser() {
-      await accessRegistry.logout();
+      await Promise.all([accessRegistry.logout(), themeAssetService.clear()]);
       return { success: true };
     },
 
     async refreshAccessProfile() {
-      await accessRegistry.clearProfileCache();
       const profile = await accessRegistry.getCurrentProfile({ forceRefresh: true });
-      return { success: true, profile };
+      return { success: profile.status === 'ready', profile, error: profile.message || '' };
     },
 
     async checkAccess(request) {
@@ -480,11 +533,20 @@ function createActionHandlers() {
     },
 
     async listAccessUsers(request) {
-      return { success: true, users: await accessRegistry.listUsers(request.query) };
+      const actorProfile = request[ACCESS_CONTEXT];
+      const result = await customerMembershipService.listMembers(actorProfile, request.query || '');
+      return { success: true, ...result };
     },
 
     async updateAccessUser(request) {
-      return { success: true, user: await accessRegistry.updateUser(request.user || {}) };
+      const actorProfile = request[ACCESS_CONTEXT];
+      const result = await customerMembershipService.mutateMember(actorProfile, request.mutation);
+      let profile = null;
+      if (result.member.email === actorProfile.email) {
+        await accessRegistry.clearProfileCache();
+        profile = await accessRegistry.getCurrentProfile({ forceRefresh: true });
+      }
+      return { success: true, ...result, profile };
     },
 
     async checkUserIdentity() {
@@ -492,7 +554,8 @@ function createActionHandlers() {
     },
 
     async checkWhitelist(request) {
-      return { authorized: await checkIfAuthorized(request.platform, request.handle) };
+      const profile = request[ACCESS_CONTEXT];
+      return { authorized: await checkIfAuthorized(request.platform, request.handle, profile.integrations) };
     },
 
     async findEventUrl(request) {
@@ -500,7 +563,8 @@ function createActionHandlers() {
     },
 
     async getVerticalData(request) {
-      return { success: true, data: await getEventData(request.vertical) };
+      const profile = request[ACCESS_CONTEXT];
+      return { success: true, data: await getEventData(request.vertical, profile.integrations) };
     },
 
     async botSearchComplete(request) {
@@ -533,8 +597,6 @@ function createActionHandlers() {
       return response;
     },
 
-<<<<<<< Updated upstream
-=======
     async processFacebookLog(request, sender) {
       try {
         const response = await reportingWorkflow.handleFacebookBatchReport(request.data, {
@@ -597,7 +659,6 @@ function createActionHandlers() {
       }
     },
 
->>>>>>> Stashed changes
     async startRumbleQueue(request) {
       return rumbleWorkflow.start(request.data);
     },
@@ -649,12 +710,19 @@ function createActionHandlers() {
       return { success: true, config: await updateConfigSections(sections) };
     },
 
-    async getRecommendedStartRow() {
-      return { success: true, row: await getRecommendedStartRow() };
+    async getRecommendedStartRow(request) {
+      const profile = request[ACCESS_CONTEXT];
+      return { success: true, row: await getRecommendedStartRow(profile.integrations) };
     },
 
-    async getGamificationStats() {
-      return handleGamificationStats();
+    async getGamificationStats(request) {
+      const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_SCOREBOARD);
+      return handleGamificationStats(profile);
+    },
+
+    async getMigrationStatus(request) {
+      const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SETTINGS_ADMIN_ACCESS);
+      return { success: true, migration: await customerMigrationService.getStatus(profile) };
     },
 
     async patchSelectorConfig(request) {
@@ -718,19 +786,24 @@ function createActionHandlers() {
 
     async appendEventToSheet(request) {
       const { vertical, eventName, eventUrl } = request.data;
-      await addNewEventToSheet(vertical, eventName, eventUrl);
+      const profile = request[ACCESS_CONTEXT];
+      await customerDataService.recordEvent(profile, 'event.source_url_updated', {
+        platform: 'tiktok',
+        target_url: eventUrl,
+        source_event_name: eventName,
+        vertical
+      });
+      await addNewEventToSheet(vertical, eventName, eventUrl, 'tiktok', profile.integrations);
       return { success: true };
     },
 
     async triggerCloser(request) {
-<<<<<<< Updated upstream
-      await sheetScanner.run(request.startRow || 1, { durationMinutes: request.durationMinutes });
-=======
       const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_AUTOMATE);
-      const allowedPlatforms = profile.platforms.includes('all') ? null : profile.platforms;
-      await sheetScanner.run(request.startRow || 1, request.maxTabs || 4, allowedPlatforms);
->>>>>>> Stashed changes
-      return { success: true };
+      return sheetScanner.run(request.startRow || 1, {
+        durationMinutes: request.durationMinutes,
+        allowedPlatforms: profile.platforms,
+        customerProfile: profile
+      });
     },
 
     async stopSheetScanner() {
@@ -762,7 +835,12 @@ function registerMessageRouter() {
       })
       .catch((error) => {
         console.error(`Action ${request.action} failed:`, error);
-        sendResponse({ success: false, error: error.message });
+        sendResponse({
+          success: false,
+          error: error.message,
+          errorCode: error.code || 'action_failed',
+          utilization: error.utilization || null
+        });
       });
 
     return true;

@@ -10,7 +10,9 @@ export function createSheetScanner({
   updateRowStatus,
   updateCellWithRichText,
   addEnforcerBonusPoints,
-  getUserEmail
+  getUserEmail,
+  getCustomerProfile,
+  recordCustomerEvent
 }) {
   let stopRequested = false;
   let isRunning = false;
@@ -140,7 +142,7 @@ export function createSheetScanner({
                 if (text.includes('video is private')) return resolve(true);
                 if (text.includes('this video is no longer available')) return resolve(true);
                 if (text.includes('account has been terminated')) return resolve(true);
-                if (text.includes('copyright claim by flosports')) return resolve(true);
+                if (text.includes('copyright claim')) return resolve(true);
                 if (window.location.href === 'https://www.youtube.com/') return resolve(true);
 
                 if (text.includes('before you continue to youtube')) return resolve(false);
@@ -239,17 +241,10 @@ export function createSheetScanner({
     }
   }
 
-<<<<<<< Updated upstream
   async function run(startRowUI = 1, options = {}) {
-=======
-  async function run(startRowUI = 1, maxConcurrentTabs = 4, allowedPlatforms = null) {
-    void maxConcurrentTabs;
-
-    const allowedPlatformSet = allowedPlatforms === null
+    const allowedPlatformSet = options.allowedPlatforms == null
       ? null
-      : new Set((allowedPlatforms || []).map((platform) => String(platform || '').trim().toLowerCase()));
-
->>>>>>> Stashed changes
+      : new Set((options.allowedPlatforms || []).map((platform) => String(platform || '').trim().toLowerCase()));
     if (isRunning) return;
 
     const durationMs = getDurationMs(options?.durationMinutes);
@@ -258,6 +253,15 @@ export function createSheetScanner({
 
     isRunning = true;
     stopRequested = false;
+    const runId = crypto.randomUUID();
+    const startedAt = Date.now();
+    let customerProfile = null;
+    let checkedCount = 0;
+    let resolvedCount = 0;
+    let activeCount = 0;
+    let completionOutcome = 'completed';
+    let completionReason = '';
+    let runFailure = null;
     sendProgress(
       `Starting from Row ${startRowUI}`,
       durationLabel
@@ -266,7 +270,13 @@ export function createSheetScanner({
     );
 
     try {
-      const rows = await getColumnHDataWithFormatting();
+      customerProfile = options.customerProfile || await getCustomerProfile();
+      await recordCustomerEvent(customerProfile, 'automation.scan_started', {
+        run_id: runId,
+        start_row: Math.max(1, Number(startRowUI) || 1),
+        duration_ms: durationMs || 0
+      });
+      const rows = await getColumnHDataWithFormatting(customerProfile.integrations);
       const startIndex = Math.max(0, startRowUI - 1);
 
       if (startIndex >= rows.length) {
@@ -359,6 +369,7 @@ export function createSheetScanner({
         ));
         if (hasDisallowedPlatform) {
           sendProgress(`Skipping Row ${rowIndex + 1}`, 'The row contains a platform that is not assigned to your account.');
+          rowIndex++;
           continue;
         }
 
@@ -396,6 +407,17 @@ export function createSheetScanner({
           } catch (error) {
             console.error('Link check failed:', error);
           }
+
+          checkedCount += 1;
+          if (isDown) resolvedCount += 1;
+          else activeCount += 1;
+          await recordCustomerEvent(customerProfile, 'automation.platform_outcome', {
+            run_id: runId,
+            platform,
+            target_url: url,
+            outcome: isDown ? 'resolved' : 'active',
+            row_index: rowIndex + 1
+          });
 
           if (isDown) {
             newlyStruck++;
@@ -452,7 +474,7 @@ export function createSheetScanner({
               newRuns.push({ startIndex: cursor, format: defaultStyle });
             }
 
-            await updateCellWithRichText(rowIndex, cellValue, newRuns);
+            await updateCellWithRichText(rowIndex, cellValue, newRuns, customerProfile.integrations);
           } else {
             totalActive++;
             sendProgress(`Row ${rowIndex + 1}`, `Link ${matchIndex + 1}/${matches.length} is ACTIVE.`);
@@ -470,14 +492,34 @@ export function createSheetScanner({
 
         const totalDead = newlyStruck + previouslyDeadCount;
         if (totalDead > 0 && totalActive === 0) {
-          await updateRowStatus(rowIndex, 'Resolved');
+          const previousStatus = cellData.status || '';
+          await recordCustomerEvent(customerProfile, 'automation.row_status_changed', {
+            run_id: runId,
+            row_index: rowIndex + 1,
+            previous_status: previousStatus || 'open',
+            new_status: 'Resolved',
+            resolved_count: totalDead,
+            active_count: 0,
+            enforcer_points: newlyStruck * 15
+          });
+          await updateRowStatus(rowIndex, 'Resolved', customerProfile.integrations);
           cellData.status = 'Resolved';
           sendProgress(`Row ${rowIndex + 1}`, 'All links DOWN. Row resolved.');
           if (newlyStruck > 0) {
-            await addEnforcerBonusPoints(rowIndex, newlyStruck * 15);
+            await addEnforcerBonusPoints(rowIndex, newlyStruck * 15, customerProfile.integrations);
           }
         } else if (totalActive > 0) {
-          await updateRowStatus(rowIndex, 'Investigating');
+          const previousStatus = cellData.status || '';
+          await recordCustomerEvent(customerProfile, 'automation.row_status_changed', {
+            run_id: runId,
+            row_index: rowIndex + 1,
+            previous_status: previousStatus || 'open',
+            new_status: 'Investigating',
+            resolved_count: totalDead,
+            active_count: totalActive,
+            enforcer_points: 0
+          });
+          await updateRowStatus(rowIndex, 'Investigating', customerProfile.integrations);
           cellData.status = 'Investigating';
           sendProgress(
             `Row ${rowIndex + 1}`,
@@ -492,22 +534,58 @@ export function createSheetScanner({
         sendProgress('Scanner Complete', 'Finished processing rows.');
       }
     } catch (error) {
+      runFailure = error;
+      completionOutcome = 'failed';
+      completionReason = error.message || 'Scanner failed.';
       console.error('Sheet Scanner Failed:', error);
       sendProgress('Scanner Failed', error.message);
     } finally {
+      if (stopRequested && completionOutcome !== 'failed') completionOutcome = 'stopped';
+      if (customerProfile) {
+        try {
+          await recordCustomerEvent(customerProfile, 'automation.scan_completed', {
+            run_id: runId,
+            outcome: completionOutcome,
+            checked_count: checkedCount,
+            resolved_count: resolvedCount,
+            active_count: activeCount,
+            duration_ms: Math.max(0, Date.now() - startedAt),
+            reason: completionReason
+          });
+        } catch (eventError) {
+          console.error('Failed to record scanner completion:', eventError);
+          runFailure ||= eventError;
+        }
+      }
       isRunning = false;
       chrome.storage.local.set({ closer_enabled: false }).catch(() => {});
     }
+    if (runFailure) return { success: false, error: runFailure.message || 'Scanner failed.' };
+    return { success: true, checkedCount, resolvedCount, activeCount, runId };
   }
 
   async function scanSheetForActiveLinks(platform, vertical, startRowUI = 1) {
     void vertical;
 
     stopRequested = false;
+    const runId = crypto.randomUUID();
+    const startedAt = Date.now();
+    let customerProfile = null;
+    let checkedCount = 0;
+    let resolvedCount = 0;
+    let activeCount = 0;
+    let completionOutcome = 'completed';
+    let completionReason = '';
 
     try {
-      const scannerEmail = (await getUserEmail()) || 'Unknown';
-      const rows = await getColumnHDataWithFormatting();
+      customerProfile = await getCustomerProfile();
+      const scannerEmail = customerProfile.email || (await getUserEmail()) || 'Unknown';
+      await recordCustomerEvent(customerProfile, 'automation.scan_started', {
+        run_id: runId,
+        start_row: Math.max(1, Number(startRowUI) || 1),
+        duration_ms: 0
+      });
+      const rows = await getColumnHDataWithFormatting(customerProfile.integrations);
 
       if (!rows || rows.length === 0) {
         return { success: false, error: 'Failed to fetch sheet data' };
@@ -552,6 +630,16 @@ export function createSheetScanner({
 
           const checkTask = (async () => {
             const isDown = await verifyTakedownViaTab(url, platform);
+            checkedCount += 1;
+            if (isDown) resolvedCount += 1;
+            else activeCount += 1;
+            await recordCustomerEvent(customerProfile, 'automation.platform_outcome', {
+              run_id: runId,
+              platform,
+              target_url: url,
+              outcome: isDown ? 'resolved' : 'active',
+              row_index: rowIndex + 1
+            });
             if (isDown) return;
 
             activeLinks.push({
@@ -596,8 +684,28 @@ export function createSheetScanner({
 
       return { success: true, count: activeLinks.length };
     } catch (error) {
+      completionOutcome = 'failed';
+      completionReason = error.message || 'Scanner failed.';
       console.error('Scan Sheet Error:', error);
       return { success: false, error: error.message };
+    } finally {
+      if (stopRequested && completionOutcome !== 'failed') completionOutcome = 'stopped';
+      if (customerProfile) {
+        try {
+          await recordCustomerEvent(customerProfile, 'automation.scan_completed', {
+            run_id: runId,
+            outcome: completionOutcome,
+            checked_count: checkedCount,
+            resolved_count: resolvedCount,
+            active_count: activeCount,
+            duration_ms: Math.max(0, Date.now() - startedAt),
+            reason: completionReason
+          });
+        } catch (eventError) {
+          console.error('Failed to record sheet scan completion:', eventError);
+          throw eventError;
+        }
+      }
     }
   }
 

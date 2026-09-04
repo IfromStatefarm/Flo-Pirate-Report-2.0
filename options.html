@@ -3,20 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Piracy Report Options | FloSports</title>
+  <title data-theme-text="documentTitle">Rights Reporter Settings</title>
   <style>
     :root {
-      --flo-red: #ce0e2d;
-      --flo-red-dark: #a90b24;
-      --flo-dark: #111827;
-      --flo-muted: #6b7280;
-      --flo-soft: #f9fafb;
-      --flo-page: #f3f4f6;
-      --flo-border: #e5e7eb;
-      --flo-border-strong: #d1d5db;
-      --flo-success: #047857;
-      --flo-warning: #b45309;
-      --flo-blue: #2563eb;
+      --brand-primary: #334155;
+      --brand-primary-hover: #1f2937;
+      --brand-on-primary: #ffffff;
+      --text-primary: #111827;
+      --text-muted: #6b7280;
+      --surface: #ffffff;
+      --surface-subtle: #f8fafc;
+      --page-background: #f8fafc;
+      --border: #e5e7eb;
+      --border-strong: #d1d5db;
+      --status-success: #166534;
+      --status-warning: #b45309;
+      --brand-accent: #2563eb;
       --pioneer-bg: #fffbeb;
       --shadow-soft: 0 16px 50px rgba(17, 24, 39, 0.08);
     }
@@ -40,13 +42,13 @@
       line-height: 1.5;
     }
 
-    .settings-access-state strong { display: block; color: var(--flo-dark); margin-bottom: 4px; }
+    .settings-access-state strong { display: block; color: var(--text-primary); margin-bottom: 4px; }
     .settings-access-state.is-error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
     .settings-access-state.is-pending { border-color: #fde68a; background: #fffbeb; color: #92400e; }
 
     .auth-card {
       padding: 20px;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 12px;
       background: #f8fafc;
     }
@@ -59,7 +61,7 @@
 
     .auth-pane {
       padding: 16px;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 10px;
       background: white;
     }
@@ -85,16 +87,16 @@
     .access-user-result {
       width: 100%;
       padding: 11px 12px;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: white;
-      color: var(--flo-dark);
+      color: var(--text-primary);
       cursor: pointer;
       text-align: left;
     }
 
     .access-user-result:hover,
-    .access-user-result.is-selected { border-color: var(--flo-red); background: #fff5f6; }
+    .access-user-result.is-selected { border-color: var(--brand-primary); background: var(--surface-subtle); }
     .access-user-result strong { display: block; font-size: 13px; }
     .access-user-result span { display: block; margin-top: 3px; color: #6b7280; font-size: 11px; }
 
@@ -105,7 +107,7 @@
       max-height: 220px;
       overflow-y: auto;
       padding: 12px;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: #fafafa;
     }
@@ -113,14 +115,13 @@
     .platform-access-grid label { display: flex; gap: 7px; align-items: center; margin: 0; font-weight: 500; }
     .platform-access-grid input { width: auto; }
 
-    body { 
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 >>>>>>> Stashed changes
       margin: 0;
       background:
-        linear-gradient(180deg, rgba(206, 14, 45, 0.07), rgba(243, 244, 246, 0) 260px),
-        var(--flo-page);
-      color: var(--flo-dark);
+        var(--page-background);
+      color: var(--text-primary);
       font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
@@ -158,7 +159,7 @@
 
     .eyebrow {
       margin: 0 0 4px;
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 12px;
       font-weight: 800;
       letter-spacing: 0.08em;
@@ -167,7 +168,7 @@
 
     h1 {
       margin: 0;
-      color: var(--flo-red);
+      color: var(--brand-primary);
       cursor: pointer;
       font-size: 30px;
       line-height: 1.1;
@@ -197,7 +198,7 @@
 
     .panel {
       background: #fff;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 8px;
       box-shadow: var(--shadow-soft);
     }
@@ -208,7 +209,7 @@
       gap: 16px;
       align-items: flex-start;
       padding: 20px 22px 14px;
-      border-bottom: 1px solid var(--flo-border);
+      border-bottom: 1px solid var(--border);
     }
 
     .panel-title {
@@ -216,7 +217,7 @@
       gap: 10px;
       align-items: center;
       margin: 0;
-      color: var(--flo-dark);
+      color: var(--text-primary);
       font-size: 16px;
       font-weight: 800;
     }
@@ -227,8 +228,8 @@
       height: 28px;
       place-items: center;
       border-radius: 8px;
-      background: rgba(206, 14, 45, 0.1);
-      color: var(--flo-red);
+      background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
+      color: var(--brand-primary);
       font-size: 15px;
       font-weight: 900;
     }
@@ -236,7 +237,7 @@
     .panel-subtitle,
     .input-desc {
       margin: 8px 0 0;
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 13px;
       line-height: 1.45;
     }
@@ -246,7 +247,7 @@
     }
 
     .setup-panel {
-      border-color: rgba(206, 14, 45, 0.28);
+      border-color: color-mix(in srgb, var(--brand-primary) 28%, transparent);
     }
 
     .setup-summary {
@@ -255,7 +256,7 @@
       gap: 14px;
       align-items: center;
       padding: 18px 22px;
-      border-bottom: 1px solid var(--flo-border);
+      border-bottom: 1px solid var(--border);
       background: #fff;
       border-radius: 8px 8px 0 0;
     }
@@ -267,7 +268,7 @@
 
     .setup-summary p {
       margin: 4px 0 0;
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 13px;
       line-height: 1.4;
     }
@@ -280,7 +281,7 @@
       padding: 7px 10px;
       border-radius: 999px;
       background: #fef2f2;
-      color: var(--flo-red);
+      color: var(--brand-primary);
       font-size: 12px;
       font-weight: 800;
       white-space: nowrap;
@@ -288,7 +289,7 @@
 
     .status-pill.ready {
       background: #ecfdf5;
-      color: var(--flo-success);
+      color: var(--status-success);
     }
 
     .setup-checklist {
@@ -319,13 +320,13 @@
     }
 
     .check-state {
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 12px;
       font-weight: 800;
     }
 
     .setup-check.ready .check-state {
-      color: var(--flo-success);
+      color: var(--status-success);
     }
 
     .form-grid {
@@ -343,23 +344,23 @@
 =======
     .form-group { margin-bottom: 20px; }
     label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 13px; color: #374151; }
-    
+
     .input-desc { font-size: 12px; color: #6b7280; margin-bottom: 8px; line-height: 1.4; }
-    
-    input[type="text"], input[type="password"], select, textarea {
-      width: 100%; 
-      padding: 12px; 
+
+    input[type="text"], select, textarea {
+      width: 100%;
+      padding: 12px;
       box-sizing: border-box;
-      border: 1.5px solid var(--flo-border); 
+      border: 1.5px solid var(--border);
       border-radius: 8px;
       font-size: 14px;
       transition: all 0.2s;
     }
 
-    input:focus, select:focus, textarea:focus { 
-      outline: none; 
-      border-color: var(--flo-red); 
-      box-shadow: 0 0 0 4px rgba(206, 14, 45, 0.1);
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--brand-primary);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-primary) 10%, transparent);
     }
 
     input[data-managed="true"] {
@@ -369,10 +370,10 @@
       font-weight: 600;
     }
 
-    .lab-card { 
-      background-color: var(--pioneer-bg); 
-      border: 1px solid #fcd34d; 
-      padding: 20px; 
+    .lab-card {
+      background-color: var(--pioneer-bg);
+      border: 1px solid #fcd34d;
+      padding: 20px;
       border-radius: 12px;
     }
 
@@ -389,14 +390,14 @@
       bottom: 0;
       background: white;
       padding: 20px 0;
-      border-top: 1px solid var(--flo-border);
+      border-top: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
 
     #save {
-      background-color: var(--flo-red);
+      background-color: var(--brand-primary);
       color: white;
       border: none;
       padding: 14px;
@@ -407,7 +408,7 @@
       width: 100%;
     }
 
-    #save:hover { background-color: #b00c26; transform: translateY(-1px); }
+    #save:hover { background-color: var(--brand-primary-hover); transform: translateY(-1px); }
     #status { text-align: center; font-weight: 700; font-size: 14px; min-height: 20px; }
 
     .btn-secondary {
@@ -431,10 +432,10 @@
       width: 100%;
       min-width: 0;
       padding: 12px 13px;
-      border: 1.5px solid var(--flo-border-strong);
+      border: 1.5px solid var(--border-strong);
       border-radius: 8px;
       background: #fff;
-      color: var(--flo-dark);
+      color: var(--text-primary);
       font-size: 14px;
       transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
     }
@@ -449,8 +450,8 @@
     button:focus-visible,
     summary:focus-visible {
       outline: none;
-      border-color: var(--flo-red);
-      box-shadow: 0 0 0 4px rgba(206, 14, 45, 0.12);
+      border-color: var(--brand-primary);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-primary) 12%, transparent);
     }
 
     .btn-secondary,
@@ -471,7 +472,7 @@
     }
 
     .btn-secondary {
-      border: 1px solid var(--flo-border-strong);
+      border: 1px solid var(--border-strong);
       background: #f9fafb;
       color: #374151;
     }
@@ -483,19 +484,19 @@
     }
 
     .btn-primary {
-      background: var(--flo-red);
+      background: var(--brand-primary);
       color: #fff;
     }
 
     .btn-primary:hover {
-      background: var(--flo-red-dark);
+      background: var(--brand-primary-hover);
       transform: translateY(-1px);
     }
 
     .btn-linkish {
       border: 1px solid transparent;
       background: transparent;
-      color: var(--flo-blue);
+      color: var(--brand-accent);
     }
 
     .sr-only {
@@ -523,7 +524,7 @@
       gap: 8px;
       min-height: 118px;
       padding: 16px;
-      border: 1.5px solid var(--flo-border-strong);
+      border: 1.5px solid var(--border-strong);
       border-radius: 8px;
       background: #fff;
       cursor: pointer;
@@ -542,15 +543,15 @@
     }
 
     .protocol-card:has(input:checked) {
-      border-color: var(--flo-red);
-      box-shadow: 0 0 0 4px rgba(206, 14, 45, 0.1);
+      border-color: var(--brand-primary);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-primary) 10%, transparent);
     }
 
     .protocol-name {
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      color: var(--flo-dark);
+      color: var(--text-primary);
       font-size: 14px;
       font-weight: 850;
     }
@@ -568,12 +569,12 @@
 
     .protocol-card:has(input:checked) .protocol-badge {
       background: #fef2f2;
-      color: var(--flo-red);
+      color: var(--brand-primary);
     }
 
     .protocol-card p {
       margin: 0;
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 12px;
       line-height: 1.45;
     }
@@ -605,7 +606,7 @@
 
     .lab-panel .title-mark {
       background: #fef3c7;
-      color: var(--flo-warning);
+      color: var(--status-warning);
     }
 
     .beta-row {
@@ -621,7 +622,7 @@
       width: 18px;
       height: 18px;
       margin-top: 1px;
-      accent-color: var(--flo-red);
+      accent-color: var(--brand-primary);
     }
 
     .beta-row label {
@@ -641,7 +642,7 @@
     }
 
     .highlight-label {
-      color: var(--flo-warning);
+      color: var(--status-warning);
       font-size: 11px;
       font-weight: 900;
       letter-spacing: 0.06em;
@@ -649,7 +650,7 @@
     }
 
     #highlight-user {
-      color: var(--flo-red);
+      color: var(--brand-primary);
       font-size: 14px;
       font-weight: 850;
     }
@@ -662,7 +663,7 @@
 
     .feedback-panel .title-mark {
       background: #eff6ff;
-      color: var(--flo-blue);
+      color: var(--brand-accent);
     }
 
     .feedback-actions {
@@ -674,7 +675,7 @@
     .char-hint,
     #suggestion_status {
       min-height: 18px;
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 12px;
       text-align: right;
     }
@@ -690,7 +691,7 @@
       bottom: 0;
       left: 0;
       z-index: 20;
-      border-top: 1px solid var(--flo-border);
+      border-top: 1px solid var(--border);
       background: rgba(255, 255, 255, 0.92);
       box-shadow: 0 -12px 35px rgba(17, 24, 39, 0.09);
       backdrop-filter: blur(12px);
@@ -708,7 +709,7 @@
 
     #status {
       min-height: 20px;
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 13px;
       font-weight: 800;
     }
@@ -718,7 +719,7 @@
       min-height: 46px;
       padding: 12px 18px;
       border-radius: 8px;
-      background: var(--flo-red);
+      background: var(--brand-primary);
       color: #fff;
       cursor: pointer;
       font-size: 15px;
@@ -727,7 +728,7 @@
     }
 
     #save:hover {
-      background: var(--flo-red-dark);
+      background: var(--brand-primary-hover);
       transform: translateY(-1px);
     }
 
@@ -751,7 +752,7 @@
     .easter-egg-overlay img {
       max-width: min(900px, 92vw);
       max-height: 78vh;
-      border: 4px solid var(--flo-red);
+      border: 4px solid var(--brand-primary);
       border-radius: 8px;
     }
 
@@ -769,7 +770,7 @@
       width: min(860px, 100%);
       max-height: min(780px, calc(100vh - 48px));
       overflow: hidden;
-      border: 2px solid var(--flo-red);
+      border: 2px solid var(--brand-primary);
       border-radius: 8px;
       background: #fff;
       box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
@@ -781,19 +782,19 @@
       gap: 18px;
       align-items: flex-start;
       padding: 22px 24px 16px;
-      border-bottom: 1px solid var(--flo-border);
+      border-bottom: 1px solid var(--border);
     }
 
     .briefing-dialog h2 {
       margin: 0;
-      color: var(--flo-red);
+      color: var(--brand-primary);
       font-size: 22px;
     }
 
     .modal-close {
       width: 36px;
       height: 36px;
-      border: 1px solid var(--flo-border-strong);
+      border: 1px solid var(--border-strong);
       border-radius: 8px;
       background: #f9fafb;
       color: #374151;
@@ -808,7 +809,7 @@
       gap: 8px;
       align-items: center;
       padding: 12px 24px;
-      border-bottom: 1px solid var(--flo-border);
+      border-bottom: 1px solid var(--border);
       background: #f9fafb;
     }
 
@@ -820,7 +821,7 @@
     }
 
     .briefing-group {
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: #fff;
     }
@@ -832,7 +833,7 @@
       align-items: center;
       padding: 13px 15px;
       cursor: pointer;
-      color: var(--flo-red);
+      color: var(--brand-primary);
       font-size: 14px;
       font-weight: 850;
       list-style: none;
@@ -875,11 +876,11 @@
       width: 16px;
       height: 16px;
       margin-top: 1px;
-      accent-color: var(--flo-red);
+      accent-color: var(--brand-primary);
     }
 
     .help-text {
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 11px;
       font-weight: 500;
     }
@@ -889,7 +890,7 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       padding: 16px 24px 22px;
-      border-top: 1px solid var(--flo-border);
+      border-top: 1px solid var(--border);
       background: #fff;
     }
 
@@ -907,7 +908,7 @@
       width: min(920px, 100%);
       max-height: min(820px, calc(100vh - 48px));
       overflow: hidden;
-      border: 2px solid var(--flo-red);
+      border: 2px solid var(--brand-primary);
       border-radius: 8px;
       background: #fff;
       box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
@@ -923,13 +924,13 @@
       gap: 18px;
       align-items: flex-start;
       padding: 22px 24px 16px;
-      border-bottom: 1px solid var(--flo-border);
+      border-bottom: 1px solid var(--border);
     }
 
     .config-dialog h2,
     .config-dialog h3 {
       margin: 0;
-      color: var(--flo-red);
+      color: var(--brand-primary);
     }
 
     .config-dialog h2 {
@@ -952,7 +953,7 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       padding: 16px 24px 22px;
-      border-top: 1px solid var(--flo-border);
+      border-top: 1px solid var(--border);
       background: #fff;
     }
 
@@ -960,7 +961,7 @@
       display: grid;
       gap: 14px;
       padding: 16px;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: #fff;
     }
@@ -992,30 +993,30 @@
       gap: 10px;
       align-items: center;
       padding: 10px 12px;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: #f9fafb;
     }
 
     .double-xp-item-title {
-      color: var(--flo-dark);
+      color: var(--text-primary);
       font-size: 13px;
       font-weight: 850;
     }
 
     .double-xp-item-subtitle {
       margin-top: 2px;
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 12px;
       font-weight: 650;
     }
 
     .editor-empty-state {
       padding: 12px;
-      border: 1px dashed var(--flo-border-strong);
+      border: 1px dashed var(--border-strong);
       border-radius: 8px;
       background: #f9fafb;
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 12px;
       line-height: 1.45;
     }
@@ -1051,7 +1052,7 @@
     }
 
     .selector-group-title {
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 12px;
       font-weight: 900;
       letter-spacing: 0.08em;
@@ -1060,7 +1061,7 @@
 
     .selector-category {
       overflow: hidden;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: #fff;
     }
@@ -1088,13 +1089,13 @@
     }
 
     .selector-category-title {
-      color: var(--flo-dark);
+      color: var(--text-primary);
       font-size: 13px;
       font-weight: 850;
     }
 
     .selector-category-count {
-      color: var(--flo-muted);
+      color: var(--text-muted);
       font-size: 11px;
       font-weight: 800;
       white-space: nowrap;
@@ -1109,7 +1110,7 @@
       border: 1px solid #bfdbfe;
       border-radius: 999px;
       background: #eff6ff;
-      color: var(--flo-blue);
+      color: var(--brand-accent);
       cursor: pointer;
       font-size: 12px;
       font-weight: 900;
@@ -1120,7 +1121,7 @@
       display: grid;
       gap: 12px;
       padding: 14px 15px 16px;
-      border-top: 1px solid var(--flo-border);
+      border-top: 1px solid var(--border);
       background: #fff;
     }
 
@@ -1145,7 +1146,7 @@
       gap: 8px;
       align-items: start;
       padding: 10px 12px;
-      border: 1px solid var(--flo-border);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: #f9fafb;
     }
@@ -1161,10 +1162,10 @@
     .icon-button {
       width: 32px;
       height: 32px;
-      border: 1px solid var(--flo-border-strong);
+      border: 1px solid var(--border-strong);
       border-radius: 8px;
       background: #fff;
-      color: var(--flo-red);
+      color: var(--brand-primary);
       cursor: pointer;
       font-size: 15px;
       font-weight: 900;
@@ -1269,7 +1270,7 @@
       <img id="clippy-img" src="images/clippy starting postion.png" alt="Clippy">
       <div>
 <<<<<<< Updated upstream
-        <p class="eyebrow">FloSports Pirate Reporter</p>
+        <p class="eyebrow" data-theme-text="productName">Rights Reporter</p>
         <h1 title="Enforcement Center">Enforcement Center</h1>
         <p class="subtitle">Connect the Google Workspace assets, choose the reporting protocol, and tune the intelligence briefing modules used across the extension.</p>
       </div>
@@ -1426,7 +1427,7 @@
             <textarea id="suggestion_text" maxlength="1000" rows="5" placeholder="Report a bug or suggest a feature..."></textarea>
             <div id="suggestion_counter" class="char-hint">0 / 1000</div>
             <div class="feedback-actions">
-              <button id="send_suggestion" class="btn-primary" type="button" style="background: var(--flo-blue);">Send to Engineering</button>
+              <button id="send_suggestion" class="btn-primary" type="button" style="background: var(--brand-accent);">Send to Engineering</button>
               <div id="suggestion_status"></div>
             </div>
           </div>
@@ -1452,63 +1453,10 @@
       <div class="section-title">🔑 Extension Account</div>
 
       <div id="auth-logged-out">
-        <div class="auth-grid">
-          <form id="access-login-form" class="auth-pane">
-            <h3>Log in</h3>
-            <p class="input-desc">Enter your first and last name exactly as it appears on your report forms.</p>
-            <div class="form-group">
-              <label for="login_first_name">First Name</label>
-              <input type="text" id="login_first_name" autocomplete="given-name" maxlength="60" required>
-            </div>
-            <div class="form-group">
-              <label for="login_last_name">Last Name</label>
-              <input type="text" id="login_last_name" autocomplete="family-name" maxlength="60" required>
-            </div>
-            <div id="login-middle-name-group" class="form-group" hidden>
-              <label for="login_middle_name">Middle Name or Initial</label>
-              <input type="text" id="login_middle_name" autocomplete="additional-name" maxlength="60">
-              <div class="input-desc">Another user has the same first and last name. Enter the middle name or initial saved with your account.</div>
-            </div>
-            <div id="login-email-group" class="form-group" hidden>
-              <label for="login_email">Select Your Email</label>
-              <select id="login_email">
-                <option value="">Choose your email…</option>
-              </select>
-              <div class="input-desc">More than one account has this exact full name. Select your email before logging in.</div>
-            </div>
-            <div class="form-group">
-              <label for="login_password">Password</label>
-              <input type="password" id="login_password" autocomplete="current-password" maxlength="128" required>
-            </div>
-            <button id="login_access_user" class="btn-secondary" type="submit">Log In</button>
-          </form>
-
-          <form id="access-create-form" class="auth-pane">
-            <h3>Create user</h3>
-            <p class="input-desc">Enter your full first and last name as you want it shown on report forms. Your Google email is saved in column D and new accounts start as Waiting_Approval.</p>
-            <div class="form-group">
-              <label for="create_first_name">First Name</label>
-              <input type="text" id="create_first_name" autocomplete="given-name" maxlength="60" required>
-            </div>
-            <div class="form-group">
-              <label for="create_last_name">Last Name</label>
-              <input type="text" id="create_last_name" autocomplete="family-name" maxlength="60" required>
-            </div>
-            <div id="create-middle-name-group" class="form-group" hidden>
-              <label for="create_middle_name">Middle Name or Initial</label>
-              <input type="text" id="create_middle_name" autocomplete="additional-name" maxlength="60">
-              <div class="input-desc">That first and last name is already in use. Add your middle name or initial; it will be saved in column C.</div>
-            </div>
-            <div class="form-group">
-              <label for="create_password">Password</label>
-              <input type="password" id="create_password" autocomplete="new-password" minlength="12" maxlength="128" required>
-            </div>
-            <div class="form-group">
-              <label for="create_password_confirm">Confirm Password</label>
-              <input type="password" id="create_password_confirm" autocomplete="new-password" minlength="12" maxlength="128" required>
-            </div>
-            <button id="create_access_user" class="btn-secondary" type="submit">Create User</button>
-          </form>
+        <div class="auth-pane">
+          <h3>Continue with Google</h3>
+          <p class="input-desc">Your verified Google identity is matched to one approved customer membership. This extension does not create or store a separate password.</p>
+          <button id="bootstrap_access_user" class="btn-secondary" type="button">Verify Google Access</button>
         </div>
       </div>
 
@@ -1519,7 +1467,7 @@
         </div>
         <div class="auth-session-actions">
           <button id="refresh_access_user" class="btn-secondary" type="button">Retry / Refresh Access</button>
-          <button id="logout_access_user" class="btn-secondary" type="button">Log Out</button>
+          <button id="logout_access_user" class="btn-secondary" type="button">Clear Cached Access</button>
         </div>
       </div>
       <div id="auth-status" class="auth-status" role="status" aria-live="polite"></div>
@@ -1527,12 +1475,12 @@
 
     <div id="settings-access-state" class="settings-access-state" role="status">
       <strong>Verifying access</strong>
-      Checking your extension login and assigned role…
+      Checking your verified Google identity and customer membership…
     </div>
 
     <div id="core-connectivity-section" class="section" data-access-permission="settings.coreConnectivity" hidden>
       <div class="section-title">📡 Core Connectivity</div>
-      
+
       <div class="form-group">
         <label for="piracy_folder_id">Google Drive Root Folder</label>
         <div class="input-desc">Target folder for PDF reports and forensic screenshots. Administrator-managed folders display their assigned name instead of the ID.</div>
@@ -1579,15 +1527,17 @@
 
     <div id="admin-access-section" class="section" data-access-permission="settings.adminAccess" hidden>
       <div class="section-title">🔐 Admin Access Management</div>
-      <div class="input-desc">Search the access registry and update a user's name fields, role, approved platforms, and managed connectivity settings.</div>
-      <button id="open_access_manager" class="btn-secondary" type="button">Open User Access Manager</button>
+      <div class="input-desc">Review customer seat utilization and send membership changes to the authoritative customer API.</div>
+      <div class="button-row">
+        <button id="open_access_manager" class="btn-secondary" type="button">Manage Customer Users</button>
+      </div>
     </div>
 
     <div id="community-lab-section" class="section" hidden>
       <div class="section-title" style="color: var(--pioneer-gold);">🚀 The Lab (Community)</div>
       <div class="lab-card">
         <div id="lab-instructions" class="input-desc" style="color: #92400e;">Join the experimental squad to test new scrapers and earn the Pioneer Badge.</div>
-        
+
         <div class="beta-row">
             <input type="checkbox" id="beta_opt_in">
             <label for="beta_opt_in" style="font-weight: normal;">
@@ -1597,7 +1547,7 @@
 
         <div style="margin-top: 15px; font-weight: bold; font-size: 12px; color: var(--pioneer-gold);">🏆 Intelligence Highlight:</div>
         <div class="highlight-box">
-            <div id="highlight-user" style="font-weight: bold; color: var(--flo-red); font-size: 13px;">Syncing...</div>
+            <div id="highlight-user" style="font-weight: bold; color: var(--brand-primary); font-size: 13px;">Syncing...</div>
             <div id="highlight-desc" style="font-size: 11px; color: #4b5563; margin-top: 4px;">Connect your IDs to see team achievements.</div>
         </div>
       </div>
@@ -1632,8 +1582,14 @@
 =======
   <div id="access-manager-modal" class="easter-egg-overlay" style="align-items: center;">
     <div class="config-modal" style="width: min(760px, 94vw);">
-      <h2 style="margin-top: 0; color: var(--flo-red);">User Access Manager</h2>
-      <p class="input-desc">Email is the permanent identity key. Columns A-C store first, last, and middle names. Password hashes in column G are never displayed or edited here. Columns H-M can centrally assign the three Google resources and their user-facing names.</p>
+      <h2 style="margin-top: 0; color: var(--brand-primary);">User Access Manager</h2>
+      <p class="input-desc">All approvals, activations, role changes, reactivations, and deactivations are checked and audited by the customer API.</p>
+
+      <div id="access_utilization" class="config-editor-section" aria-live="polite">
+        <strong>Seat utilization</strong>
+        <div id="access_active_users_usage" class="input-desc">Active users: loading…</div>
+        <div id="access_role_usage" class="input-desc">Role seats: loading…</div>
+      </div>
 
       <div class="form-group">
         <label for="access_user_search">Search users</label>
@@ -1646,14 +1602,14 @@
       <div id="access_user_editor" class="config-editor-section" hidden>
         <h3>Edit selected user</h3>
         <div class="form-group">
-          <label for="access_user_first_name">First Name</label>
-          <input type="text" id="access_user_first_name" maxlength="60">
+          <label for="access_user_first_name">Name</label>
+          <input type="text" id="access_user_first_name" maxlength="120" readonly>
         </div>
-        <div class="form-group">
+        <div class="form-group" hidden>
           <label for="access_user_last_name">Last Name</label>
           <input type="text" id="access_user_last_name" maxlength="60">
         </div>
-        <div class="form-group">
+        <div class="form-group" hidden>
           <label for="access_user_middle_name">Middle Name or Initial</label>
           <input type="text" id="access_user_middle_name" maxlength="60">
         </div>
@@ -1664,13 +1620,19 @@
         <div class="form-group">
           <label for="access_user_role">Access Level</label>
           <select id="access_user_role">
-            <option value="waiting_approval">Waiting_Approval</option>
             <option value="employee">Employee</option>
             <option value="manager">Manager</option>
             <option value="admin">Admin</option>
           </select>
         </div>
         <div class="form-group">
+          <label for="access_user_status">Membership Status</label>
+          <select id="access_user_status">
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </div>
+        <div class="form-group" hidden>
           <label>Platforms</label>
           <label style="display:flex; align-items:center; gap:7px; margin-bottom:10px;">
             <input id="access_all_platforms" type="checkbox" style="width:auto;">
@@ -1678,7 +1640,7 @@
           </label>
           <div id="access_platform_grid" class="platform-access-grid"></div>
         </div>
-        <div class="config-editor-section">
+        <div class="config-editor-section" hidden>
           <h3>Managed Connectivity (optional)</h3>
           <p class="input-desc">When an ID is assigned, the extension uses it automatically and shows the paired display name to the user. Leave an ID blank to let that user enter their own value.</p>
           <div class="form-group">
@@ -1687,7 +1649,7 @@
           </div>
           <div class="form-group">
             <label for="access_drive_root_label">Display Name (I)</label>
-            <input type="text" id="access_drive_root_label" maxlength="120" placeholder="e.g. FloSportsA1" autocomplete="off">
+            <input type="text" id="access_drive_root_label" maxlength="120" placeholder="e.g. CustomerA1" autocomplete="off">
           </div>
           <div class="form-group">
             <label for="access_report_sheet_id">Foundation Log Sheet ID (J)</label>
@@ -1710,7 +1672,7 @@
 
       <div id="access_manager_status" class="modal-status"></div>
       <div style="display:flex; gap:10px; margin-top:16px;">
-        <button id="save_access_user" class="btn-secondary" style="flex:1; background:var(--flo-red); color:white;" type="button" disabled>Save User</button>
+        <button id="save_access_user" class="btn-secondary" style="flex:1; background:var(--brand-primary); color:white;" type="button" disabled>Apply Membership Change</button>
         <button id="close_access_manager" class="btn-secondary" style="flex:1;" type="button">Close</button>
       </div>
     </div>
@@ -1718,11 +1680,11 @@
   <!-- Briefing Settings Modal -->
   <div id="briefing-modal" class="easter-egg-overlay" style="align-items: center;">
     <div class="config-modal" style="width: 450px;">
-      <h2 style="margin-top: 0; color: var(--flo-red);">Briefing Configuration</h2>
+      <h2 style="margin-top: 0; color: var(--brand-primary);">Briefing Configuration</h2>
       <p class="input-desc">Select which modules to include in your reports. Future stats will automatically appear here.</p>
-      
+
       <div id="briefing-toggles" style="display: flex; flex-direction: column; gap: 10px; margin: 20px 0; max-height: 50vh; overflow-y: auto; padding-right: 10px;">
-        <strong style="color: var(--flo-red); margin-top: 5px;">Enforcement Overview (KPIs)</strong>
+        <strong style="color: var(--brand-primary); margin-top: 5px;">Enforcement Overview (KPIs)</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
           <label title="Total rows processed in the selected date range."><input type="checkbox" id="stat_kpi_total_takedowns"> Total Takedowns <span style="color: #6b7280; font-size: 10px;">(Count of all rows)</span></label>
           <label><input type="checkbox" id="stat_kpi_takedowns_platform"> Takedowns by Platform</label>
@@ -1736,7 +1698,7 @@
           <label title="Calculates average across ALL reports. Unresolved items are heavily penalized, calculated as (Days Currently Open + 14 days)."><input type="checkbox" id="stat_kpi_burndown_unweighted"> Avg Burndown (Unweighted) <span style="color: #6b7280; font-size: 10px;">(Penalizes open reports)</span></label>
         </div>
 
-        <strong style="color: var(--flo-red); margin-top: 10px;">Leaderboards &amp; MVP</strong>
+        <strong style="color: var(--brand-primary); margin-top: 10px;">Leaderboards &amp; MVP</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
           <label title="User with the highest combined Scout &amp; Enforcer appearances."><input type="checkbox" id="stat_leaderboard_mvp"> MVP <span style="color: #6b7280; font-size: 10px;">(Highest combined appearances)</span></label>
           <label title="Ranked by total appearances in Col G/M."><input type="checkbox" id="stat_leaderboard_top_3"> Top 3</label>
@@ -1769,13 +1731,13 @@
             <label title="Calculates average days to resolve ONLY for reports with an explicit Resolve Date (Col V)."><input type="checkbox" id="stat_kpi_burndown_weighted"> <span>Avg Burndown (Weighted) <span class="help-text">(Exact days from sheet)</span></span></label>
             <label title="Calculates average across ALL reports. Unresolved items are heavily penalized, calculated as (Days Currently Open + 14 days)."><input type="checkbox" id="stat_kpi_burndown_unweighted"> <span>Avg Burndown (Unweighted) <span class="help-text">(Penalizes open reports)</span></span></label>
 =======
-        <strong style="color: var(--flo-red); margin-top: 10px;">Report Timeline &amp; Platforms</strong>
+        <strong style="color: var(--brand-primary); margin-top: 10px;">Report Timeline &amp; Platforms</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
           <label title="Daily volume of reports based on the date in Col A."><input type="checkbox" id="stat_timeline_report"> Report Timeline <span style="color: #6b7280; font-size: 10px;">(Daily volume)</span></label>
           <label title="Reports and URLs grouped by platform (Col D)."><input type="checkbox" id="stat_platform_breakdown"> Platform Breakdown</label>
         </div>
 
-       <strong style="color: var(--flo-red); margin-top: 10px;">High-Value Targets</strong>
+       <strong style="color: var(--brand-primary); margin-top: 10px;">High-Value Targets</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
           <label title="Grouped by target Handle (Col K), ranked by total URLs."><input type="checkbox" id="stat_targets_top_1"> Top Pirate <span style="color: #6b7280; font-size: 10px;">(Ranked by URLs)</span></label>
           <label title="Top 5 pirates grouped by target Handle (Col K), ranked by URLs."><input type="checkbox" id="stat_targets_top_5"> Top 5 Pirates</label>
@@ -1783,7 +1745,7 @@
           <label title="Top 3 pirates grouped by Handle, filtered per platform."><input type="checkbox" id="stat_targets_top_platform_3"> Top 3 Pirates Each Platform</label>
         </div>
 
-       <strong style="color: var(--flo-red); margin-top: 10px;">Team Performance Rankings</strong>
+       <strong style="color: var(--brand-primary); margin-top: 10px;">Team Performance Rankings</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
           <label title="Total URLs scouted by the user (Col G)."><input type="checkbox" id="stat_team_col_scout"> Scout <span style="color: #6b7280; font-size: 10px;">(Total URLs scouted)</span></label>
           <label title="Total URLs enforced by the user (Col M)."><input type="checkbox" id="stat_team_col_enforced"> Enforced <span style="color: #6b7280; font-size: 10px;">(Total URLs enforced)</span></label>
@@ -1793,7 +1755,7 @@
           <label title="Count of unique days the user filed a report."><input type="checkbox" id="stat_team_col_days_reported"> Number of Days Reported Piracy</label>
         </div>
 
-       <strong style="color: var(--flo-red); margin-top: 10px;">Event View Analysis</strong>
+       <strong style="color: var(--brand-primary); margin-top: 10px;">Event View Analysis</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
           <label title="Grouped by Event Name (Col C), ranked by total estimated views (Col F)."><input type="checkbox" id="stat_events_top_5"> Top 5 <span style="color: #6b7280; font-size: 10px;">(Ranked by Views)</span></label>
           <label title="Grouped by Event Name (Col C), ranked by total estimated views (Col F)."><input type="checkbox" id="stat_events_top_10"> Top 10</label>
@@ -1801,13 +1763,13 @@
           <label title="Top 10% of events based on total estimated views."><input type="checkbox" id="stat_events_top_10_pct"> Top 10%</label>
         </div>
 
-        <strong style="color: var(--flo-red); margin-top: 10px;">Appendix: Complete Team Performance</strong>
+        <strong style="color: var(--brand-primary); margin-top: 10px;">Appendix: Complete Team Performance</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
           <label><input type="checkbox" id="stat_appx_team_all"> All</label>
           <label><input type="checkbox" id="stat_appx_team_half"> Half</label>
         </div>
 
-        <strong style="color: var(--flo-red); margin-top: 10px;">Appendix: Complete Event View Analysis</strong>
+        <strong style="color: var(--brand-primary); margin-top: 10px;">Appendix: Complete Event View Analysis</strong>
         <div style="padding-left: 15px; display: flex; flex-direction: column; gap: 5px;">
           <label><input type="checkbox" id="stat_appx_events_all"> All</label>
           <label><input type="checkbox" id="stat_appx_events_half"> Half</label>
@@ -1815,7 +1777,7 @@
       </div>
 
       <div style="display: flex; gap: 10px;">
-        <button id="save_briefing_stats" class="btn-secondary" style="flex: 1; background: var(--flo-red); color: white;">Save Settings</button>
+        <button id="save_briefing_stats" class="btn-secondary" style="flex: 1; background: var(--brand-primary); color: white;">Save Settings</button>
         <button id="cancel_briefing_stats" class="btn-secondary" style="flex: 1;">Cancel</button>
       </div>
     </div>
@@ -1823,7 +1785,7 @@
 
   <div id="briefing-content-modal" class="easter-egg-overlay" style="align-items: center;">
     <div class="config-modal">
-      <h2 style="margin-top: 0; color: var(--flo-red);">Briefing Content Editor</h2>
+      <h2 style="margin-top: 0; color: var(--brand-primary);">Briefing Content Editor</h2>
       <p class="input-desc">Manage the live community highlight, Lab copy, and Double XP event list stored in the shared <code>events_config.json</code> file.</p>
 
       <div class="config-editor-section">
