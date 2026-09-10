@@ -18,6 +18,7 @@ export const MEMBERSHIP_ERROR_MESSAGES = Object.freeze({
   not_authorized: 'Only a verified administrator for this customer can make this change.',
   member_not_found: 'The selected customer member no longer exists.',
   role_disabled: 'The selected role is not enabled for this customer.',
+  domain_not_allowed: 'This user’s email domain is not approved for the customer.',
   invalid_request: 'The membership request was rejected as invalid.',
   identity_error: 'The customer API could not verify the acting Google identity.',
   conflict: 'The membership could not be changed because of a conflicting update.'

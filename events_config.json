@@ -92,13 +92,9 @@
           "nav a[href^=\"/@\"]",
           "[data-e2e*=\"profile\"] a[href^=\"/@\"]"
         ]
-<<<<<<< Updated upstream
-      }
-=======
       },
       "scraper": {},
       "autofill": {}
->>>>>>> Stashed changes
     },
     "rumble": {
       "autofill": {
@@ -305,8 +301,6 @@
           ]
         }
       }
-<<<<<<< Updated upstream
-=======
     },
     "twitter": {
       "scraper": {
@@ -1035,7 +1029,6 @@
     "mediafire": {
       "scraper": {},
       "autofill": {}
->>>>>>> Stashed changes
     }
   }
 }

@@ -4,8 +4,22 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "test:api": "node --test tests/customer_api_server.test.mjs",
     "test:customer-config": "node --test tests/customer_config.test.mjs",
     "test:migration": "node --test tests/customer_migration.test.mjs tests/flosports_migration.test.mjs",
-    "audit:flosports-fallbacks": "node scripts/audit_flosports_fallbacks.mjs"
+    "audit:flosports-fallbacks": "node scripts/audit_flosports_fallbacks.mjs",
+    "configure:api": "node scripts/configure_customer_api.mjs",
+    "db:migrate": "node server/scripts/migrate.mjs",
+    "db:seed:flosports": "node server/scripts/seed_flosports.mjs",
+    "customer:setup": "node --env-file=.env.local server/scripts/customer_setup.mjs"
+  },
+  "dependencies": {
+    "@neon/config": "^1.3.0",
+    "@neon/env": "^1.2.1",
+    "@neon/functions": "^0.9.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "neon": "^4.14.1"
   }
 }

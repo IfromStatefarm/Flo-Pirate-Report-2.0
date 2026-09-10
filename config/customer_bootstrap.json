@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "bootstrapEndpoint": "",
-  "membershipEndpoint": "",
-  "dataEndpoint": ""
+  "bootstrapEndpoint": "https://br-cool-poetry-ael4nf8v-bootstrap.compute.c-2.us-east-2.aws.neon.tech/",
+  "membershipEndpoint": "https://br-cool-poetry-ael4nf8v-memberships.compute.c-2.us-east-2.aws.neon.tech/",
+  "dataEndpoint": "https://br-cool-poetry-ael4nf8v-data.compute.c-2.us-east-2.aws.neon.tech/"
 }

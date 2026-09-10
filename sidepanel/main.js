@@ -29,9 +29,6 @@ const ENFORCER_PLATFORM_DEFAULTS = Object.freeze({
   }
 });
 
-<<<<<<< Updated upstream
-const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode is not enabled for this verified customer profile or platform session.";
-=======
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void sender;
   if (message.action !== 'refreshSidepanelAccessView') return false;
@@ -45,7 +42,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode is not enabled for this verified customer profile or platform session.";
->>>>>>> Stashed changes
 const ENFORCER_SESSION_SELECTOR_DEFAULTS = Object.freeze({
   youtube: {
     channelHandle: [
@@ -141,7 +137,6 @@ function getEnforcerAccessConfig() {
   };
 }
 
-<<<<<<< Updated upstream
 let gamificationStatsInFlight = false;
 
 function createUnavailableGamificationStats(errorMessage = '') {
@@ -160,10 +155,10 @@ function createUnavailableGamificationStats(errorMessage = '') {
     mvp: { name: 'TBD', points: 0 },
     isCurrentMvp: false
   };
-=======
+}
+
 function canUseScoutMode() {
   return hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_REPORT);
->>>>>>> Stashed changes
 }
 
 function refreshGamificationStats() {
@@ -450,8 +445,6 @@ function setupSidepanelTabs() {
   });
 }
 
-<<<<<<< Updated upstream
-=======
 const TAB_PERMISSIONS = Object.freeze({
   report: PERMISSIONS.SIDEPANEL_REPORT,
   automate: PERMISSIONS.SIDEPANEL_AUTOMATE,
@@ -557,7 +550,6 @@ function applySidepanelAccess(profile) {
   filterPlatformSelect(document.getElementById('repairPlatformSelect'), profile);
 }
 
->>>>>>> Stashed changes
 function updateModeChip(mode = 'scout') {
   const modeChip = document.getElementById('modeChip');
   if (!modeChip) return;
@@ -591,7 +583,6 @@ function renderQueueSummary(cart = []) {
   }
 }
 
-<<<<<<< Updated upstream
 function populatePlatformSelect(selectEl, platforms) {
   if (!selectEl || !Array.isArray(platforms) || platforms.length === 0) return;
 
@@ -693,7 +684,6 @@ function collectSelectorPatchFieldOptions(node, pathSegments = [], results = [])
   return results;
 }
 // --- SECURITY LOCK OVERLAY (Duplicated for Side Panel context) ---
-=======
 function findUnassignedCartPlatform(cart, profile) {
   for (const item of Array.isArray(cart) ? cart : []) {
     const detectedPlatform = detectPlatformDetails(item?.url || '');
@@ -711,7 +701,6 @@ function findUnassignedCartPlatform(cart, profile) {
   return '';
 }
 // --- TIERED ACCESS BOOTSTRAP ---
->>>>>>> Stashed changes
 document.addEventListener('DOMContentLoaded', async () => {
   setupSidepanelTabs();
 
@@ -733,8 +722,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reporterInput = document.getElementById('reporterName');
   const crawlStatusEl = document.getElementById('crawlStatus');
   const startRowInput = document.getElementById('startRowInput');
-<<<<<<< Updated upstream
-=======
   let rumbleProgressActive = false;
   let rumbleDefaultStartText = 'Start Report';
   let bulkReportActive = false;
@@ -984,7 +971,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
   }
->>>>>>> Stashed changes
   
   // Rogue Site Elements
   const nukeStreamBtn = document.getElementById('nukeStreamBtn');
@@ -1560,13 +1546,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const defaultBtnText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
                 
                 // --- NEW: SCOUT / ENFORCER ACCESS FILTER ---
-<<<<<<< Updated upstream
                 if (isScout && !canUseScoutMode()) {
                     alert("Access Denied: Your assigned access level does not include reporting.");
-=======
-                if (isScout && !canUseScoutMode()) {
-                    alert("Access Denied: Your assigned access level does not include reporting.");
->>>>>>> Stashed changes
                     return;
                 }
                 // -------------------------------------------
@@ -1607,8 +1588,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           const platform = platformDetails.label;
           const reportUrl = platformDetails.reportUrl;
 
-<<<<<<< Updated upstream
-=======
           if (!hasPlatformAccess(currentAccessProfile, platformDetails.key)) {
               alert(`Access Denied: ${platformDetails.label} is not assigned to your account.`);
               startBtn.disabled = false;
@@ -1616,7 +1595,6 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
 
->>>>>>> Stashed changes
           if (!isScout && !isEnforcerAllowlistExemptPlatform(platformDetails.key) && !(await canUseEnforcerMode())) {
               alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
               startBtn.disabled = false;
@@ -1654,9 +1632,6 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
 
-<<<<<<< Updated upstream
-          if (platformDetails.key === 'rumble') {
-=======
 		          if (platformDetails.key === 'rumble') {
 	              rumbleDefaultStartText = defaultBtnText;
 	              const confirmed = await showRumbleConfirmDialog(cart);
@@ -1690,7 +1665,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 	          }
 
           if (platformDetails.key === 'kick') {
->>>>>>> Stashed changes
               startBtn.innerText = `Opening ${platform}...`;
               const payload = { reporterName, vertical, eventName, mode: 'enforcer', uploadScreenshots: true };
               chrome.runtime.sendMessage({ action: 'startRumbleQueue', data: payload }, (response) => {

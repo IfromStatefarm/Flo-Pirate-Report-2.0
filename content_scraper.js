@@ -149,8 +149,6 @@
     }
   };
 
-<<<<<<< Updated upstream
-=======
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   let configLoaded = false;
 
@@ -168,7 +166,6 @@
     }
   }
 
->>>>>>> Stashed changes
   // --- CONFIG LOADER ---
   (async function loadConfig() {
     try {
@@ -176,7 +173,6 @@
       if (response && response.success && response.config && response.config.platform_selectors) {
         console.log("✅ PIRATE AI: Remote Selectors Loaded");
         const remote = response.config.platform_selectors;
-<<<<<<< Updated upstream
         Object.entries(remote).forEach(([platform, platformConfig]) => {
           if (!platformConfig?.scraper) return;
           SCRAPER_CONFIG[platform] = {
@@ -184,17 +180,7 @@
             ...platformConfig.scraper
           };
         });
-=======
-        if (remote.tiktok && remote.tiktok.scraper) SCRAPER_CONFIG.tiktok = { ...SCRAPER_CONFIG.tiktok, ...remote.tiktok.scraper };
-        if (remote.youtube && remote.youtube.scraper) SCRAPER_CONFIG.youtube = { ...SCRAPER_CONFIG.youtube, ...remote.youtube.scraper };
-        if (remote.instagram && remote.instagram.scraper) SCRAPER_CONFIG.instagram = { ...SCRAPER_CONFIG.instagram, ...remote.instagram.scraper };
-        if (remote.twitter && remote.twitter.scraper) SCRAPER_CONFIG.twitter = { ...SCRAPER_CONFIG.twitter, ...remote.twitter.scraper };
-        if (remote.facebook && remote.facebook.scraper) SCRAPER_CONFIG.facebook = { ...SCRAPER_CONFIG.facebook, ...remote.facebook.scraper };
-        if (remote.kick && remote.kick.scraper) SCRAPER_CONFIG.kick = { ...SCRAPER_CONFIG.kick, ...remote.kick.scraper };
-        if (remote.twitch && remote.twitch.scraper) SCRAPER_CONFIG.twitch = { ...SCRAPER_CONFIG.twitch, ...remote.twitch.scraper };
-        if (remote.rumble && remote.rumble.scraper) SCRAPER_CONFIG.rumble = { ...SCRAPER_CONFIG.rumble, ...remote.rumble.scraper };
         configLoaded = true;
->>>>>>> Stashed changes
       }
     } catch (e) {
       // Suppress heavy logging
@@ -718,8 +704,6 @@
       return /\blive\b/i.test(contextText);
   }
 
-<<<<<<< Updated upstream
-=======
   function hasTwitchVodSignal(twitchConfig) {
       return getElementsFromSelectorList(twitchConfig.vod_indicators).some((element) => {
           const candidateText = [
@@ -836,7 +820,6 @@
       return null;
   }
 
->>>>>>> Stashed changes
   // ==========================================
   // 1. THE STRATEGY SCRAPER
   // ==========================================
@@ -977,11 +960,7 @@
     }
 
     // --- INSTAGRAM ---
-<<<<<<< Updated upstream
     else if (host.includes('instagram.com')) {
-=======
-    else if (platformKey === 'instagram') {
->>>>>>> Stashed changes
       const isPostLikeUrl = url.includes('/p/') || url.includes('/reel/') || url.includes('/tv/');
       const isStoryUrl = url.includes('/stories/');
       if (!isPostLikeUrl && !isStoryUrl) return null;
@@ -1531,7 +1510,6 @@ function finishMacroTraining() {
   // 2. MESSAGE LISTENER
   // ==========================================
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-<<<<<<< Updated upstream
     void sender;
     if (request.action !== 'getCurrentPirateScrape') return false;
 
@@ -1540,26 +1518,10 @@ function finishMacroTraining() {
     } catch (error) {
       sendResponse({ success: false, error: error.message });
     }
-
-    return true;
+    return false;
   });
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'startSelectorTraining') {
-        startSelectorTraining(request.platform);
-        sendResponse({ success: true });
-    } else if (request.action === 'startMacroTraining') {
-        startMacroTraining(request.platform);
-        sendResponse({ success: true });
-    } else if (request.action === 'stopMacroTraining') {
-        finishMacroTraining();
-        sendResponse({ success: true });
-    } else if (request.action === 'showMacroConfirmation') {
-        // Correctly pass the compiled macro array as a string to the UI
-        showPatchUI(request.platform, JSON.stringify(request.macro, null, 2));
-        sendResponse({ success: true });
-    }
-=======
     const repairActions = new Set([
       'startSelectorTraining',
       'startMacroTraining',
@@ -1597,7 +1559,6 @@ function finishMacroTraining() {
     })();
 
     return true;
->>>>>>> Stashed changes
   });
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

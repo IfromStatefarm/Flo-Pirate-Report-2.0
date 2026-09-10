@@ -22,8 +22,6 @@
     const INSTAGRAM_BATCH_LIMIT = 30;
     const RUMBLE_REPORT_SESSION_KEY = 'rumble_report_session';
     let TIKTOK_VERIFICATION_EMAIL = '';
-<<<<<<< Updated upstream
-=======
     let TWITCH_CONTACT_EMAIL = '';
     let TWITCH_CONTACT_PHONE = '';
     let TWITCH_STREET_ADDRESS = '';
@@ -31,7 +29,6 @@
     let TWITCH_STATE = '';
     let TWITCH_ZIP = '';
     let TWITCH_COUNTRY = '';
->>>>>>> Stashed changes
     let configLoaded = false;
     let isAutofilling = false;
     let lastReportData = null; // Cache data for SPA navigation
@@ -55,9 +52,6 @@
 
     applyCustomerCopy();
     globalThis.addEventListener?.('rights-reporter-theme-changed', (event) => applyCustomerCopy(event.detail));
-<<<<<<< Updated upstream
-
-=======
 
     async function hasAutofillAccess(platform = '', url = window.location.href) {
       try {
@@ -94,7 +88,6 @@
         return false;
     });
 
->>>>>>> Stashed changes
     async function loadConfig() {
       try {
         if (!chrome.runtime?.id) return;
@@ -120,19 +113,12 @@
             const host = window.location.hostname;
             const isTikTok = host.includes('tiktok.com') || host.includes('tiktokforbusiness.com');
             const isRumble = host.includes('rumble.com');
-<<<<<<< Updated upstream
-=======
             const isTwitch = host.includes('twitch.tv');
->>>>>>> Stashed changes
 
             const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo', RUMBLE_REPORT_SESSION_KEY]);
             const cart = res.piracy_cart || [];
             const info = res.reporterInfo || {};
             const rumbleSession = res[RUMBLE_REPORT_SESSION_KEY] || null;
-<<<<<<< Updated upstream
-
-            const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : (isRumble ? "Rumble" : "Unknown"));
-=======
 
             const cartAccessChecks = await Promise.all(cart.map((item) => (
                 hasAutofillAccess(item?.platform || '', item?.url || window.location.href)
@@ -140,7 +126,6 @@
             if (cartAccessChecks.some((allowed) => !allowed)) return;
 
             const platform = (cart.length > 0 && cart[0].platform) ? cart[0].platform : (isTikTok ? "TikTok" : (isRumble ? "Rumble" : (isTwitch ? "Twitch" : "Unknown")));
->>>>>>> Stashed changes
 
             const data = {
                 fullName: info.name || "",
@@ -179,8 +164,13 @@
         if (isAutofilling || !data) return;
         isAutofilling = true;
 
-<<<<<<< Updated upstream
     try {
+        const autofillModule = globalThis.__floPlatformRegistry?.findAutofillByContext?.(window.location.href, data);
+        if (autofillModule?.run) {
+            await autofillModule.run(data);
+            return;
+        }
+
         const host = window.location.hostname;
         const currentUrl = window.location.href.toLowerCase();
         if (host.includes('tiktok')) {
@@ -200,13 +190,6 @@
                 if (host.includes('youtube')) await fillYouTube(data);
                 else if (host.includes('instagram')) await fillInstagram(data);
                 else if (host.includes('twitter') || host.includes('x.com')) await fillTwitter(data);
-=======
-        try {
-            const autofillModule = globalThis.__floPlatformRegistry?.findAutofillByContext?.(window.location.href, data);
-            if (autofillModule?.run) {
-                await autofillModule.run(data);
-                return;
->>>>>>> Stashed changes
             }
 
             if (data.eventName) createStandardOverlay(data);
@@ -560,8 +543,6 @@
             .replace(/\[Vertical Name\]/g, vertical);
     }
 
-<<<<<<< Updated upstream
-=======
     function buildFacebookExplanation(data) {
         const template = `Unauthorized distribution of copyrighted ${COPYRIGHT_OWNER_NAME} material ([Event Name] / [Vertical Name]). ${COPYRIGHT_OWNER_NAME} owns or controls the exclusive rights. Infringement is visually verifiable through the content and identifying broadcast graphics. No license or permission has been granted to this account.`;
         const vertical = data?.vertical || 'the applicable category';
@@ -655,7 +636,6 @@
         return { recipient, subject, body, sections };
     }
 
->>>>>>> Stashed changes
     const setNativeValue = (element, value) => {
         const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
         const prototype = Object.getPrototypeOf(element);
@@ -1187,8 +1167,6 @@
         document.body.appendChild(launcher);
     }
 
-<<<<<<< Updated upstream
-=======
     function createTwitterOverlay(data) {
         if (cachedOverlay && cachedOverlay.id === "flo-twitter-overlay") {
             if (!document.getElementById("flo-twitter-overlay")) {
@@ -1340,7 +1318,6 @@
         });
     }
 
->>>>>>> Stashed changes
     function createInstagramOverlay(data) {
         if (cachedOverlay && cachedOverlay.id === "flo-instagram-overlay") {
             if (!document.getElementById("flo-instagram-overlay")) {

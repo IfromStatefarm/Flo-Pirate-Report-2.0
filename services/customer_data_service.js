@@ -15,7 +15,7 @@ export const CUSTOMER_EVENT_TYPES = Object.freeze([
   'platform.report_outcome'
 ]);
 
-const EVENT_ATTRIBUTE_KEYS = Object.freeze({
+export const CUSTOMER_EVENT_ATTRIBUTE_KEYS = Object.freeze({
   'activity.item_added': ['platform', 'target_url', 'source_event_name', 'vertical'],
   'event.source_url_updated': ['platform', 'target_url', 'source_event_name', 'vertical'],
   'report.whitelist_penalty': ['platform', 'target_url', 'handle', 'source_event_name', 'vertical', 'scout_points'],
@@ -165,7 +165,7 @@ function validateProfile(profile) {
 
 function validateEventAttributes(eventType, candidate) {
   if (!isPlainObject(candidate)) throw new CustomerDataApiError('Event attributes must be an object.', 'invalid_event');
-  const allowed = new Set(EVENT_ATTRIBUTE_KEYS[eventType]);
+  const allowed = new Set(CUSTOMER_EVENT_ATTRIBUTE_KEYS[eventType]);
   const unsupported = Object.keys(candidate).find((key) => !allowed.has(key));
   if (unsupported) throw new CustomerDataApiError(`attributes.${unsupported} is not supported for ${eventType}.`, 'invalid_event');
 

@@ -11,6 +11,7 @@ This directory records the pre-refactor state of the extension. It is the comple
 - [`../../ACCESS_CONTROL_OUTLINE.md`](../../ACCESS_CONTROL_OUTLINE.md) — Google identity bootstrap, API request/response contract, permission ceiling, caching, and fail-closed rules.
 - [`THEME_SHELL.md`](THEME_SHELL.md) — runtime theme loading, semantic tokens, safe text replacement, local logo caching, and PDF propagation.
 - [`MEMBERSHIP_CAP_ENFORCEMENT.md`](MEMBERSHIP_CAP_ENFORCEMENT.md) — fixed membership API contract, transactional cap/final-admin rules, response totals, audit requirements, and workbook boundary.
+- [`CUSTOMER_SETUP_TOOL.md`](CUSTOMER_SETUP_TOOL.md) — secure local customer provisioning, first-administrator creation, and audit workflow.
 - [`CUSTOMER_DATA_ISOLATION.md`](CUSTOMER_DATA_ISOLATION.md) — normalized customer events, scoped statistics queries/caches, Drive/PDF metadata, and `Stats - <Customer>` projection rules.
 - [`FLOSPORTS_MIGRATION.md`](FLOSPORTS_MIGRATION.md) — the staged FloSports customer/user import, server-side dual-read contract, parity gate, and cutover runbook.
 - [`neutral-fallback.theme.json`](neutral-fallback.theme.json) — the approved neutral identity mirrored by the runtime fallback.

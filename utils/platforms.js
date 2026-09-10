@@ -1,71 +1,6 @@
-<<<<<<< Updated upstream
-const PLATFORM_DEFINITIONS = Object.freeze([
-  {
-    key: 'youtube',
-    label: 'YouTube',
-    reportUrl: 'https://www.youtube.com/copyright_complaint_form',
-    matches: (url) => url.includes('youtube') || url.includes('youtu.be'),
-    buildChannelUrl: (handle) => `https://www.youtube.com/@${handle}`
-  },
-  {
-    key: 'tiktok',
-    label: 'TikTok',
-    reportUrl: 'https://www.tiktok.com/legal/report/Copyright',
-    matches: (url) => url.includes('tiktok'),
-    buildChannelUrl: (handle) => `https://www.tiktok.com/@${handle}`
-  },
-  {
-    key: 'twitter',
-    label: 'Twitter',
-    reportUrl: 'https://help.x.com/en/forms/ipi/dmca',
-    matches: (url) => url.includes('twitter.com') || url.includes('x.com'),
-    buildChannelUrl: (handle) => `https://x.com/${handle}`
-  },
-  {
-    key: 'instagram',
-    label: 'Instagram',
-    reportUrl: 'https://help.instagram.com/contact/552695131608132',
-    matches: (url) => url.includes('instagram'),
-    buildChannelUrl: (handle) => `https://www.instagram.com/${handle}`
-  },
-  {
-    key: 'facebook',
-    label: 'Facebook',
-    reportUrl: null,
-    matches: (url) => url.includes('facebook'),
-    buildChannelUrl: (handle) => `https://www.facebook.com/${handle}`
-  },
-  {
-    key: 'twitch',
-    label: 'Twitch',
-    reportUrl: 'https://www.twitch.tv/copyright-claims',
-    matches: (url) => url.includes('twitch'),
-    buildChannelUrl: (handle) => `https://www.twitch.tv/${handle}`
-  },
-  {
-    key: 'rumble',
-    label: 'Rumble',
-    reportUrl: null,
-    matches: (url) => url.includes('rumble.com'),
-    buildChannelUrl: (handle) => {
-      const normalizedHandle = String(handle || '').trim().replace(/^@/, '').replace(/^\/+/, '');
-      if (!normalizedHandle) return '';
-      if (/^https?:\/\//i.test(normalizedHandle)) return normalizedHandle;
-      if (/^(c|user|channel)\//i.test(normalizedHandle)) {
-        return `https://rumble.com/${normalizedHandle}`;
-      }
-      return `https://rumble.com/c/${normalizedHandle}`;
-    }
-  },
-  {
-    key: 'discord',
-    label: 'Discord',
-    reportUrl: null,
-    matches: (url) => url.includes('discord.com'),
-    buildChannelUrl: () => ''
-  }
-]);
+import { PLATFORM_CATALOG, PLATFORM_CATALOG_BY_KEY } from './platform_catalog.js';
 
+const PLATFORM_DEFINITIONS = PLATFORM_CATALOG;
 const SUPPORTED_PLATFORM_ORDER = Object.freeze([
   'tiktok',
   'instagram',
@@ -73,12 +8,10 @@ const SUPPORTED_PLATFORM_ORDER = Object.freeze([
   'twitter',
   'twitch',
   'facebook',
+  'kick',
   'discord',
   'rumble'
 ]);
-=======
-import { PLATFORM_CATALOG, PLATFORM_CATALOG_BY_KEY } from './platform_catalog.js';
->>>>>>> Stashed changes
 
 const INTERNAL_MANAGED_DOMAIN_FRAGMENTS = Object.freeze([]);
 
@@ -89,7 +22,7 @@ export function normalizePlatformKey(platform) {
 
 export function getPlatformDefinition(platform) {
   const normalizedKey = normalizePlatformKey(platform);
-  return PLATFORM_DEFINITIONS.find(({ key }) => key === normalizedKey) || null;
+  return PLATFORM_CATALOG_BY_KEY[normalizedKey] || null;
 }
 
 export function getSupportedPlatforms() {
