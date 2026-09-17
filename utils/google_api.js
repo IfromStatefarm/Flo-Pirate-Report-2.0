@@ -506,11 +506,11 @@ export async function uploadToDrive(token, folderId, name, blob, mimeType, dataS
 // 4. CONFIG & REPORT LOGGING
 // ==========================================
 
-export async function fetchConfig() {
+export async function fetchConfig({ interactive = true } = {}) {
   const { driveRootId } = await getOptions();
   if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
 
-  const token = await getAuthToken();
+  const token = await getAuthToken({ interactive });
   const bundledDefaults = await loadBundledConfigDefaults();
   
   const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
@@ -623,13 +623,13 @@ export async function patchConfigSelector(platform, section, field, newSelector,
  * Used by the Options page for managed content such as community highlights,
  * Double XP event lists, and selector path edits.
  */
-export async function updateConfigSections(sectionUpdates, retryCount = 0) {
+export async function updateConfigSections(sectionUpdates, retryCount = 0, { interactive = true } = {}) {
     const { driveRootId } = await getOptions();
     if (!driveRootId) throw new Error("Drive Root ID is missing in Options.");
 
-    let cachedToken = await getAuthToken();
+    let cachedToken = await getAuthToken({ interactive });
     await new Promise(resolve => chrome.identity.removeCachedAuthToken({ token: cachedToken }, resolve));
-    const token = await getAuthToken();
+    const token = await getAuthToken({ interactive });
 
     const query = `'${driveRootId}' in parents and name='events_config.json' and trashed=false`;
     const searchData = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
@@ -669,7 +669,7 @@ export async function updateConfigSections(sectionUpdates, retryCount = 0) {
             if (retryCount < 5) {
                 const delay = Math.pow(2, retryCount) * 1000;
                 await new Promise(resolve => setTimeout(resolve, delay));
-                return await updateConfigSections(sectionUpdates, retryCount + 1);
+                return await updateConfigSections(sectionUpdates, retryCount + 1, { interactive });
             }
             throw new Error("Conflict: Config was updated by another user. Please try again.");
         }

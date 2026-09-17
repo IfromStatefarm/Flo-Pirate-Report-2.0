@@ -26,11 +26,15 @@ export async function verifyGoogleIdentity(request, {
   if (!response.ok) throw new ApiError(401, 'identity_error', 'Google rejected or expired the access token.');
 
   const info = await response.json();
-  const audience = String(info.audience || info.issued_to || '');
+  // Google's access-token tokeninfo response currently uses the OAuth-style
+  // `aud` and `email_verified` names. Retain the older aliases as well so the
+  // verifier stays compatible with both documented response shapes.
+  const audience = String(info.aud || info.audience || info.issued_to || '');
   const email = String(info.email || '').trim().toLowerCase();
   const subject = String(info.user_id || info.sub || '').trim();
   const scopes = new Set(String(info.scope || '').split(/\s+/).filter(Boolean));
-  const verifiedEmail = info.verified_email === true || info.verified_email === 'true';
+  const verifiedEmail = info.email_verified === true || info.email_verified === 'true' ||
+    info.verified_email === true || info.verified_email === 'true';
 
   assert(audience === expectedClientId, 401, 'identity_error', 'The Google token was issued to a different OAuth client.');
   assert(verifiedEmail && email && subject, 401, 'identity_error', 'Google did not return a verified identity.');
@@ -38,4 +42,3 @@ export async function verifyGoogleIdentity(request, {
 
   return Object.freeze({ subject, email });
 }
-

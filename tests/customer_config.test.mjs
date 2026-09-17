@@ -29,6 +29,8 @@ function validCandidate() {
   };
   config.theme.logoUrl = 'https://cdn.example.com/acme-logo.png';
   config.theme.logoAltText = 'Acme Sports';
+  config.theme.assistantImageUrl = 'https://cdn.example.com/acme-assistant.gif';
+  config.theme.easterEggImageUrl = 'https://cdn.example.com/acme-easter-egg.webp';
   config.legal = {
     ownerName: 'Acme Sports',
     companyName: 'Acme Sports, Inc.',
@@ -73,6 +75,8 @@ function rowFor(candidate) {
     Tagline: candidate.product.tagline,
     'Logo URL': candidate.theme.logoUrl,
     'Logo Alt Text': candidate.theme.logoAltText,
+    'Assistant Image URL': candidate.theme.assistantImageUrl,
+    'Easter Egg Image URL': candidate.theme.easterEggImageUrl,
     'Theme Primary': candidate.theme.colors.primary,
     'Theme Primary Hover': candidate.theme.colors.primaryHover,
     'Theme Accent': candidate.theme.colors.accent,
@@ -160,10 +164,11 @@ test('rejects unsupported top-level and nested fields', () => {
   assert.equal('javascript' in result.config.theme, false);
 });
 
-test('rejects markup, unsafe logo protocols, and invalid colors', () => {
+test('rejects markup, unsafe image protocols, and invalid colors', () => {
   const candidate = validCandidate();
   candidate.product.displayName = '<img src=x onerror=alert(1)>';
   candidate.theme.logoUrl = 'javascript:alert(1)';
+  candidate.theme.assistantImageUrl = 'data:image/gif;base64,bad';
   candidate.theme.colors.primary = 'red; background:url(javascript:alert(1))';
 
   const result = resolveCustomerConfig(candidate);

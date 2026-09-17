@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-assistant-enabled="false">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -40,6 +40,22 @@
       font: inherit;
     }
 
+    input.protected-value-complete {
+      border-color: var(--status-success);
+      background: color-mix(in srgb, var(--status-success) 7%, var(--surface));
+    }
+
+    input.protected-value-complete::placeholder {
+      color: var(--status-success);
+      font-weight: 700;
+      opacity: 1;
+    }
+
+    input.protected-input-guarded {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
     button {
       border: 0;
     }
@@ -63,6 +79,14 @@
       height: 76px;
       object-fit: contain;
       filter: drop-shadow(0 8px 12px rgba(17, 24, 39, 0.16));
+    }
+
+    html[data-assistant-enabled="false"] .app-header {
+      grid-template-columns: 1fr;
+    }
+
+    html[data-assistant-enabled="false"] #clippy-img {
+      display: none;
     }
 
     .eyebrow {
@@ -118,6 +142,77 @@
       align-items: flex-start;
       padding: 20px 22px 14px;
       border-bottom: 1px solid var(--border);
+    }
+
+    .collapsible-panel-summary {
+      list-style: none;
+      cursor: pointer;
+    }
+
+    .collapsible-panel-summary::-webkit-details-marker,
+    .collapsible-panel-summary::marker {
+      display: none;
+      content: "";
+    }
+
+    .collapsible-panel-summary:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--brand-accent) 25%, transparent);
+      outline-offset: -3px;
+      border-radius: 8px;
+    }
+
+    .collapsible-panel:not([open]) > .collapsible-panel-summary {
+      padding-bottom: 20px;
+      border-bottom: 0;
+    }
+
+    .collapsible-panel:not([open]) .panel-subtitle {
+      display: none;
+    }
+
+    .collapse-summary-status {
+      display: inline-flex;
+      flex: 0 0 auto;
+      gap: 10px;
+      align-items: center;
+      align-self: center;
+    }
+
+    .section-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #fff7ed;
+      color: var(--status-warning);
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .section-status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .section-status.ready {
+      background: #ecfdf5;
+      color: var(--status-success);
+    }
+
+    .collapse-chevron {
+      color: var(--text-muted);
+      font-size: 18px;
+      line-height: 1;
+      transition: transform 0.18s ease;
+    }
+
+    .collapsible-panel[open] .collapse-chevron {
+      transform: rotate(180deg);
     }
 
     .panel-title {
@@ -441,6 +536,86 @@
     .lab-panel .title-mark {
       background: #fef3c7;
       color: var(--status-warning);
+    }
+
+    .assistant-preference-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .assistant-preference-copy {
+      min-width: 0;
+    }
+
+    .assistant-preference-copy strong {
+      display: block;
+      color: var(--text-primary);
+      font-size: 14px;
+    }
+
+    .assistant-preference-state {
+      margin: 5px 0 0;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-flex;
+      width: 48px;
+      height: 28px;
+      flex: 0 0 auto;
+      cursor: pointer;
+    }
+
+    .toggle-switch input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+
+    .toggle-slider {
+      width: 100%;
+      height: 100%;
+      border-radius: 999px;
+      background: #cbd5e1;
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+      transition: background-color 0.18s ease;
+    }
+
+    .toggle-slider::after {
+      content: "";
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.28);
+      transition: transform 0.18s ease;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--brand-primary);
+    }
+
+    .toggle-switch input:checked + .toggle-slider::after {
+      transform: translateX(20px);
+    }
+
+    .toggle-switch input:focus-visible + .toggle-slider {
+      outline: 3px solid color-mix(in srgb, var(--brand-accent) 30%, transparent);
+      outline-offset: 3px;
+    }
+
+    .toggle-switch input:disabled + .toggle-slider {
+      cursor: wait;
+      opacity: 0.6;
     }
 
     .beta-row {
@@ -814,6 +989,59 @@
       align-items: end;
     }
 
+    .retention-setting {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 120px;
+      gap: 14px;
+      align-items: end;
+      padding: 12px;
+      border: 1px solid color-mix(in srgb, var(--brand-accent) 24%, var(--border));
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--brand-accent) 5%, #fff);
+    }
+
+    .retention-setting[hidden] {
+      display: none;
+    }
+
+    .retention-setting .form-group {
+      margin: 0;
+    }
+
+    .level-threshold-section[hidden] {
+      display: none;
+    }
+
+    .level-threshold-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .level-threshold-card {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid color-mix(in srgb, var(--brand-accent) 24%, var(--border));
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--brand-accent) 5%, #fff);
+    }
+
+    .level-threshold-card strong {
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    .level-threshold-inputs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .level-threshold-inputs .form-group {
+      margin: 0;
+    }
+
     .double-xp-list {
       display: grid;
       gap: 8px;
@@ -1025,6 +1253,9 @@
       .protocol-grid,
       .briefing-options,
       .editor-inline-form,
+      .retention-setting,
+      .level-threshold-grid,
+      .level-threshold-inputs,
       .selector-editor-toolbar,
       .selector-add-row,
       .selector-path-row {
@@ -1077,6 +1308,15 @@
         padding-left: 16px;
       }
 
+      .collapsible-panel-summary {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .collapse-summary-status {
+        justify-content: space-between;
+      }
+
       .input-row {
         grid-template-columns: 1fr;
       }
@@ -1094,7 +1334,7 @@
 <body>
   <main class="page-shell">
     <header class="app-header">
-      <img id="clippy-img" src="images/clippy starting postion.png" alt="Clippy">
+      <img id="clippy-img" src="images/clippy starting postion.png" alt="Clippy" data-theme-assistant hidden>
       <div>
         <p class="eyebrow" data-theme-text="productName">Rights Reporter</p>
         <h1 title="Enforcement Center">Enforcement Center</h1>
@@ -1115,34 +1355,38 @@
           <div class="setup-checklist" aria-label="Required setup checklist">
             <div id="setup-folder-check" class="setup-check">
               <span class="check-dot"></span>
-              <span>Google Drive Root Folder ID</span>
+              <span>Evidence Storage</span>
               <span class="check-state">Missing</span>
             </div>
             <div id="setup-sheet-check" class="setup-check">
               <span class="check-dot"></span>
-              <span>Foundation Log Sheet ID</span>
+              <span>Reporting Activity Log</span>
               <span class="check-state">Missing</span>
             </div>
             <div id="setup-event-check" class="setup-check">
               <span class="check-dot"></span>
-              <span>Event Config Sheet ID</span>
+              <span>Event &amp; Access Configuration</span>
               <span class="check-state">Missing</span>
             </div>
           </div>
         </section>
 
-        <section class="panel" aria-labelledby="core-connectivity-title">
-          <div class="panel-header">
+        <details id="core-connectivity-panel" class="panel collapsible-panel" aria-labelledby="core-connectivity-title">
+          <summary class="panel-header collapsible-panel-summary">
             <div>
               <h2 id="core-connectivity-title" class="panel-title"><span class="title-mark">1</span> Core Connectivity</h2>
               <p class="panel-subtitle">These three IDs are required before the reporter can write logs, read event configuration, or store evidence.</p>
             </div>
-          </div>
+            <div class="collapse-summary-status">
+              <span id="core-connectivity-status" class="section-status" role="status" aria-live="polite">Incomplete · 3 missing</span>
+              <span class="collapse-chevron" aria-hidden="true">⌄</span>
+            </div>
+          </summary>
 
           <div class="panel-body">
             <div class="form-grid">
               <div class="form-group">
-                <label for="piracy_folder_id">Google Drive Root Folder ID</label>
+                <label for="piracy_folder_id">Evidence Storage</label>
                 <div class="input-desc">Target folder for PDF reports and forensic screenshots.</div>
                 <div class="input-row">
                   <input type="text" id="piracy_folder_id" placeholder="e.g. 1AbC2DeF3GhI..." autocomplete="off">
@@ -1151,19 +1395,19 @@
               </div>
 
               <div class="form-group">
-                <label for="piracy_sheet_id">Foundation Log Sheet ID</label>
+                <label for="piracy_sheet_id">Reporting Activity Log</label>
                 <div class="input-desc">The primary spreadsheet where all enforcement actions are logged.</div>
                 <input type="text" id="piracy_sheet_id" placeholder="Spreadsheet ID from URL" autocomplete="off">
               </div>
 
               <div class="form-group">
-                <label for="event_sheet_id">Event Config Sheet ID</label>
+                <label for="event_sheet_id">Event &amp; Access Configuration</label>
                 <div class="input-desc">Source for whitelists, event schedules, and XP multipliers.</div>
                 <input type="text" id="event_sheet_id" placeholder="Config Sheet ID" autocomplete="off">
               </div>
             </div>
           </div>
-        </section>
+        </details>
 
         <section class="panel" aria-labelledby="deployment-protocol-title">
           <div class="panel-header">
@@ -1206,11 +1450,11 @@
           <div class="panel-body briefing-summary">
             <div>
               <span id="briefing-count" class="briefing-count">Syncing modules...</span>
-              <p class="input-desc">Manage report modules, shared briefing content, Double XP events, and manual selector paths.</p>
+              <p class="input-desc">Manage report modules, shared content, Double XP events, level thresholds, and manual selector paths.</p>
             </div>
             <div class="button-row">
               <button id="open_briefing_settings" class="btn-secondary" type="button">Configure Briefing Stats</button>
-              <button id="open_briefing_content_editor" class="btn-secondary" type="button">Edit Briefing Content</button>
+              <button id="open_briefing_content_editor" class="btn-secondary" type="button">Edit Shared Content &amp; Levels</button>
               <button id="open_selector_path_editor" class="btn-secondary" type="button">Edit Selector Paths</button>
             </div>
           </div>
@@ -1218,6 +1462,29 @@
       </div>
 
       <aside class="side-stack" aria-label="Community and feedback settings">
+        <section class="panel" aria-labelledby="assistant-preference-title">
+          <div class="panel-header">
+            <div>
+              <h2 id="assistant-preference-title" class="panel-title"><span class="title-mark">A</span> Assistant</h2>
+              <p class="panel-subtitle">Personal display preference available to every authorized employee.</p>
+            </div>
+          </div>
+
+          <div class="panel-body">
+            <div class="assistant-preference-row">
+              <div class="assistant-preference-copy">
+                <strong>Show the assistant</strong>
+                <p id="assistant-preference-state" class="assistant-preference-state" aria-live="polite">Loading your preference…</p>
+              </div>
+              <label class="toggle-switch" for="assistant_enabled" title="Show or hide the assistant">
+                <input type="checkbox" id="assistant_enabled" role="switch" aria-describedby="assistant-preference-state" disabled>
+                <span class="toggle-slider" aria-hidden="true"></span>
+                <span class="sr-only">Show the assistant</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
         <section class="panel lab-panel" aria-labelledby="lab-title">
           <div class="panel-header">
             <div>
@@ -1273,7 +1540,7 @@
   </div>
 
   <div id="easter-egg" class="easter-egg-overlay">
-    <img src="images/Flopirate hunter.gif" alt="Pirate Hunter Fleet">
+    <img src="images/Flopirate hunter.gif" alt="Pirate Hunter Fleet" data-theme-easter-egg>
     <div class="easter-egg-close">Click anywhere to close</div>
   </div>
 
@@ -1389,7 +1656,7 @@
       <header>
         <div>
           <h2 id="briefing-content-title">Briefing Content Editor</h2>
-          <p class="input-desc">Manage the live community highlight, Lab copy, and Double XP event list stored in the shared <code>events_config.json</code> file.</p>
+          <p class="input-desc">Manage shared community content, Double XP events, and administrator-controlled Scout and Enforcer level thresholds.</p>
         </div>
         <button id="close_briefing_content" class="modal-close" type="button" aria-label="Close briefing content editor">&times;</button>
       </header>
@@ -1427,6 +1694,17 @@
 
         <section class="config-editor-section" aria-labelledby="double-xp-title">
           <h3 id="double-xp-title">Double XP Events</h3>
+          <p id="double-xp-retention-summary" class="input-desc">Double XP automatically ends 10 days after it is added.</p>
+          <div id="double-xp-retention-control" class="retention-setting" hidden>
+            <div>
+              <strong>Automatic removal window</strong>
+              <p class="input-desc">Administrator-only setting. Changing it recalculates the end date for active Double XP events.</p>
+            </div>
+            <div class="form-group">
+              <label for="double_xp_retention_days">Days</label>
+              <input type="number" id="double_xp_retention_days" min="1" max="365" step="1" value="10" inputmode="numeric">
+            </div>
+          </div>
           <div class="editor-inline-form">
             <div class="form-group">
               <label for="double_xp_vertical">Vertical</label>
@@ -1441,11 +1719,50 @@
           <div id="double_xp_event_list" class="double-xp-list"></div>
         </section>
 
+        <section id="gamification-level-section" class="config-editor-section level-threshold-section" aria-labelledby="gamification-level-title" hidden>
+          <div>
+            <h3 id="gamification-level-title">Scout &amp; Enforcer Levels</h3>
+            <p class="input-desc">Administrator-only settings. These values control when the Side Panel promotes a user to Levels 2 and 3. Level 3 must require more points than Level 2.</p>
+          </div>
+          <div class="level-threshold-grid">
+            <div class="level-threshold-card">
+              <strong>Scout Track</strong>
+              <div class="level-threshold-inputs">
+                <div class="form-group">
+                  <label for="scout_level_2_points">Level 2 starts at</label>
+                  <input type="number" id="scout_level_2_points" min="1" max="10000000" step="1" value="501" inputmode="numeric">
+                  <div class="input-desc">Minimum Scout points for Level 2.</div>
+                </div>
+                <div class="form-group">
+                  <label for="scout_level_3_points">Level 3 starts at</label>
+                  <input type="number" id="scout_level_3_points" min="1" max="10000000" step="1" value="1001" inputmode="numeric">
+                  <div class="input-desc">Minimum Scout points for Level 3.</div>
+                </div>
+              </div>
+            </div>
+            <div class="level-threshold-card">
+              <strong>Enforcer Track</strong>
+              <div class="level-threshold-inputs">
+                <div class="form-group">
+                  <label for="enforcer_level_2_points">Level 2 starts at</label>
+                  <input type="number" id="enforcer_level_2_points" min="1" max="10000000" step="1" value="501" inputmode="numeric">
+                  <div class="input-desc">Minimum Enforcer points for Level 2.</div>
+                </div>
+                <div class="form-group">
+                  <label for="enforcer_level_3_points">Level 3 starts at</label>
+                  <input type="number" id="enforcer_level_3_points" min="1" max="10000000" step="1" value="1001" inputmode="numeric">
+                  <div class="input-desc">Minimum Enforcer points for Level 3.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div id="briefing-content-status" class="modal-status"></div>
       </div>
 
       <div class="config-actions">
-        <button id="save_briefing_content" class="btn-primary" type="button">Save Content</button>
+        <button id="save_briefing_content" class="btn-primary" type="button">Save Shared Settings</button>
         <button id="cancel_briefing_content" class="btn-secondary" type="button">Cancel</button>
       </div>
     </div>

@@ -12,6 +12,8 @@
   "theme": {
     "logoUrl": "",
     "logoAltText": "FloSports Reporter",
+    "assistantImageUrl": "",
+    "easterEggImageUrl": "",
     "colors": {
       "primary": "#CE0E2D",
       "primaryHover": "#A80B24",

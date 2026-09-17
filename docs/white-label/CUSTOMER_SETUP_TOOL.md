@@ -23,13 +23,15 @@ The form accepts only the fixed customer configuration contract. `validateCustom
 Run this after pulling the Customer Setup changes and before creating a customer:
 
 ```sh
-node --env-file=.env.local server/scripts/migrate.mjs
+npm run db:migrate
 ```
 
 Migration `002_customer_provisioning.sql` adds:
 
 - A global normalized-email uniqueness rule, so a Google email cannot resolve to multiple customers.
 - `customer_provisioning_audit`, a dedicated audit table for customer creation records.
+
+Migration `003_customer_configuration_audit.sql` adds an immutable audit table for later customer-configuration changes. Each record stores the operator, before/after configuration versions, changed fixed-field paths, request hash, and before/after validated configuration. Apply migrations before using the edit workflow.
 
 Use `DATABASE_URL_UNPOOLED` for this migration and the setup tool. The live bootstrap, membership, and data Functions continue using the pooled `DATABASE_URL` injected by Neon.
 
@@ -43,14 +45,25 @@ Use `DATABASE_URL_UNPOOLED` for this migration and the setup tool. The live boot
    ```
 
 3. Open the printed local URL, normally `http://127.0.0.1:4174/`.
-4. Complete the form and choose **Validate and review**.
-5. Correct any validation errors.
-6. Review the customer, administrator, domains, caps, roles, platforms, destinations, and statistics ID.
-7. Choose **Create customer and administrator** once.
-8. Save the returned customer ID and audit ID.
-9. Stop the local process with Control-C.
+4. Choose **View customers** to see existing profiles, their versions, status, active users, administrator utilization, and last update time, or complete the new-customer form.
+5. To create a customer, complete the form and choose **Validate and review**.
+6. Correct any validation errors.
+7. Review the customer, administrator, domains, caps, roles, platforms, destinations, and statistics ID.
+8. Choose **Create customer and administrator** once.
+9. Save the returned customer ID and audit ID.
+10. Stop the local process with Control-C.
 
-The tool never updates an existing customer. Reusing a customer ID or administrator email is rejected. This makes an accidental second submission safe and keeps configuration-version updates as a separate future workflow.
+Reusing a customer ID or administrator email during creation is rejected. Existing customers are changed only through **View customers → Edit customer**. Customer IDs are permanent, and the edit form automatically advances the configuration version by exactly one.
+
+## Editing an existing customer
+
+1. Choose **View customers**.
+2. Select **Edit customer** for a profile with a valid stored configuration.
+3. Enter the operator email and change the approved fixed fields.
+4. Choose **Validate changes** and review the proposed configuration.
+5. Choose **Save customer changes**.
+
+The final save uses a serializable transaction and an optimistic version check. It locks the customer and membership rows, rejects stale browser sessions, prevents caps from falling below current utilization, prevents disabling roles with active users, prevents removing the domain of an active member, updates the validated configuration and version, and writes `customer_configuration_audit`. The configuration update and audit either both commit or both roll back. Customer activation/deactivation and membership edits remain outside this screen.
 
 ## Transaction guarantees
 

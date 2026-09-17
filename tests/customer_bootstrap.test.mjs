@@ -36,6 +36,8 @@ function validProfile(overrides = {}) {
       tagline: neutral.product.tagline,
       logoUrl: 'https://cdn.example.com/acme.png',
       logoAltText: 'Acme Sports',
+      assistantImageUrl: 'https://cdn.example.com/acme-assistant.gif',
+      easterEggImageUrl: 'https://cdn.example.com/acme-easter-egg.webp',
       colors: { ...neutral.theme.colors }
     },
     legal: {

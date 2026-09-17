@@ -9,7 +9,7 @@
     "test:migration": "node --test tests/customer_migration.test.mjs tests/flosports_migration.test.mjs",
     "audit:flosports-fallbacks": "node scripts/audit_flosports_fallbacks.mjs",
     "configure:api": "node scripts/configure_customer_api.mjs",
-    "db:migrate": "node server/scripts/migrate.mjs",
+    "db:migrate": "node --env-file=.env.local server/scripts/migrate.mjs",
     "db:seed:flosports": "node server/scripts/seed_flosports.mjs",
     "customer:setup": "node --env-file=.env.local server/scripts/customer_setup.mjs"
   },

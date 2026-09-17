@@ -17,6 +17,8 @@ let crawlQueue = [];
 let configData = null;
 let currentAccessProfile = null;
 let sidepanelAccessRefreshScheduled = false;
+const assistantPreference = globalThis.RightsReporterAssistantPreference;
+let sidepanelAssistantEnabled = false;
 const SIDEPANEL_SETUP_KEYS = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
 const ENFORCER_PLATFORM_DEFAULTS = Object.freeze({
   youtube: {
@@ -159,6 +161,17 @@ function createUnavailableGamificationStats(errorMessage = '') {
 
 function canUseScoutMode() {
   return hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_REPORT);
+}
+
+function getConfiguredEvent(verticalName, eventName) {
+  const normalizedVertical = String(verticalName || '').trim().toLowerCase();
+  const normalizedEvent = String(eventName || '').trim().toLowerCase();
+  const vertical = (configData?.verticals || []).find(
+    (entry) => String(entry?.name || '').trim().toLowerCase() === normalizedVertical
+  );
+  return (vertical?.events || []).find(
+    (entry) => String(entry?.eventName || entry?.name || '').trim().toLowerCase() === normalizedEvent
+  ) || { eventName: String(eventName || '').trim() };
 }
 
 function refreshGamificationStats() {
@@ -542,7 +555,7 @@ function applySidepanelAccess(profile) {
   document.querySelector('.tabbar').hidden = false;
   document.querySelector('.container').hidden = false;
   document.getElementById('openOptionsGearBtn').hidden = false;
-  document.getElementById('clippy-process-bubble').hidden = false;
+  document.getElementById('clippy-process-bubble').hidden = !sidepanelAssistantEnabled;
   document.getElementById('gamification-header').hidden = false;
   document.getElementById('sidepanel-access-state').hidden = true;
 
@@ -702,6 +715,7 @@ function findUnassignedCartPlatform(cart, profile) {
 }
 // --- TIERED ACCESS BOOTSTRAP ---
 document.addEventListener('DOMContentLoaded', async () => {
+  sidepanelAssistantEnabled = await (assistantPreference?.read?.() || Promise.resolve(true));
   setupSidepanelTabs();
 
   const loadingEl = document.getElementById('loading');
@@ -1046,14 +1060,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       SIDEPANEL_SETUP_KEYS.every((key) => String(syncData?.[key] || '').trim());
 
   const setSidepanelClippyMessage = (text, { mode = 'status' } = {}) => {
-      if (!clippyBubble || !clippyFeedbackEl || sidepanelClippyDismissed) return;
+      if (!sidepanelAssistantEnabled || !clippyBubble || !clippyFeedbackEl || sidepanelClippyDismissed) return;
       sidepanelClippyMode = mode;
       clippyFeedbackEl.innerText = text;
+      clippyBubble.hidden = false;
       clippyBubble.style.display = 'flex';
   };
 
   const showIdleSidepanelClippy = ({ forceNew = false } = {}) => {
-      if (!clippyBubble || !clippyFeedbackEl || sidepanelClippyDismissed) return;
+      if (!sidepanelAssistantEnabled || !clippyBubble || !clippyFeedbackEl || sidepanelClippyDismissed) return;
 
       if (forceNew || !currentIdleClippyPhrase) {
           currentIdleClippyPhrase = getRandomSidepanelClippyPhrase(currentIdleClippyPhrase);
@@ -1061,10 +1076,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       sidepanelClippyMode = 'idle';
       clippyFeedbackEl.innerText = currentIdleClippyPhrase;
+      clippyBubble.hidden = false;
       clippyBubble.style.display = 'flex';
   };
 
   const syncSidepanelClippyToSetup = (syncData = null) => {
+      if (!sidepanelAssistantEnabled) {
+          if (clippyBubble) {
+              clippyBubble.hidden = true;
+              clippyBubble.style.display = 'none';
+          }
+          return;
+      }
+
       const applyState = (data) => {
           if (!hasConfiguredSetupIds(data)) {
               setSidepanelClippyMessage('Please fill in the 3 setup boxes in Settings to finish setup.', { mode: 'setup' });
@@ -1369,8 +1393,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 if (!sourceDisplay.value.trim()) {
                     sourceDisplay.placeholder = "No URL found for this event.";
-                    document.getElementById('searchEventBtn')?.classList.add('clippy-focus');
-                } else {
+                    if (sidepanelAssistantEnabled) {
+                        document.getElementById('searchEventBtn')?.classList.add('clippy-focus');
+                    }
+                } else if (sidepanelAssistantEnabled) {
                     document.getElementById('startBtn')?.classList.add('clippy-focus');
                 }
             }
@@ -1539,6 +1565,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const vertical = verticalSelect.value;
           const eventName = eventInput.value;
           const sourceUrl = document.getElementById('sourceUrlDisplay').value;
+          const eventConfig = getConfiguredEvent(vertical, eventName);
           
           // PATCH: Fetch mode early and define default text for resets
                 const syncData = await chrome.storage.sync.get(['report_mode']);
@@ -1616,6 +1643,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               email: currentAccessProfile?.legal?.reportingEmail || await getUserEmail() || '',
               eventName: eventName,
               vertical: vertical,
+              eventConfig,
               sourceUrl: sourceUrl || ""
           };
           
@@ -1626,7 +1654,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           // 4. Open Reporting Page or Skip (Scout Mode)
           if (isScout) { // PATCHED
               startBtn.innerText = `Logging (Scout Mode)...`;
-              const payload = { reporterName, vertical, eventName, mode: 'scout', uploadScreenshots: true };
+              const payload = { reporterName, vertical, eventName, eventConfig, mode: 'scout', uploadScreenshots: true };
               chrome.runtime.sendMessage({ action: 'processQueue', data: payload });
               setTimeout(() => { startBtn.innerText = defaultBtnText; startBtn.disabled = false; }, 3000); // PATCHED
               return;
@@ -1643,7 +1671,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 	              showRumbleProgressWindow(cart.length);
 		              startBtn.innerText = `Reporting ${cart.length} Rumble URL${cart.length === 1 ? '' : 's'}...`;
-		              const payload = { reporterName, vertical, eventName, mode: 'enforcer', uploadScreenshots: true };
+	              const payload = { reporterName, vertical, eventName, eventConfig, mode: 'enforcer', uploadScreenshots: true };
 		              chrome.runtime.sendMessage({ action: 'startRumbleQueue', data: payload }, (response) => {
 		                  if (chrome.runtime.lastError) {
 		                      finishRumbleProgressWindow(chrome.runtime.lastError.message || "Failed to start the Rumble report queue.", true);
@@ -1666,7 +1694,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           if (platformDetails.key === 'kick') {
               startBtn.innerText = `Opening ${platform}...`;
-              const payload = { reporterName, vertical, eventName, mode: 'enforcer', uploadScreenshots: true };
+              const payload = { reporterName, vertical, eventName, eventConfig, mode: 'enforcer', uploadScreenshots: true };
               chrome.runtime.sendMessage({ action: 'startRumbleQueue', data: payload }, (response) => {
                   if (response && response.success) {
                       startBtn.innerText = defaultBtnText;
@@ -2117,10 +2145,29 @@ if (startMacroBtn && stopMacroBtn) {
       if (namespace === 'local' && changes.rogue_target_data && changes.rogue_target_data.newValue) {
           renderRogueWalkthrough(changes.rogue_target_data.newValue);
       }
+      if (namespace === 'local' && changes.gamification_levels_revision) {
+          refreshGamificationStats();
+      }
       // Listen for real-time changes to the report_mode from the options page
       if (namespace === 'sync' && changes.report_mode) {
           updateModeChip(changes.report_mode.newValue || 'scout');
           requestWorkflowFocusRefresh();
+      }
+      if (namespace === 'sync' && assistantPreference && changes[assistantPreference.STORAGE_KEY]) {
+          const wasEnabled = sidepanelAssistantEnabled;
+          sidepanelAssistantEnabled = assistantPreference.isEnabled(changes[assistantPreference.STORAGE_KEY].newValue);
+          sidepanelClippyDismissed = sidepanelAssistantEnabled && !wasEnabled ? false : sidepanelClippyDismissed;
+          document.querySelectorAll('.clippy-focus').forEach((element) => element.classList.remove('clippy-focus'));
+
+          if (!sidepanelAssistantEnabled) {
+              if (clippyBubble) {
+                  clippyBubble.hidden = true;
+                  clippyBubble.style.display = 'none';
+              }
+          } else {
+              syncSidepanelClippyToSetup();
+              requestWorkflowFocusRefresh();
+          }
       }
       if (namespace === 'sync' && SIDEPANEL_SETUP_KEYS.some((key) => changes[key])) {
           syncSidepanelClippyToSetup();
@@ -2146,6 +2193,9 @@ function evaluateWorkflowFocus(cartSize) {
           if (startBtn) startBtn.innerText = isScout ? "Save to Log (Scout Mode)" : "Start Report";
 
           chrome.storage.local.get(['highlight_start_disabled'], (res) => {
+              document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
+              if (!sidepanelAssistantEnabled) return;
+
               if (!hasConfiguredSetupIds(syncRes)) {
                   setSidepanelClippyMessage('Please fill in the 3 setup boxes in Settings to finish setup.', { mode: 'setup' });
                   return;
@@ -2156,9 +2206,6 @@ function evaluateWorkflowFocus(cartSize) {
                   return;
               }
 
-              // Clear all existing spotlights
-              document.querySelectorAll('.clippy-focus').forEach(el => el.classList.remove('clippy-focus'));
-              
               if (cartSize === 0) {
                   showIdleSidepanelClippy({ forceNew: sidepanelClippyMode !== 'idle' });
                   return;

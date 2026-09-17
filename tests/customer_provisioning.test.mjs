@@ -159,6 +159,8 @@ function requestToForm(request, csrf) {
     'product.tagline': config.product.tagline,
     'theme.logoUrl': config.theme.logoUrl,
     'theme.logoAltText': config.theme.logoAltText,
+    'theme.assistantImageUrl': config.theme.assistantImageUrl,
+    'theme.easterEggImageUrl': config.theme.easterEggImageUrl,
     'legal.ownerName': config.legal.ownerName,
     'legal.companyName': config.legal.companyName,
     'legal.reportingEmail': config.legal.reportingEmail,

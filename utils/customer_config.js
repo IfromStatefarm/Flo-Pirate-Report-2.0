@@ -42,6 +42,8 @@ export const CUSTOMER_CONFIG_SHEET_HEADERS = Object.freeze([
   'Tagline',
   'Logo URL',
   'Logo Alt Text',
+  'Assistant Image URL',
+  'Easter Egg Image URL',
   'Theme Primary',
   'Theme Primary Hover',
   'Theme Accent',
@@ -105,7 +107,7 @@ const TOP_LEVEL_KEYS = Object.freeze([
 
 const OBJECT_KEYS = Object.freeze({
   product: Object.freeze(['productName', 'displayName', 'shortName', 'assistantName', 'tagline']),
-  theme: Object.freeze(['logoUrl', 'logoAltText', 'colors']),
+  theme: Object.freeze(['logoUrl', 'logoAltText', 'assistantImageUrl', 'easterEggImageUrl', 'colors']),
   legal: Object.freeze([
     'ownerName', 'companyName', 'reportingEmail', 'secondaryEmail', 'phone',
     'addressLine1', 'city', 'region', 'postalCode', 'country', 'originalWorkUrl'
@@ -140,6 +142,8 @@ export const NEUTRAL_CUSTOMER_CONFIG = deepFreeze({
   theme: {
     logoUrl: '',
     logoAltText: 'Rights Reporter',
+    assistantImageUrl: '',
+    easterEggImageUrl: '',
     colors: {
       primary: '#334155',
       primaryHover: '#1F2937',
@@ -210,13 +214,14 @@ function requireObject(value, path, errors) {
   return value;
 }
 
-function checkExactKeys(value, allowedKeys, path, errors) {
+function checkExactKeys(value, allowedKeys, path, errors, { optionalKeys = [] } = {}) {
   const allowed = new Set(allowedKeys);
+  const optional = new Set(optionalKeys);
   if (Object.keys(value).some((key) => !allowed.has(key))) {
     addError(errors, path, 'unsupported_field', 'Contains one or more unsupported fields.');
   }
   allowedKeys.forEach((key) => {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) {
+    if (!optional.has(key) && !Object.prototype.hasOwnProperty.call(value, key)) {
       addError(errors, `${path}.${key}`, 'missing_field', 'Required field is missing.');
     }
   });
@@ -330,7 +335,9 @@ function validateProduct(value, errors) {
 
 function validateTheme(value, errors) {
   const theme = requireObject(value, 'theme', errors);
-  checkExactKeys(theme, OBJECT_KEYS.theme, 'theme', errors);
+  checkExactKeys(theme, OBJECT_KEYS.theme, 'theme', errors, {
+    optionalKeys: ['assistantImageUrl', 'easterEggImageUrl']
+  });
   const colors = requireObject(theme.colors, 'theme.colors', errors);
   checkExactKeys(colors, CUSTOMER_COLOR_TOKENS, 'theme.colors', errors);
 
@@ -348,6 +355,8 @@ function validateTheme(value, errors) {
   return {
     logoUrl: readHttpsUrl(theme.logoUrl, 'theme.logoUrl', errors),
     logoAltText: readPlainText(theme.logoAltText, 'theme.logoAltText', errors, { maxLength: 120 }),
+    assistantImageUrl: readHttpsUrl(theme.assistantImageUrl || '', 'theme.assistantImageUrl', errors),
+    easterEggImageUrl: readHttpsUrl(theme.easterEggImageUrl || '', 'theme.easterEggImageUrl', errors),
     colors: normalizedColors
   };
 }
@@ -583,6 +592,8 @@ export function customerConfigCandidateFromSheetRow(headers, row) {
     theme: {
       logoUrl: String(cell('Logo URL')),
       logoAltText: String(cell('Logo Alt Text')),
+      assistantImageUrl: String(cell('Assistant Image URL')),
+      easterEggImageUrl: String(cell('Easter Egg Image URL')),
       colors: {
         primary: String(cell('Theme Primary')),
         primaryHover: String(cell('Theme Primary Hover')),
@@ -670,6 +681,8 @@ export function customerConfigToSheetRow(candidate) {
     'Tagline': config.product.tagline,
     'Logo URL': config.theme.logoUrl,
     'Logo Alt Text': config.theme.logoAltText,
+    'Assistant Image URL': config.theme.assistantImageUrl,
+    'Easter Egg Image URL': config.theme.easterEggImageUrl,
     'Theme Primary': config.theme.colors.primary,
     'Theme Primary Hover': config.theme.colors.primaryHover,
     'Theme Accent': config.theme.colors.accent,

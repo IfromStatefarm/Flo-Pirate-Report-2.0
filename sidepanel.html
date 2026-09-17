@@ -78,15 +78,23 @@
       gap: 8px;
     }
 
-    .brand-row { justify-content: space-between; }
-    .brand-lockup { display: flex; align-items: center; gap: 9px; min-width: 0; }
-    .brand-logo { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; }
-    .brand-copy { min-width: 0; }
-    .brand-title { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: 0; }
-    .brand-subtitle { margin-top: 2px; color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .brand-row { justify-content: space-between; align-items: flex-start; }
+    .brand-lockup { display: flex; flex: 1 1 auto; align-items: flex-start; gap: 9px; min-width: 0; }
+    .brand-logo { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; object-fit: cover; }
+    .brand-copy { flex: 1 1 auto; min-width: 0; }
+    .brand-title,
+    .brand-subtitle {
+      max-width: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: normal;
+    }
+    .brand-title { margin: 0; font-size: 16px; font-weight: 800; line-height: 1.15; letter-spacing: 0; }
+    .brand-subtitle { margin-top: 2px; color: var(--text-muted); font-size: 11px; line-height: 1.3; }
 
     .icon-btn {
       display: inline-flex;
+      flex: 0 0 auto;
       align-items: center;
       justify-content: center;
       width: 34px;
@@ -662,7 +670,7 @@
 
     <div id="clippy-process-bubble" class="assistant-strip" hidden>
       <span id="close-clippy-btn" title="Dismiss">x</span>
-      <img id="clippy-state-icon" src="images/clippy starting postion.png" alt="Assistant">
+      <img id="clippy-state-icon" src="images/clippy starting postion.png" alt="Assistant" data-theme-assistant>
       <div class="assistant-copy">
         <strong>Assistant</strong>
         <span id="clippy-feedback-text">Ready to hunt some pirates?</span>

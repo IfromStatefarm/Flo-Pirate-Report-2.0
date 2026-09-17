@@ -30,6 +30,8 @@ The result shape is:
   theme: {
     logoUrl,
     logoAltText,
+    assistantImageUrl,
+    easterEggImageUrl,
     colors: {
       primary, primaryHover, accent, onPrimary, background, surface,
       text, muted, border, success, warning, danger
@@ -65,7 +67,7 @@ Unknown fields at any level invalidate the entire candidate. The runtime receive
 - `schemaVersion` must equal `1`; `configVersion` is a positive integer controlled by the customer configuration publisher.
 - `customerId` is a lowercase 1-64 character slug using letters, numbers, `_`, or `-`.
 - Product, legal, logo-alt, and phone values are length-limited plain text. HTML delimiters, control characters, and formula-like prefixes are rejected.
-- Logo and original-work URLs must be credential-free HTTPS URLs. `javascript:`, `data:`, inline SVG/HTML, and insecure HTTP are rejected.
+- Logo, assistant, Easter egg, and original-work URLs must be credential-free HTTPS URLs. `javascript:`, `data:`, inline SVG/HTML, and insecure HTTP are rejected. Downloaded customer images are limited to approved raster types and cached locally by customer and configuration version.
 - Theme colors are limited to the twelve named tokens and six-digit hex values. Raw CSS and arbitrary CSS properties are unsupported.
 - Reporting contacts must be valid email addresses. Allowed domains are normalized to lowercase without a leading `@`.
 - Enabled platforms must exist in `utils/platform_catalog.js`. `all` is intentionally unsupported so newly added platforms are not enabled automatically.
@@ -91,6 +93,8 @@ Assistant Name
 Tagline
 Logo URL
 Logo Alt Text
+Assistant Image URL
+Easter Egg Image URL
 Theme Primary
 Theme Primary Hover
 Theme Accent

@@ -1,3 +1,8 @@
+import {
+  DEFAULT_GAMIFICATION_LEVELS,
+  normalizeGamificationLevels
+} from './gamification_levels.js';
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -47,13 +52,15 @@ function getCompactRankLabel(rank, fallback = 'Level 1') {
   return normalizedRank.replace(/^🚀\s*Pioneer\s*/i, '').trim() || fallback;
 }
 
-function getNextLevelCopy(points) {
+function getNextLevelCopy(points, thresholds) {
   const numericPoints = toFiniteNumber(points);
   if (numericPoints === null) return 'Score unavailable.';
-  if (numericPoints > 1000) return 'Max level reached';
+  if (numericPoints >= thresholds.level_3_points) return 'Max level reached';
 
-  const nextLevel = numericPoints > 500 ? 'Level 3' : 'Level 2';
-  const nextLevelTarget = numericPoints > 500 ? 1001 : 501;
+  const nextLevel = numericPoints >= thresholds.level_2_points ? 'Level 3' : 'Level 2';
+  const nextLevelTarget = numericPoints >= thresholds.level_2_points
+    ? thresholds.level_3_points
+    : thresholds.level_2_points;
   const remainingPoints = Math.max(0, nextLevelTarget - numericPoints);
   const label = remainingPoints === 1 ? 'pt' : 'pts';
 
@@ -98,14 +105,23 @@ export function renderGamificationStats(stats, { doc = document } = {}) {
   const mvpPointsDisplay = mvpPointsValue === null ? '0' : String(mvpPointsValue);
   const scoutRankDisplay = stats.scoutRank || 'Level 1 Scout Reporter';
   const enforcerRankDisplay = stats.enforcerRank || 'Level 1 Enforcer';
+  const levelThresholds = normalizeGamificationLevels(stats.levelThresholds || DEFAULT_GAMIFICATION_LEVELS);
+  const scoutThresholds = levelThresholds.scout;
+  const enforcerThresholds = levelThresholds.enforcer;
 
   if (header) {
     header.style.display = 'block';
 
     let themeColor = 'var(--brand-primary)';
-    if ((scoutPointsValue !== null && scoutPointsValue > 1000) || (enforcerPointsValue !== null && enforcerPointsValue > 1000)) {
+    if (
+      (scoutPointsValue !== null && scoutPointsValue >= scoutThresholds.level_3_points)
+      || (enforcerPointsValue !== null && enforcerPointsValue >= enforcerThresholds.level_3_points)
+    ) {
       themeColor = '#9333ea';
-    } else if ((scoutPointsValue !== null && scoutPointsValue > 500) || (enforcerPointsValue !== null && enforcerPointsValue > 500)) {
+    } else if (
+      (scoutPointsValue !== null && scoutPointsValue >= scoutThresholds.level_2_points)
+      || (enforcerPointsValue !== null && enforcerPointsValue >= enforcerThresholds.level_2_points)
+    ) {
       themeColor = '#fbbf24';
     }
 
@@ -137,8 +153,8 @@ export function renderGamificationStats(stats, { doc = document } = {}) {
   const goalReached = teamTotalValue !== null && teamTotalValue >= GOAL_TARGET;
   const myTotalPoints = (scoutPointsValue || 0) + (enforcerPointsValue || 0);
   const isCurrentMvp = !!stats.isCurrentMvp || (mvpPointsValue !== null && mvpPointsValue > 0 && myTotalPoints >= mvpPointsValue);
-  const unlockedScoutLevel3 = scoutPointsValue !== null && scoutPointsValue > 1000;
-  const unlockedEnforcerLevel3 = enforcerPointsValue !== null && enforcerPointsValue > 1000;
+  const unlockedScoutLevel3 = scoutPointsValue !== null && scoutPointsValue >= scoutThresholds.level_3_points;
+  const unlockedEnforcerLevel3 = enforcerPointsValue !== null && enforcerPointsValue >= enforcerThresholds.level_3_points;
 
   if (summaryScoutRank) summaryScoutRank.innerText = getCompactRankLabel(scoutRankDisplay);
   if (summaryEnforcerRank) summaryEnforcerRank.innerText = getCompactRankLabel(enforcerRankDisplay);
@@ -147,8 +163,8 @@ export function renderGamificationStats(stats, { doc = document } = {}) {
   if (enforcerRank) enforcerRank.innerText = enforcerRankDisplay;
   if (scoutPoints) scoutPoints.innerText = scoutPointsValue ?? 0;
   if (enforcerPoints) enforcerPoints.innerText = enforcerPointsValue ?? 0;
-  if (scoutNextLevel) scoutNextLevel.innerText = getNextLevelCopy(stats.scoutPoints);
-  if (enforcerNextLevel) enforcerNextLevel.innerText = getNextLevelCopy(stats.enforcerPoints);
+  if (scoutNextLevel) scoutNextLevel.innerText = getNextLevelCopy(stats.scoutPoints, scoutThresholds);
+  if (enforcerNextLevel) enforcerNextLevel.innerText = getNextLevelCopy(stats.enforcerPoints, enforcerThresholds);
   if (scoutLevel3VideoBtn) {
     scoutLevel3VideoBtn.hidden = !unlockedScoutLevel3;
     scoutLevel3VideoBtn.dataset.videoUrl = LEVEL3_CELEBRATION_VIDEO_URL;

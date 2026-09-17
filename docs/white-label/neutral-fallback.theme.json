@@ -12,6 +12,8 @@
   "theme": {
     "logoUrl": "",
     "logoAltText": "Rights Reporter",
+    "assistantImageUrl": "",
+    "easterEggImageUrl": "",
     "colors": {
       "primary": "#334155",
       "primaryHover": "#1F2937",

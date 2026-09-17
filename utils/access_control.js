@@ -78,7 +78,7 @@ const PROFILE_KEYS = Object.freeze([
 ]);
 const THEME_KEYS = Object.freeze([
   'productName', 'displayName', 'shortName', 'assistantName', 'tagline',
-  'logoUrl', 'logoAltText', 'colors'
+  'logoUrl', 'logoAltText', 'assistantImageUrl', 'easterEggImageUrl', 'colors'
 ]);
 const INTEGRATION_KEYS = Object.freeze([
   'driveRootFolderId', 'reportSpreadsheetId', 'eventSpreadsheetId', 'statsDashboardId'
@@ -229,6 +229,8 @@ function validateTheme(value, errors) {
     tagline: readText(theme.tagline, 'theme.tagline', errors, { maxLength: 180 }),
     logoUrl: readHttpsUrl(theme.logoUrl, 'theme.logoUrl', errors),
     logoAltText: readText(theme.logoAltText, 'theme.logoAltText', errors, { maxLength: 120 }),
+    assistantImageUrl: readHttpsUrl(theme.assistantImageUrl, 'theme.assistantImageUrl', errors),
+    easterEggImageUrl: readHttpsUrl(theme.easterEggImageUrl, 'theme.easterEggImageUrl', errors),
     colors: normalizedColors
   };
 }

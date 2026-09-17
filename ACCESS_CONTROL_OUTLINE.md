@@ -64,6 +64,8 @@ Success returns an envelope with exactly one `profile` object:
       "tagline": "Capture evidence, manage reports, and track outcomes.",
       "logoUrl": "https://cdn.example.com/logo.png",
       "logoAltText": "Example",
+      "assistantImageUrl": "https://cdn.example.com/assistant.gif",
+      "easterEggImageUrl": "https://cdn.example.com/easter-egg.webp",
       "colors": {
         "primary": "#334155",
         "primaryHover": "#1F2937",

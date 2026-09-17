@@ -135,6 +135,7 @@
                 platform: platform,
                 eventName: info.eventName || "",
                 vertical: info.vertical || "",
+                eventConfig: info.eventConfig || null,
                 sourceUrl: info.sourceUrl || "",
                 rumbleSession
             };
@@ -1160,6 +1161,7 @@
                 platform: cart[0]?.platform || data?.platform || "TikTok",
                 eventName: info.eventName || data?.eventName || "",
                 vertical: info.vertical || data?.vertical || "",
+                eventConfig: info.eventConfig || data?.eventConfig || null,
                 sourceUrl: info.sourceUrl || data?.sourceUrl || ""
             };
             createTikTokOverlay(freshData);

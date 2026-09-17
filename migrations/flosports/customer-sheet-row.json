@@ -1,7 +1,8 @@
 {
   "headers": [
     "Schema Version", "Customer ID", "Configuration Version", "Product Name", "Display Name",
-    "Short Name", "Assistant Name", "Tagline", "Logo URL", "Logo Alt Text", "Theme Primary",
+    "Short Name", "Assistant Name", "Tagline", "Logo URL", "Logo Alt Text", "Assistant Image URL",
+    "Easter Egg Image URL", "Theme Primary",
     "Theme Primary Hover", "Theme Accent", "Theme On Primary", "Theme Background", "Theme Surface",
     "Theme Text", "Theme Muted", "Theme Border", "Theme Success", "Theme Warning", "Theme Danger",
     "Legal Owner Name", "Legal Company Name", "Reporting Email", "Secondary Email", "Reporting Phone",
@@ -21,6 +22,8 @@
     "Capture evidence, manage reports, and track outcomes.",
     "",
     "FloSports Reporter",
+    "",
+    "",
     "#CE0E2D",
     "#A80B24",
     "#CE0E2D",

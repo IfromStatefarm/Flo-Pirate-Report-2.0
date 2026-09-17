@@ -7,7 +7,17 @@
 
     const isOptionsPage = window.location.href.toLowerCase().includes('options.html');
     const optionsPageUrl = chrome.runtime.getURL('options.html');
+    const assistantPreference = globalThis.RightsReporterAssistantPreference;
     const assistantName = () => globalThis.RightsReporterTheme?.value('assistantName') || 'Reporting Assistant';
+    const configuredAssistantImage = () => globalThis.RightsReporterTheme?.getTheme?.()?.assistantImageDataUrl || '';
+    const assistantImageForState = (state = 'default') => {
+        if (configuredAssistantImage()) return configuredAssistantImage();
+        const packaged = {
+            default: 'images/clippy.gif',
+            smirk: 'images/clippy smrik.gif'
+        };
+        return chrome.runtime.getURL(packaged[state] || packaged.default);
+    };
 
     let clippyHost;
     let clippyShadow;
@@ -19,6 +29,7 @@
     let optionsBubbleHidden = false;
     let useLiveOptionsInputs = false;
     let optionsAccessConfigReady = !isOptionsPage;
+    let assistantEnabled = false;
 
     const idlePhrases = [
         "Alright, let's make the internet a better place one report at a time.",
@@ -50,12 +61,26 @@
         })
         .catch(() => {});
 
+    const preferenceReady = (assistantPreference?.read?.() || Promise.resolve(true))
+        .then((enabled) => {
+            assistantEnabled = assistantPreference?.isEnabled(enabled) ?? enabled !== false;
+            if (!assistantEnabled) hideClippy();
+        })
+        .catch(() => {
+            assistantEnabled = true;
+        });
+
     function getRequiredOptionsInputValues() {
         return [
-            document.getElementById('piracy_folder_id')?.value.trim() || '',
-            document.getElementById('piracy_sheet_id')?.value.trim() || '',
-            document.getElementById('event_sheet_id')?.value.trim() || ''
-        ];
+            'piracy_folder_id',
+            'piracy_sheet_id',
+            'event_sheet_id'
+        ].map((fieldId) => {
+            const field = document.getElementById(fieldId);
+            if (!field) return '';
+            if (document.activeElement === field || field.value.trim()) return field.value.trim();
+            return String(field.dataset.protectedValue || '').trim();
+        });
     }
 
     function hasMissingRequiredIds(syncData) {
@@ -111,6 +136,7 @@
     }
 
     function injectClippy() {
+        if (!assistantEnabled) return;
         if (document.getElementById('flo-clippy-host')) return;
 
         clippyHost = document.createElement('div');
@@ -132,7 +158,7 @@
             pointer-events: none;
         `;
 
-        const clippyImgUrl = chrome.runtime.getURL('images/clippy.gif');
+        const clippyImgUrl = assistantImageForState();
         clippyContainer.innerHTML = `
             <button id="flo-clippy-hide" title="Hide Clippy" style="
                 position: absolute;
@@ -238,7 +264,9 @@
     }
 
     function showAvatarOnly() {
+        if (!assistantEnabled) return;
         if (!clippyHost) injectClippy();
+        if (!clippyHost) return;
         const bubble = clippyShadow.getElementById('flo-clippy-bubble');
         const img = clippyShadow.getElementById('flo-clippy-img');
         clippyHost.style.display = 'block';
@@ -249,7 +277,9 @@
     }
 
     function showMessage(text, targetSelector = null) {
+        if (!assistantEnabled) return;
         if (!clippyHost) injectClippy();
+        if (!clippyHost) return;
         const bubble = clippyShadow.getElementById('flo-clippy-bubble');
         const textDiv = clippyShadow.getElementById('flo-clippy-text');
         const img = clippyShadow.getElementById('flo-clippy-img');
@@ -295,7 +325,7 @@
     }
 
     function cycleMessage() {
-        if (!isOptionsPage || optionsClippyHidden || optionsBubbleHidden || !currentReasonKey) return;
+        if (!assistantEnabled || !isOptionsPage || optionsClippyHidden || optionsBubbleHidden || !currentReasonKey) return;
 
         const pool = getMessagePool(currentReasonKey);
         if (pool.length <= 1) return;
@@ -305,6 +335,10 @@
     }
 
     function renderReason(reasonKey) {
+        if (!assistantEnabled) {
+            hideClippy();
+            return;
+        }
         const pool = getMessagePool(reasonKey);
         if (!pool.length) {
             hideClippy();
@@ -335,6 +369,7 @@
     }
 
     window.showClippyMessage = function(text) {
+        if (!assistantEnabled) return;
         if (isOptionsPage) {
             if (optionsClippyHidden || optionsBubbleHidden) return;
             showMessage(`⚠️ ${text}`);
@@ -347,7 +382,11 @@
 
     async function evaluateState() {
         try {
-            await stateReady;
+            await Promise.all([stateReady, preferenceReady]);
+            if (!assistantEnabled) {
+                hideClippy();
+                return;
+            }
             if (isOptionsPage && !optionsAccessConfigReady) return;
 
             const syncData = await chrome.storage.sync.get([
@@ -382,8 +421,44 @@
 
     chrome.storage.onChanged.addListener((changes, namespace) => {
         if (namespace !== 'sync') return;
+        if (assistantPreference && changes[assistantPreference.STORAGE_KEY]) {
+            const wasEnabled = assistantEnabled;
+            assistantEnabled = assistantPreference.isEnabled(changes[assistantPreference.STORAGE_KEY].newValue);
+            if (!assistantEnabled) {
+                hideClippy();
+                return;
+            }
+            if (!wasEnabled) {
+                optionsClippyHidden = false;
+                optionsBubbleHidden = false;
+            }
+            evaluateState();
+            return;
+        }
         if (!(changes.piracy_folder_id || changes.piracy_sheet_id || changes.event_sheet_id)) return;
         evaluateState();
+    });
+
+    window.addEventListener('rights-reporter-assistant-preference-changed', (event) => {
+        const wasEnabled = assistantEnabled;
+        assistantEnabled = assistantPreference?.isEnabled(event.detail?.enabled) ?? event.detail?.enabled !== false;
+        if (!assistantEnabled) {
+            hideClippy();
+            return;
+        }
+        if (!wasEnabled) {
+            optionsClippyHidden = false;
+            optionsBubbleHidden = false;
+        }
+        evaluateState();
+    });
+
+    window.addEventListener('rights-reporter-theme-changed', () => {
+        const img = clippyShadow?.getElementById('flo-clippy-img');
+        if (img) {
+            img.src = assistantImageForState();
+            img.alt = assistantName();
+        }
     });
 
     if (isOptionsPage) {
@@ -408,16 +483,17 @@
     }
 
     window.addEventListener('triggerClippyHype', (event) => {
+        if (!assistantEnabled) return;
         if (!clippyHost || clippyHost.style.display === 'none') return;
 
         const { message, isLevelUp } = event.detail;
         const img = clippyShadow?.getElementById('flo-clippy-img');
-        if (img) img.src = chrome.runtime.getURL('images/clippy smrik.gif');
+        if (img) img.src = assistantImageForState('smirk');
 
         showMessage(`🎉 <b>${isLevelUp ? 'LEVEL UP!' : "Rank Up! You're now a Pathfinder!"}</b><br><br>${message || ''}`);
 
         setTimeout(() => {
-            if (img) img.src = chrome.runtime.getURL('images/clippy.gif');
+            if (img) img.src = assistantImageForState();
         }, 5000);
     });
 

@@ -1,10 +1,27 @@
 import { getClippyAssetForState } from '../utils/clippy_assets.js';
 import {
+    concealProtectedInput,
+    readProtectedInput,
+    revealProtectedInput,
+    setProtectedInputValue
+} from '../utils/protected_input.js';
+import {
   PERMISSIONS,
   hasPermission,
-  hasPlatformAccess,
-  roleLabel
+  hasPlatformAccess
 } from '../utils/access_control.js';
+import {
+  DEFAULT_DOUBLE_XP_RETENTION_DAYS,
+  activateDoubleXpEvent,
+  getDoubleXpRetentionDays,
+  isValidDoubleXpRetentionDays
+} from '../utils/double_xp_retention.js';
+import {
+  DEFAULT_GAMIFICATION_LEVELS,
+  getGamificationLevels,
+  isValidGamificationLevels,
+  normalizeGamificationLevels
+} from '../utils/gamification_levels.js';
 
 async function fetchConfig() {
     const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
@@ -148,6 +165,7 @@ const SELECTOR_HELP_TEXT = Object.freeze({
 });
 
 const clippy = document.getElementById('clippy-img');
+const assistantPreference = globalThis.RightsReporterAssistantPreference;
 const status = document.getElementById('status');
 const saveHint = document.getElementById('save_hint');
 const setupStatusPill = document.getElementById('setup-status-pill');
@@ -157,9 +175,18 @@ const briefingCount = document.getElementById('briefing-count');
 const suggestionCounter = document.getElementById('suggestion_counter');
 
 const fieldIds = ['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id'];
+const protectedFieldPlaceholders = Object.freeze({
+    piracy_folder_id: 'Box 1 complete — click to edit',
+    piracy_sheet_id: 'Box 2 complete — click to edit',
+    event_sheet_id: 'Box 3 complete — click to edit'
+});
 let savedSettingsSnapshot = null;
 let savedBriefingConfig = { ...DEFAULT_BRIEFING_STATS };
+let canManageDoubleXpRetention = false;
+let canManageGamificationLevels = false;
 let editorVerticals = [];
+let editorDoubleXpRetentionDays = DEFAULT_DOUBLE_XP_RETENTION_DAYS;
+let editorGamificationLevels = normalizeGamificationLevels(DEFAULT_GAMIFICATION_LEVELS);
 let editorCommunityHighlights = {
     highlight_of_the_week: { ...DEFAULT_HIGHLIGHT },
     lab_instructions: DEFAULT_LAB_INSTRUCTIONS
@@ -170,9 +197,89 @@ let selectorEditorSelectedSection = 'autofill';
 let currentSelectorCategoryMap = new Map();
 let pendingSelectorDelete = null;
 
+function applyAssistantPreference(enabled, { message = '' } = {}) {
+    const normalizedValue = assistantPreference?.isEnabled(enabled) ?? enabled !== false;
+    const toggle = getEl('assistant_enabled');
+    const preferenceState = getEl('assistant-preference-state');
+
+    document.documentElement.dataset.assistantEnabled = String(normalizedValue);
+    if (clippy) clippy.hidden = !normalizedValue;
+    if (toggle) toggle.checked = normalizedValue;
+    if (preferenceState) {
+        preferenceState.textContent = message || (normalizedValue
+            ? 'On — assistant tips and guidance are visible.'
+            : 'Off — the assistant stays hidden across the extension.');
+    }
+
+    globalThis.dispatchEvent(new CustomEvent('rights-reporter-assistant-preference-changed', {
+        detail: { enabled: normalizedValue }
+    }));
+}
+
+async function initializeAssistantPreference() {
+    const toggle = getEl('assistant_enabled');
+    if (!toggle || !assistantPreference) return;
+
+    const enabled = await assistantPreference.read();
+    applyAssistantPreference(enabled);
+    toggle.disabled = false;
+
+    toggle.addEventListener('change', async () => {
+        const previousValue = !toggle.checked;
+        toggle.disabled = true;
+        applyAssistantPreference(toggle.checked, {
+            message: toggle.checked ? 'Turning the assistant on…' : 'Hiding the assistant…'
+        });
+
+        try {
+            const savedValue = await assistantPreference.write(toggle.checked);
+            applyAssistantPreference(savedValue);
+        } catch (error) {
+            console.error('Unable to save the assistant preference:', error);
+            applyAssistantPreference(previousValue, {
+                message: 'The preference could not be saved. Please try again.'
+            });
+        } finally {
+            toggle.disabled = false;
+        }
+    });
+
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace !== 'sync' || !changes[assistantPreference.STORAGE_KEY]) return;
+        applyAssistantPreference(changes[assistantPreference.STORAGE_KEY].newValue);
+    });
+}
+
+function applyOptionsAccessProfile(profile) {
+    canManageDoubleXpRetention = hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS);
+    canManageGamificationLevels = hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS);
+    const control = getEl('double-xp-retention-control');
+    const input = getEl('double_xp_retention_days');
+    const levelSection = getEl('gamification-level-section');
+    if (control) control.hidden = !canManageDoubleXpRetention;
+    if (input) input.disabled = !canManageDoubleXpRetention;
+    if (levelSection) levelSection.hidden = !canManageGamificationLevels;
+    getGamificationLevelInputs().forEach((levelInput) => {
+        levelInput.disabled = !canManageGamificationLevels;
+    });
+}
+
+async function initializeOptionsAccess() {
+    try {
+        const response = await chrome.runtime.sendMessage({ action: 'getAccessProfile' });
+        applyOptionsAccessProfile(response?.success ? response.profile : null);
+    } catch (error) {
+        console.warn('Unable to load Settings access profile:', error);
+        applyOptionsAccessProfile(null);
+    } finally {
+        globalThis.dispatchEvent(new CustomEvent('floAccessConfigReady'));
+    }
+}
+
 function setClippyState(state) {
     if (!clippy) return;
-    clippy.src = getClippyAssetForState(state);
+    const customerImage = globalThis.RightsReporterTheme?.getTheme?.()?.assistantImageDataUrl;
+    clippy.src = customerImage || getClippyAssetForState(state);
 }
 
 function getEl(id) {
@@ -289,9 +396,48 @@ function getBriefingContentModalElements() {
         labInput: getEl('briefing_lab_instructions_input'),
         verticalSelect: getEl('double_xp_vertical'),
         eventNameInput: getEl('double_xp_event_name'),
+        retentionControl: getEl('double-xp-retention-control'),
+        retentionInput: getEl('double_xp_retention_days'),
+        retentionSummary: getEl('double-xp-retention-summary'),
         listContainer: getEl('double_xp_event_list'),
         saveBtn: getEl('save_briefing_content')
     };
+}
+
+function getGamificationLevelInputs() {
+    return [
+        getEl('scout_level_2_points'),
+        getEl('scout_level_3_points'),
+        getEl('enforcer_level_2_points'),
+        getEl('enforcer_level_3_points')
+    ].filter(Boolean);
+}
+
+function readGamificationLevelInputs() {
+    return {
+        scout: {
+            level_2_points: Number(getEl('scout_level_2_points')?.value),
+            level_3_points: Number(getEl('scout_level_3_points')?.value)
+        },
+        enforcer: {
+            level_2_points: Number(getEl('enforcer_level_2_points')?.value),
+            level_3_points: Number(getEl('enforcer_level_3_points')?.value)
+        }
+    };
+}
+
+function syncGamificationLevelInputs() {
+    const levels = normalizeGamificationLevels(editorGamificationLevels);
+    const values = {
+        scout_level_2_points: levels.scout.level_2_points,
+        scout_level_3_points: levels.scout.level_3_points,
+        enforcer_level_2_points: levels.enforcer.level_2_points,
+        enforcer_level_3_points: levels.enforcer.level_3_points
+    };
+    Object.entries(values).forEach(([id, value]) => {
+        const input = getEl(id);
+        if (input) input.value = String(value);
+    });
 }
 
 function getSelectorEditorElements() {
@@ -346,7 +492,8 @@ function collectDoubleXpEvents(verticals) {
                 .filter((event) => event?.double_xp)
                 .map((event) => ({
                     verticalName: vertical.name,
-                    eventName: getEventDisplayName(event)
+                    eventName: getEventDisplayName(event),
+                    expiresAt: event.double_xp_expires_at || ''
                 }))
         )
         .filter((event) => event.verticalName && event.eventName)
@@ -373,6 +520,22 @@ function populateDoubleXpVerticalOptions() {
     }
 }
 
+function formatDoubleXpExpiration(value) {
+    const expiration = new Date(value);
+    if (Number.isNaN(expiration.getTime())) return 'Expiration begins when saved';
+    return `Ends ${new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    }).format(expiration)}`;
+}
+
+function updateDoubleXpRetentionSummary(days = editorDoubleXpRetentionDays) {
+    const { retentionSummary } = getBriefingContentModalElements();
+    if (!retentionSummary) return;
+    retentionSummary.textContent = `Double XP automatically ends ${days} ${days === 1 ? 'day' : 'days'} after it is added.`;
+}
+
 function renderDoubleXpEventList() {
     const { listContainer } = getBriefingContentModalElements();
     if (!listContainer) return;
@@ -388,7 +551,7 @@ function renderDoubleXpEventList() {
             <div class="double-xp-item">
               <div>
                 <div class="double-xp-item-title">${escapeHtml(event.eventName)}</div>
-                <div class="double-xp-item-subtitle">${escapeHtml(event.verticalName)}</div>
+                <div class="double-xp-item-subtitle">${escapeHtml(event.verticalName)} · ${escapeHtml(formatDoubleXpExpiration(event.expiresAt))}</div>
               </div>
               <button class="btn-secondary remove-double-xp-event" data-index="${index}" type="button">Remove</button>
             </div>
@@ -418,13 +581,16 @@ function renderDoubleXpEventList() {
 }
 
 function syncBriefingContentEditorInputs() {
-    const { userInput, descInput, bonusInput, labInput } = getBriefingContentModalElements();
+    const { userInput, descInput, bonusInput, labInput, retentionInput } = getBriefingContentModalElements();
     const highlight = editorCommunityHighlights.highlight_of_the_week || DEFAULT_HIGHLIGHT;
 
     if (userInput) userInput.value = highlight.user || '';
     if (descInput) descInput.value = highlight.achievement || '';
     if (bonusInput) bonusInput.value = highlight.bonus_awarded || '';
     if (labInput) labInput.value = editorCommunityHighlights.lab_instructions || '';
+    if (retentionInput) retentionInput.value = String(editorDoubleXpRetentionDays);
+    updateDoubleXpRetentionSummary();
+    syncGamificationLevelInputs();
 
     populateDoubleXpVerticalOptions();
     renderDoubleXpEventList();
@@ -443,6 +609,8 @@ async function loadBriefingContentEditor() {
         const config = await fetchConfig();
         editorCommunityHighlights = normalizeCommunityHighlights(config.community_highlights);
         editorVerticals = normalizeVerticals(config.verticals);
+        editorDoubleXpRetentionDays = getDoubleXpRetentionDays(config);
+        editorGamificationLevels = getGamificationLevels(config);
         syncBriefingContentEditorInputs();
         loaded = true;
         setBriefingContentStatus('');
@@ -481,10 +649,19 @@ function addDoubleXpEventFromInputs() {
         return;
     }
 
+    const retentionInput = getEl('double_xp_retention_days');
+    const requestedRetentionDays = retentionInput?.value || editorDoubleXpRetentionDays;
+    const retentionDays = isValidDoubleXpRetentionDays(requestedRetentionDays)
+        ? Number(requestedRetentionDays)
+        : editorDoubleXpRetentionDays;
+
     if (existingEvent) {
-        existingEvent.double_xp = true;
+        Object.assign(existingEvent, activateDoubleXpEvent(existingEvent, retentionDays));
     } else {
-        matchingVertical.events = [...(matchingVertical.events || []), { eventName, double_xp: true }];
+        matchingVertical.events = [
+            ...(matchingVertical.events || []),
+            activateDoubleXpEvent({ eventName }, retentionDays)
+        ];
     }
 
     if (eventNameInput) eventNameInput.value = '';
@@ -502,18 +679,44 @@ async function saveBriefingContentEdits() {
         },
         lab_instructions: labInput?.value.trim() || ''
     };
+    const retentionInput = getEl('double_xp_retention_days');
+    const requestedRetentionDays = retentionInput?.value || editorDoubleXpRetentionDays;
+    if (canManageDoubleXpRetention && !isValidDoubleXpRetentionDays(requestedRetentionDays)) {
+        setBriefingContentStatus('Automatic removal must be a whole number from 1 to 365 days.', 'var(--brand-primary)');
+        retentionInput?.focus();
+        return;
+    }
+
+    const requestedGamificationLevels = readGamificationLevelInputs();
+    if (canManageGamificationLevels && !isValidGamificationLevels(requestedGamificationLevels)) {
+        setBriefingContentStatus(
+            'Each level threshold must be a whole number from 1 to 10,000,000, and Level 3 must be higher than Level 2 for both tracks.',
+            'var(--brand-primary)'
+        );
+        return;
+    }
+
+    const sections = {
+        community_highlights: communityHighlights,
+        verticals: editorVerticals
+    };
+    if (canManageDoubleXpRetention) {
+        editorDoubleXpRetentionDays = Number(requestedRetentionDays);
+        sections.double_xp_settings = { retention_days: editorDoubleXpRetentionDays };
+    }
+    if (canManageGamificationLevels) {
+        editorGamificationLevels = normalizeGamificationLevels(requestedGamificationLevels);
+        sections.gamification_levels = editorGamificationLevels;
+    }
 
     try {
         if (saveBtn) saveBtn.disabled = true;
         setBriefingContentStatus('Saving shared events_config.json...', '#2563eb');
-        await updateConfigSections({
-            community_highlights: communityHighlights,
-            verticals: editorVerticals
-        });
+        await updateConfigSections(sections);
 
         renderCommunityPreview(communityHighlights);
         if (modal) modal.style.display = 'none';
-        setStatusMessage('Briefing content saved to shared events_config.json.', 'green', 'smirk');
+        setStatusMessage('Shared content and level settings saved.', 'green', 'smirk');
         clearStatusMessage();
     } catch (error) {
         console.error('Failed to save briefing content:', error);
@@ -913,9 +1116,9 @@ function confirmSelectorDelete() {
 
 function getCurrentSettingsSnapshot() {
     return {
-        piracy_folder_id: getEl('piracy_folder_id')?.value.trim() || '',
-        piracy_sheet_id: getEl('piracy_sheet_id')?.value.trim() || '',
-        event_sheet_id: getEl('event_sheet_id')?.value.trim() || '',
+        piracy_folder_id: readProtectedInput(getEl('piracy_folder_id')),
+        piracy_sheet_id: readProtectedInput(getEl('piracy_sheet_id')),
+        event_sheet_id: readProtectedInput(getEl('event_sheet_id')),
         beta_opt_in: !!getEl('beta_opt_in')?.checked,
         report_mode: getEl('report_mode')?.value || 'scout'
     };
@@ -938,9 +1141,9 @@ function updateSaveHint() {
 
 function updateSetupStatus() {
     const checks = [
-        { id: 'setup-folder-check', value: getEl('piracy_folder_id')?.value.trim() },
-        { id: 'setup-sheet-check', value: getEl('piracy_sheet_id')?.value.trim() },
-        { id: 'setup-event-check', value: getEl('event_sheet_id')?.value.trim() }
+        { id: 'setup-folder-check', value: readProtectedInput(getEl('piracy_folder_id')) },
+        { id: 'setup-sheet-check', value: readProtectedInput(getEl('piracy_sheet_id')) },
+        { id: 'setup-event-check', value: readProtectedInput(getEl('event_sheet_id')) }
     ];
 
     const readyCount = checks.filter((item) => item.value).length;
@@ -954,12 +1157,27 @@ function updateSetupStatus() {
     });
 
     const allReady = readyCount === checks.length;
+    const missingCount = checks.length - readyCount;
     setupStatusPill?.classList.toggle('ready', allReady);
-    if (setupStatusPill) setupStatusPill.textContent = allReady ? 'Ready' : `${checks.length - readyCount} Missing`;
+    if (setupStatusPill) setupStatusPill.textContent = allReady ? 'Ready' : `${missingCount} Missing`;
     if (setupStatusCopy) {
         setupStatusCopy.textContent = allReady
             ? 'All required IDs are present. Reporting and intelligence features are ready.'
             : 'Complete the required IDs to unlock reporting and team intelligence features.';
+    }
+
+    const connectivityStatus = getEl('core-connectivity-status');
+    connectivityStatus?.classList.toggle('ready', allReady);
+    if (connectivityStatus) {
+        connectivityStatus.textContent = allReady
+            ? 'Complete'
+            : `Incomplete · ${missingCount} missing`;
+        connectivityStatus.setAttribute(
+            'aria-label',
+            allReady
+                ? 'Core Connectivity complete. All three required IDs are set.'
+                : `Core Connectivity incomplete. ${missingCount} required ${missingCount === 1 ? 'ID is' : 'IDs are'} missing.`
+        );
     }
 }
 
@@ -1038,6 +1256,12 @@ function updateSuggestionCounter() {
 function attachInputStateListeners() {
     fieldIds.forEach((id) => {
         const field = getEl(id);
+        field?.addEventListener('focus', () => revealProtectedInput(field));
+        field?.addEventListener('blur', () => {
+            concealProtectedInput(field, protectedFieldPlaceholders[id]);
+            updateSetupStatus();
+            updateSaveHint();
+        });
         field?.addEventListener('input', () => {
             updateSetupStatus();
             updateSaveHint();
@@ -1147,6 +1371,10 @@ function attachSharedConfigEditorListeners() {
         setBriefingContentStatus('Lab instructions cleared. Save to apply it.', 'var(--status-warning)');
     });
     getEl('add_double_xp_event')?.addEventListener('click', addDoubleXpEventFromInputs);
+    getEl('double_xp_retention_days')?.addEventListener('input', (event) => {
+        if (!isValidDoubleXpRetentionDays(event.target.value)) return;
+        updateDoubleXpRetentionSummary(Number(event.target.value));
+    });
     getEl('double_xp_event_name')?.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter') return;
         event.preventDefault();
@@ -1220,7 +1448,7 @@ function attachSharedConfigEditorListeners() {
 
 function attachCoreActionListeners() {
     getEl('open_evidence_locker')?.addEventListener('click', () => {
-        const folderId = getEl('piracy_folder_id')?.value.trim();
+        const folderId = readProtectedInput(getEl('piracy_folder_id'));
         if (folderId) {
             window.open(`https://drive.google.com/drive/folders/${folderId}`, '_blank');
         } else {
@@ -1286,9 +1514,9 @@ function attachFeedbackListener() {
 
 function attachSaveListener() {
     getEl('save')?.addEventListener('click', () => {
-        const folderId = getEl('piracy_folder_id').value.trim();
-        const sheetId = getEl('piracy_sheet_id').value.trim();
-        const eventSheetId = getEl('event_sheet_id').value.trim();
+        const folderId = readProtectedInput(getEl('piracy_folder_id'));
+        const sheetId = readProtectedInput(getEl('piracy_sheet_id'));
+        const eventSheetId = readProtectedInput(getEl('event_sheet_id'));
         const betaOptIn = getEl('beta_opt_in').checked;
         const reportMode = getEl('report_mode').value;
 
@@ -1310,6 +1538,7 @@ function attachSaveListener() {
             beta_opt_in: betaOptIn,
             report_mode: reportMode
         }, () => {
+            fieldIds.forEach((id) => concealProtectedInput(getEl(id), protectedFieldPlaceholders[id]));
             savedSettingsSnapshot = getCurrentSettingsSnapshot();
             updateSaveHint();
             updateSetupStatus();
@@ -1335,6 +1564,9 @@ async function initializeOptionsPage() {
     if (globalThis.__floOptionsPageInitialized) return;
     globalThis.__floOptionsPageInitialized = true;
 
+    await initializeAssistantPreference();
+    await initializeOptionsAccess();
+
     attachInputStateListeners();
     attachBriefingListeners();
     attachSharedConfigEditorListeners();
@@ -1344,9 +1576,9 @@ async function initializeOptionsPage() {
     updateSuggestionCounter();
 
     chrome.storage.sync.get(['piracy_folder_id', 'piracy_sheet_id', 'event_sheet_id', 'beta_opt_in', 'report_mode', 'briefing_config'], (items) => {
-        if (items.piracy_folder_id) getEl('piracy_folder_id').value = items.piracy_folder_id;
-        if (items.piracy_sheet_id) getEl('piracy_sheet_id').value = items.piracy_sheet_id;
-        if (items.event_sheet_id) getEl('event_sheet_id').value = items.event_sheet_id;
+        setProtectedInputValue(getEl('piracy_folder_id'), items.piracy_folder_id, protectedFieldPlaceholders.piracy_folder_id);
+        setProtectedInputValue(getEl('piracy_sheet_id'), items.piracy_sheet_id, protectedFieldPlaceholders.piracy_sheet_id);
+        setProtectedInputValue(getEl('event_sheet_id'), items.event_sheet_id, protectedFieldPlaceholders.event_sheet_id);
         getEl('beta_opt_in').checked = !!items.beta_opt_in;
 
         syncReportMode(items.report_mode || 'scout');
@@ -1370,6 +1602,8 @@ async function initializeOptionsPage() {
         setClippyState('default');
     }
 }
+
+globalThis.addEventListener('rights-reporter-theme-changed', () => setClippyState('default'));
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

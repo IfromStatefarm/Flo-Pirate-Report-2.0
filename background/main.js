@@ -41,8 +41,26 @@ import {
   normalizeAccessPlatform
 } from '../utils/access_control.js';
 import { detectPlatformDetails } from '../utils/platforms.js';
+import {
+  MAX_DOUBLE_XP_RETENTION_DAYS,
+  MIN_DOUBLE_XP_RETENTION_DAYS,
+  applyDoubleXpRetention,
+  getDoubleXpRetentionDays,
+  isValidDoubleXpRetentionDays,
+  reconcileDoubleXpVerticals
+} from '../utils/double_xp_retention.js';
+import {
+  DEFAULT_GAMIFICATION_LEVELS,
+  MAX_GAMIFICATION_LEVEL_POINTS,
+  MIN_GAMIFICATION_LEVEL_POINTS,
+  applyGamificationLevels,
+  getGamificationLevels,
+  isValidGamificationLevels,
+  normalizeGamificationLevels
+} from '../utils/gamification_levels.js';
 
 const ALARM_NAME = 'theCloser';
+const DOUBLE_XP_CLEANUP_ALARM_NAME = 'doubleXpRetentionCleanup';
 const LEGACY_GAMIFICATION_STATS_CACHE_KEY = 'gamification_stats_cache';
 const ACCESS_CONTEXT = Symbol('accessContext');
 
@@ -53,16 +71,58 @@ const customerMembershipService = createCustomerMembershipService({ getAuthToken
 const customerDataService = createCustomerDataService({ getAuthToken });
 const customerMigrationService = createCustomerMigrationService({ customerDataService });
 
+async function fetchConfigWithDoubleXpCleanup({ interactive = true, persist = true } = {}) {
+  const config = await fetchConfig({ interactive });
+  const retention = applyDoubleXpRetention(config);
+
+  if (persist && retention.changed) {
+    try {
+      await updateConfigSections({ verticals: retention.config.verticals }, 0, { interactive });
+    } catch (error) {
+      console.warn('Double XP cleanup will retry later:', error.message);
+    }
+  }
+
+  return retention.config;
+}
+
+function validateDoubleXpSettings(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Double XP automatic removal settings must be an object.');
+  }
+  const keys = Object.keys(value);
+  if (keys.length !== 1 || keys[0] !== 'retention_days') {
+    throw new Error('Double XP automatic removal accepts only retention_days.');
+  }
+  if (!isValidDoubleXpRetentionDays(value.retention_days)) {
+    throw new Error(
+      `Double XP automatic removal must be a whole number from ${MIN_DOUBLE_XP_RETENTION_DAYS} to ${MAX_DOUBLE_XP_RETENTION_DAYS} days.`
+    );
+  }
+  return { retention_days: Number(value.retention_days) };
+}
+
+function validateGamificationLevels(value) {
+  if (!isValidGamificationLevels(value)) {
+    throw new Error(
+      `Scout and Enforcer level thresholds must use only Level 2 and Level 3 whole-number point values from ${MIN_GAMIFICATION_LEVEL_POINTS.toLocaleString()} to ${MAX_GAMIFICATION_LEVEL_POINTS.toLocaleString()}, with Level 3 higher than Level 2.`
+    );
+  }
+  return normalizeGamificationLevels(value);
+}
+
 async function resolveRuntimeTheme(profile) {
-  let logoDataUrl = '';
-  if (profile?.status === 'ready' && profile.theme?.logoUrl) {
-    logoDataUrl = await themeAssetService.resolveLogo({
+  let assets = {};
+  if (profile?.status === 'ready' && profile.theme) {
+    assets = await themeAssetService.resolveThemeAssets({
       customerId: profile.customerId,
       configVersion: profile.configVersion,
-      logoUrl: profile.theme.logoUrl
+      logoUrl: profile.theme.logoUrl,
+      assistantImageUrl: profile.theme.assistantImageUrl,
+      easterEggImageUrl: profile.theme.easterEggImageUrl
     });
   }
-  return buildRuntimeTheme(profile, logoDataUrl);
+  return buildRuntimeTheme(profile, assets);
 }
 
 const ACTION_ACCESS_POLICIES = Object.freeze({
@@ -262,10 +322,23 @@ function setupBrowserEventListeners() {
 
   chrome.runtime.onInstalled.addListener(() => {
     chrome.alarms.create(ALARM_NAME, { periodInMinutes: 60 });
+    chrome.alarms.create(DOUBLE_XP_CLEANUP_ALARM_NAME, { periodInMinutes: 360 });
     chrome.storage.local.set({ onboarding_step: 'NEEDS_CONFIG' });
   });
 
+  chrome.runtime.onStartup.addListener(() => {
+    chrome.alarms.create(DOUBLE_XP_CLEANUP_ALARM_NAME, { periodInMinutes: 360 });
+  });
+
   chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === DOUBLE_XP_CLEANUP_ALARM_NAME) {
+      try {
+        await fetchConfigWithDoubleXpCleanup({ interactive: false });
+      } catch (error) {
+        console.warn('Scheduled Double XP cleanup skipped:', error.message);
+      }
+      return;
+    }
     if (alarm.name !== ALARM_NAME) return;
     const { closer_enabled, closer_duration_minutes } = await chrome.storage.local.get([
       'closer_enabled',
@@ -319,9 +392,18 @@ async function handleGamificationStats(profile) {
     const result = await customerDataService.queryStatistics(profile, 'scoreboard', query);
     await customerMigrationService.compareStatistics(profile, 'scoreboard', query, result);
     const stats = result.data;
+    let levelThresholds = normalizeGamificationLevels(DEFAULT_GAMIFICATION_LEVELS);
+    try {
+      const config = await fetchConfigWithDoubleXpCleanup();
+      levelThresholds = getGamificationLevels(config);
+    } catch (configError) {
+      console.warn('Using default gamification level thresholds:', configError.message);
+    }
+
     const hydratedStats = {
       ...createEmptyGamificationStats(),
       ...stats,
+      levelThresholds,
       error: Boolean(stats?.error),
       stale: false,
       lastUpdated: Date.now()
@@ -332,6 +414,7 @@ async function handleGamificationStats(profile) {
     }
 
     if (!hydratedStats.error) {
+      Object.assign(hydratedStats, applyGamificationLevels(hydratedStats, levelThresholds));
       await chrome.storage.local.set({
         [getGamificationCacheKey(profile)]: {
           customerId: profile.customerId,
@@ -360,6 +443,7 @@ function createEmptyGamificationStats(overrides = {}) {
     enforcerPoints: 0,
     scoutRank: 'Level 1 Scout Reporter',
     enforcerRank: 'Level 1 Enforcer',
+    levelThresholds: normalizeGamificationLevels(DEFAULT_GAMIFICATION_LEVELS),
     teamTotal: 0,
     topScouts: [],
     topEnforcers: [],
@@ -680,11 +764,11 @@ function createActionHandlers() {
     },
 
     async getConfig() {
-      return { success: true, config: await fetchConfig() };
+      return { success: true, config: await fetchConfigWithDoubleXpCleanup() };
     },
 
     async updateSharedConfig(request) {
-      const sections = request.sections || {};
+      const sections = { ...(request.sections || {}) };
       if (sections.platform_selectors) {
         const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SETTINGS_INTELLIGENCE_TOOLS);
         if (!hasPermission(profile, PERMISSIONS.SETTINGS_SELECTOR_PATHS)) {
@@ -707,7 +791,49 @@ function createActionHandlers() {
         return { success: true, config };
       }
 
-      return { success: true, config: await updateConfigSections(sections) };
+      const profile = request[ACCESS_CONTEXT]
+        || await accessRegistry.requirePermission(PERMISSIONS.SETTINGS_INTELLIGENCE_TOOLS);
+      const updatesRetention = Object.prototype.hasOwnProperty.call(sections, 'double_xp_settings');
+      const updatesGamificationLevels = Object.prototype.hasOwnProperty.call(sections, 'gamification_levels');
+      let requestedRetentionDays = null;
+
+      if (updatesRetention) {
+        if (!hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS)) {
+          throw new Error('Access denied: Double XP automatic removal settings are restricted to administrators.');
+        }
+        sections.double_xp_settings = validateDoubleXpSettings(sections.double_xp_settings);
+        requestedRetentionDays = sections.double_xp_settings.retention_days;
+      }
+
+      if (updatesGamificationLevels) {
+        if (!hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS)) {
+          throw new Error('Access denied: Scout and Enforcer level thresholds are restricted to administrators.');
+        }
+        sections.gamification_levels = validateGamificationLevels(sections.gamification_levels);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(sections, 'verticals') || updatesRetention) {
+        if (Object.prototype.hasOwnProperty.call(sections, 'verticals') && !Array.isArray(sections.verticals)) {
+          throw new Error('Double XP event updates require a verticals array.');
+        }
+
+        const currentConfig = await fetchConfigWithDoubleXpCleanup({ persist: false });
+        const currentRetentionDays = getDoubleXpRetentionDays(currentConfig);
+        const retentionDays = requestedRetentionDays ?? currentRetentionDays;
+        const nextVerticals = Object.prototype.hasOwnProperty.call(sections, 'verticals')
+          ? sections.verticals
+          : currentConfig.verticals;
+        sections.verticals = reconcileDoubleXpVerticals(nextVerticals, currentConfig.verticals, {
+          retentionDays,
+          recalculateExisting: updatesRetention && retentionDays !== currentRetentionDays
+        });
+      }
+
+      const updatedConfig = await updateConfigSections(sections);
+      if (updatesGamificationLevels) {
+        await chrome.storage.local.set({ gamification_levels_revision: Date.now() });
+      }
+      return { success: true, config: updatedConfig };
     },
 
     async getRecommendedStartRow(request) {

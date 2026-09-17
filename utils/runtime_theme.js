@@ -20,16 +20,21 @@ function neutralTheme() {
     logoUrl: '',
     logoDataUrl: '',
     logoAltText: NEUTRAL_CUSTOMER_CONFIG.theme.logoAltText,
+    assistantImageUrl: '',
+    assistantImageDataUrl: '',
+    easterEggImageUrl: '',
+    easterEggImageDataUrl: '',
     legal: { ...NEUTRAL_CUSTOMER_CONFIG.legal }
   };
 }
 
-export function buildRuntimeTheme(profile, logoDataUrl = '') {
+export function buildRuntimeTheme(profile, assetData = {}) {
   if (profile?.status !== 'ready' || profile?.verification !== 'verified' || !profile.theme) {
     return deepFreeze(neutralTheme());
   }
 
   const theme = profile.theme;
+  const assets = typeof assetData === 'string' ? { logoDataUrl: assetData } : (assetData || {});
   return deepFreeze({
     schemaVersion: RUNTIME_THEME_SCHEMA_VERSION,
     customerId: profile.customerId,
@@ -45,8 +50,12 @@ export function buildRuntimeTheme(profile, logoDataUrl = '') {
     }),
     colors: Object.freeze({ ...theme.colors }),
     logoUrl: theme.logoUrl,
-    logoDataUrl,
+    logoDataUrl: String(assets.logoDataUrl || ''),
     logoAltText: theme.logoAltText,
+    assistantImageUrl: theme.assistantImageUrl,
+    assistantImageDataUrl: String(assets.assistantImageDataUrl || ''),
+    easterEggImageUrl: theme.easterEggImageUrl,
+    easterEggImageDataUrl: String(assets.easterEggImageDataUrl || ''),
     legal: Object.freeze({ ...(profile.legal || NEUTRAL_CUSTOMER_CONFIG.legal) })
   });
 }

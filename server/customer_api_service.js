@@ -148,6 +148,8 @@ function customerProfile(resolution, now) {
       ...config.product,
       logoUrl: config.theme.logoUrl,
       logoAltText: config.theme.logoAltText,
+      assistantImageUrl: config.theme.assistantImageUrl,
+      easterEggImageUrl: config.theme.easterEggImageUrl,
       colors: config.theme.colors
     },
     legal: config.legal,

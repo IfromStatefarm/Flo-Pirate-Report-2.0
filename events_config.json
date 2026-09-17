@@ -1,4 +1,17 @@
 {
+  "double_xp_settings": {
+    "retention_days": 10
+  },
+  "gamification_levels": {
+    "scout": {
+      "level_2_points": 501,
+      "level_3_points": 1001
+    },
+    "enforcer": {
+      "level_2_points": 501,
+      "level_3_points": 1001
+    }
+  },
   "verticals": [
     { "name": "Var", "events": [] },
     { "name": "Motorsports", "events": [] },

@@ -40,6 +40,8 @@
       border: '#E5E7EB', success: '#166534', warning: '#B45309', danger: '#B91C1C'
     }),
     logoUrl: '', logoDataUrl: '', logoAltText: 'Rights Reporter',
+    assistantImageUrl: '', assistantImageDataUrl: '',
+    easterEggImageUrl: '', easterEggImageDataUrl: '',
     legal: Object.freeze({
       ownerName: '', companyName: '', reportingEmail: '', secondaryEmail: '', phone: '',
       addressLine1: '', city: '', region: '', postalCode: '', country: '', originalWorkUrl: ''
@@ -48,6 +50,31 @@
 
   let currentTheme = FALLBACK;
   let loadingPromise = null;
+  const THEME_REQUEST_TIMEOUT_MS = 4000;
+
+  function requestRuntimeTheme() {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback(value);
+      };
+      const timer = setTimeout(() => {
+        finish(reject, new Error('Runtime theme request timed out.'));
+      }, THEME_REQUEST_TIMEOUT_MS);
+
+      try {
+        Promise.resolve(chrome.runtime.sendMessage({ action: 'getRuntimeTheme' })).then(
+          (response) => finish(resolve, response),
+          (error) => finish(reject, error)
+        );
+      } catch (error) {
+        finish(reject, error);
+      }
+    });
+  }
 
   function safeTheme(candidate) {
     if (!candidate || candidate.schemaVersion !== 1 || !candidate.product || !candidate.colors) return FALLBACK;
@@ -93,6 +120,16 @@
       element.setAttribute('src', logo);
       element.setAttribute('alt', theme.logoAltText || theme.product.displayName);
     });
+    root.querySelectorAll?.('[data-theme-assistant]').forEach((element) => {
+      const assistantImage = theme.assistantImageDataUrl || chrome.runtime.getURL('images/clippy starting postion.png');
+      element.setAttribute('src', assistantImage);
+      element.setAttribute('alt', theme.product.assistantName || 'Reporting Assistant');
+    });
+    root.querySelectorAll?.('[data-theme-easter-egg]').forEach((element) => {
+      const easterEggImage = theme.easterEggImageDataUrl || chrome.runtime.getURL('images/Flopirate hunter.gif');
+      element.setAttribute('src', easterEggImage);
+      element.setAttribute('alt', `${theme.product.displayName} Easter egg`);
+    });
     globalThis.dispatchEvent?.(new CustomEvent('rights-reporter-theme-changed', { detail: theme }));
     return theme;
   }
@@ -101,7 +138,7 @@
     if (loadingPromise) return loadingPromise;
     loadingPromise = (async () => {
       try {
-        const response = await chrome.runtime.sendMessage({ action: 'getRuntimeTheme' });
+        const response = await requestRuntimeTheme();
         return applyTheme(response?.success ? response.theme : FALLBACK);
       } catch (error) {
         console.warn('Runtime theme unavailable; using neutral theme.', error?.message || error);
@@ -127,7 +164,13 @@
 
   chrome.storage?.onChanged?.addListener((changes, area) => {
     if (area !== 'local') return;
-    if (changes.customer_access_profile_v1 || changes.customer_access_denial_v1 || changes.customer_logo_cache_v1) {
+    if (
+      changes.customer_access_profile_v1 ||
+      changes.customer_access_denial_v1 ||
+      changes.customer_logo_cache_v1 ||
+      changes.customer_assistant_image_cache_v1 ||
+      changes.customer_easter_egg_image_cache_v1
+    ) {
       void loadTheme({ force: true });
     }
   });

@@ -80,7 +80,7 @@
         "*://vimeo.com/*",
         "*://*.vimeo.com/*"
       ],
-      "js": ["utils/theme_loader.js", "content_scraper.js", "clippy.js"],
+      "js": ["utils/theme_loader.js", "utils/assistant_preference.js", "content_scraper.js", "clippy.js"],
       "run_at": "document_idle",
       "all_frames": true
     },
