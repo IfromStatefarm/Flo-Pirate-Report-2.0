@@ -1,6 +1,13 @@
 const createDomainMatcher = (domains) => {
-  const normalizedDomains = Object.freeze(domains.map((domain) => String(domain).toLowerCase()));
-  return (url) => normalizedDomains.some((domain) => String(url || '').toLowerCase().includes(domain));
+  const normalizedDomains = Object.freeze(domains.map((domain) => String(domain).toLowerCase().split('/')[0]));
+  return (value) => {
+    try {
+      const url = new URL(String(value));
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;
+      const host = url.hostname.toLowerCase().replace(/\.$/, '');
+      return normalizedDomains.some(domain => host === domain || host.endsWith(`.${domain}`));
+    } catch { return false; }
+  };
 };
 
 const platform = (definition) => ({

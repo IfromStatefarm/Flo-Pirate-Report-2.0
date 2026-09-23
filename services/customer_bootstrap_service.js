@@ -18,7 +18,8 @@ const CUSTOMER_SCOPED_LOCAL_KEYS = Object.freeze([
   'piracy_cart',
   'rogue_target_data',
   'reporterInfo',
-  'gamification_stats_cache'
+  'gamification_stats_cache', 'last_reporter', 'streak_count', 'last_report_date',
+  'streak_freezes', 'closer_enabled', 'validated_customer_config_v1', 'report_operation_v1'
 ]);
 const CUSTOMER_SCOPED_SESSION_KEYS = Object.freeze([
   'activeSearchTabId',
@@ -118,11 +119,13 @@ export function createCustomerBootstrapService({
   sessionStorageArea = chrome.storage.session,
   loadSettings = () => defaultLoadSettings(fetchImpl),
   extensionMetadata = defaultExtensionMetadata,
+  onScopeChange = async () => {},
   now = () => Date.now()
 }) {
   let inMemoryProfile = null;
   let inFlightProfilePromise = null;
   let endpointPromise = null;
+  let generation = 0;
 
   async function getEndpoint() {
     if (!endpointPromise) {
@@ -219,6 +222,7 @@ export function createCustomerBootstrapService({
       (await localStorageArea.get(CUSTOMER_ACCESS_PROFILE_CACHE_KEY))?.[CUSTOMER_ACCESS_PROFILE_CACHE_KEY];
     const scopeChanged = !previous ||
       previous.customerId !== profile.customerId || previous.userId !== profile.userId;
+    if (scopeChanged) await onScopeChange();
     inMemoryProfile = profile;
     const writes = [
       localStorageArea.set({ [CUSTOMER_ACCESS_PROFILE_CACHE_KEY]: profile }),
@@ -281,6 +285,7 @@ export function createCustomerBootstrapService({
   }
 
   async function loadCurrentProfile({ forceRefresh = false } = {}) {
+    const startedGeneration = generation;
     let email = normalizeAccessEmail(await getUserEmail());
     let cached = email ? await readCachedProfile(email) : null;
     const denial = email ? await readDenial(email) : null;
@@ -300,12 +305,16 @@ export function createCustomerBootstrapService({
       if (!email) throw new BootstrapError('Sign in with Google before loading customer access.', 'logged_out');
       cached = await readCachedProfile(email);
       const profile = await requestBootstrap(token, email);
+      if (startedGeneration !== generation || normalizeAccessEmail(await getUserEmail()) !== email) {
+        return createUnavailableAccessProfile('logged_out', { message: 'The account changed during sign-in. Sign in again.' });
+      }
       return storeVerifiedProfile(profile);
     } catch (error) {
+      if (startedGeneration !== generation) return createUnavailableAccessProfile('logged_out');
       const status = error?.profileStatus || (email ? 'bootstrap_error' : 'logged_out');
       const message = error?.message || 'Customer access could not be verified.';
       const authoritativeDenial = ['identity_error', 'not_a_member', 'ambiguous_customer'].includes(status);
-      if (email && authoritativeDenial) await storeDenial(email, error);
+      if (email && authoritativeDenial) { await onScopeChange(); await storeDenial(email, error); }
       if (cached && cached.expiresAt > now() && !authoritativeDenial) {
         return toPublicAccessProfile(cached, { loadedAt: now() });
       }
@@ -375,6 +384,8 @@ export function createCustomerBootstrapService({
   }
 
   async function logout() {
+    generation += 1;
+    await onScopeChange();
     inMemoryProfile = null;
     inFlightProfilePromise = null;
     await Promise.all([

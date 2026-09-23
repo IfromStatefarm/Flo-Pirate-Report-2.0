@@ -30,6 +30,7 @@ function bootstrapBody(overrides = {}) {
 function resolution(role = 'manager', customerConfig = CUSTOMER) {
   return {
     count: 1,
+    entitlementExpiresAt: NOW + 24 * 60 * 60 * 1000,
     customerConfig,
     member: {
       memberId: 'usr_9ffedc9ed3536dd81453fa16',
@@ -48,6 +49,7 @@ function actor(role = 'manager', customerConfig = CUSTOMER) {
     email: IDENTITY.email,
     name: 'Ivan McClay',
     role,
+    platforms: customerConfig.capabilities.enabledPlatforms,
     configVersion: customerConfig.configVersion,
     customerConfig
   };

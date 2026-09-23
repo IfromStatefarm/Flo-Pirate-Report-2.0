@@ -1,3 +1,5 @@
+import { captureForTab, evidenceScope, belongsToScope, redactObservationUrl } from '../../utils/evidence_scope.js';
+
 export function createRogueWorkflow({
   base64ToBlob,
   ensureRogueScreenshotFolder,
@@ -7,11 +9,17 @@ export function createRogueWorkflow({
   recordCustomerEvent
 }) {
   const sniffedNetworkTraffic = new Map();
+  let session = null;
+  function observe(details, value) {
+    if (!session || session.expiresAt < Date.now() || details.tabId !== session.tabId) return;
+    const url = redactObservationUrl(details.url);
+    if (url && sniffedNetworkTraffic.size < 100) sniffedNetworkTraffic.set(url, value);
+  }
 
   chrome.webRequest.onBeforeRequest.addListener(
     (details) => {
       if (details.url.startsWith('wss://')) {
-        sniffedNetworkTraffic.set(details.url, 'WebSocket/C2');
+        observe(details, 'WebSocket');
       }
     },
     { urls: ['<all_urls>'] }
@@ -22,31 +30,41 @@ export function createRogueWorkflow({
       const url = details.url.toLowerCase();
 
       if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts')) {
-        sniffedNetworkTraffic.set(details.url, details.ip || 'IP Hidden/Cloudflare');
+        observe(details, details.ip || 'IP unavailable');
       }
     },
     { urls: ['<all_urls>'] }
   );
 
-  async function capture(data) {
+  async function capture(data, tab) {
+    const profile = await getCustomerProfile();
+    if (!Number.isInteger(tab?.id) || data.url !== tab.url) throw new Error('Capture must originate from the selected page.');
+    reset();
+    const captureId = crypto.randomUUID();
+    session = { captureId, ...evidenceScope(profile), tabId: tab.id, expiresAt: Date.now() + 5000 };
+    // Observe only this explicit capture, never ambient browsing across tabs.
+    await new Promise(resolve => setTimeout(resolve, 1000));
     const trafficArray = Array.from(sniffedNetworkTraffic.entries()).map(([url, ip]) => ({ url, ip }));
 
     let screenshotUrl = null;
     try {
-      screenshotUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 50 });
+      screenshotUrl = await captureForTab(tab);
     } catch (error) {
       console.warn('Screenshot failed:', error);
     }
 
-    const rogueData = { ...data, networkTraffic: trafficArray, screenshot: screenshotUrl };
+    const current = await getCustomerProfile();
+    if (!session || session.captureId !== captureId || !belongsToScope(session, current)) throw new Error('Account changed during capture.');
+    const rogueData = { ...data, ...evidenceScope(profile), networkTraffic: trafficArray, screenshot: screenshotUrl };
     await chrome.storage.local.set({ rogue_target_data: rogueData });
-    sniffedNetworkTraffic.clear();
+    reset();
 
     return { success: true };
   }
 
   async function log(data, notes = '') {
     const customerProfile = await getCustomerProfile();
+    if (!belongsToScope(data, customerProfile)) throw new Error('Capture this evidence again with the current account.');
     const customerEventId = crypto.randomUUID();
     const token = await getAuthToken();
     let evidenceUrl = '';
@@ -86,8 +104,10 @@ export function createRogueWorkflow({
     return { success: true, eventId: accepted.event_id };
   }
 
+  function reset() { session = null; sniffedNetworkTraffic.clear(); }
   return {
     capture,
-    log
+    log,
+    reset
   };
 }

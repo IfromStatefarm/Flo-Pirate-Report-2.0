@@ -2,6 +2,12 @@
 
 Customer-configurable copyright evidence and reporting extension.
 
+Production-readiness review: [architecture audit and prioritized roadmap](docs/architecture/PRODUCTION_READINESS_AUDIT.md), including current/target diagrams, trust boundaries, migration gates and required tests. See the [future file modification map](docs/architecture/FUTURE_FILE_MAP.md) for implementation scope. The audit distinguishes implemented controls from intended behavior in older design documents; its P0 gates remain open.
+
+## Commercial subscriptions
+
+Version 3.4.0 adds seller sign-in, subscription dates, monthly/yearly manual renewals, purchased seats, a signed Wix billing bridge, and server-generated report PDFs. Follow [Commercial licensing setup](docs/white-label/COMMERCIAL_LICENSING_SETUP.md) before deploying the API or distributing the new extension. Existing customers need explicit subscription terms; missing terms lock paid API access.
+
 ## Customer access setup
 
 The extension now uses verified Google identity and an API-backed customer bootstrap. It does not read membership from a fixed access workbook or maintain separate extension credentials.
@@ -29,3 +35,8 @@ All extension surfaces use the shared runtime theme in `utils/theme_loader.js`. 
 Customer logos are downloaded by the background service, restricted to approved raster image types under 1 MB, and cached locally by customer and configuration version. PDF reports use the same verified customer theme and legal identity. See `docs/white-label/THEME_SHELL.md` for the runtime contract.
 
 The existing FloSports deployment is staged under `migrations/flosports/`. Comparison mode keeps normalized API reads authoritative while recording digest-only parity against a server-side legacy adapter. The cutover is intentionally blocked until an active administrator is assigned, the API endpoints and approved logo URL are configured, and both required statistics reads meet the parity threshold. See `docs/white-label/FLOSPORTS_MIGRATION.md`.
+# Customer team administration
+
+Customer admins use **Settings → Manage Team & Access** to add people, assign Employee/Manager/Admin roles, review bulk changes, deactivate access, and inspect audit history within purchased limits. See [Team & Access](docs/white-label/CUSTOMER_TEAM_MANAGEMENT.md) for activation, subscription recovery, and isolated tests.
+
+Implementation progress, remaining production gates, migration order and validation: [Production-readiness implementation status](docs/architecture/IMPLEMENTATION_STATUS.md).

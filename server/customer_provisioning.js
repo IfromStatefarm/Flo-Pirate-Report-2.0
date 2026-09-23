@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { ApiError } from './api_error.js';
 import { validateCustomerConfig } from '../utils/customer_config.js';
+import { applySubscriptionInTransaction } from './subscription_service.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UNSAFE_TEXT_PATTERN = /[<>\u0000-\u001F\u007F]/;
@@ -146,6 +147,7 @@ function mapDatabaseConflict(error) {
 }
 
 export async function provisionCustomer(pool, candidate, {
+  subscription,
   now = () => new Date(),
   randomUUID = () => crypto.randomUUID(),
   retries = 2
@@ -228,11 +230,12 @@ export async function provisionCustomer(pool, candidate, {
         occurredAtDate
       ]);
 
+      const subscriptionResult = subscription ? await applySubscriptionInTransaction(client, subscription, operator.email) : null;
       await client.query('COMMIT');
       return Object.freeze({
         auditId,
         customerId: config.customerId,
-        configVersion: config.configVersion,
+        configVersion: subscriptionResult?.configVersion || config.configVersion,
         memberId,
         administratorEmail: initialAdministrator.email,
         utilization: {

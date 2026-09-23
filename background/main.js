@@ -1,3 +1,5 @@
+import { finalizeReportBatch } from '../services/report_service.js';
+import { assertMessageSender } from '../utils/message_policy.js';
 import { getAuthToken, getUserEmail } from '../utils/auth.js';
 import {
   addNewEventToSheet,
@@ -16,6 +18,7 @@ import {
   updateConfigSections,
   uploadToDrive,
   ensureYearlyReportFolder,
+  ensureBriefingFolder,
   ensureDailyScreenshotFolder
 } from '../utils/google_api.js';
 import { generatePDF, generateIntelligencePDF } from '../utils/pdf_gen.js';
@@ -31,6 +34,7 @@ import { createCustomerBootstrapService } from '../services/customer_bootstrap_s
 import { createCustomerConfigService } from '../services/customer_config_service.js';
 import { createThemeAssetService } from '../services/theme_asset_service.js';
 import { createCustomerMembershipService } from '../services/customer_membership_service.js';
+import { isTeamPageSender } from '../utils/team_access.js';
 import { createCustomerDataService } from '../services/customer_data_service.js';
 import { createCustomerMigrationService } from '../services/customer_migration_service.js';
 import { buildRuntimeTheme } from '../utils/runtime_theme.js';
@@ -64,7 +68,13 @@ const DOUBLE_XP_CLEANUP_ALARM_NAME = 'doubleXpRetentionCleanup';
 const LEGACY_GAMIFICATION_STATS_CACHE_KEY = 'gamification_stats_cache';
 const ACCESS_CONTEXT = Symbol('accessContext');
 
-const accessRegistry = createCustomerBootstrapService({ getAuthToken, getUserEmail });
+const accessRegistry = createCustomerBootstrapService({ getAuthToken, getUserEmail,
+  onScopeChange: async () => {
+    sheetScanner.stop();
+    rogueWorkflow.reset();
+    await clearImages();
+  }
+});
 const customerConfigService = createCustomerConfigService();
 const themeAssetService = createThemeAssetService();
 const customerMembershipService = createCustomerMembershipService({ getAuthToken });
@@ -156,6 +166,7 @@ const ACTION_ACCESS_POLICIES = Object.freeze({
   generateIntelligenceReport: { permission: PERMISSIONS.SIDEPANEL_INTEL },
   getMigrationStatus: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
   listAccessUsers: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
+  teamAccess: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
   updateAccessUser: { permission: PERMISSIONS.SETTINGS_ADMIN_ACCESS },
   updateSharedConfig: { permission: PERMISSIONS.SETTINGS_INTELLIGENCE_TOOLS },
   submitSuggestion: { permission: PERMISSIONS.SETTINGS_FEEDBACK_COMMS },
@@ -213,7 +224,10 @@ async function getRequestPlatforms(request, { includeCart = false, ignoreUrls = 
 
 async function authorizeAction(action, request) {
   const policy = ACTION_ACCESS_POLICIES[action];
-  if (!policy) return null;
+  if (!policy) {
+    if (new Set(['getCustomerConfig','getRuntimeTheme','getAccessProfile','bootstrapCustomerAccess','logoutAccessUser','refreshAccessProfile','checkAccess','checkUserIdentity','openPopup']).has(action)) return null;
+    throw new Error('This action has no authorization policy.');
+  }
 
   const profile = await accessRegistry.requirePermission(policy.permission);
   if (policy.platformScoped) {
@@ -260,10 +274,12 @@ const rogueWorkflow = createRogueWorkflow({
 const macroWorkflow = createMacroWorkflow();
 
 const reportingWorkflow = createReportingWorkflow({
+  finalizeReportBatch,
   checkIfAuthorized,
   clearImages,
   ensureDailyScreenshotFolder,
   ensureYearlyReportFolder,
+  ensureBriefingFolder,
   generatePDF,
   getCustomerTheme: async () => resolveRuntimeTheme(await accessRegistry.getCurrentProfile()),
   getCustomerProfile: () => accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_REPORT),
@@ -511,34 +527,7 @@ async function handleGenerateIntelligenceReport(request) {
     throw new Error('Drive Root ID not configured.');
   }
 
-  const query =
-    `mimeType='application/vnd.google-apps.folder' and '${driveRootId}' in parents ` +
-    `and name='Tactical Briefings' and trashed=false`;
-
-  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  const searchData = await searchRes.json();
-
-  let folderId;
-  if (searchData.files && searchData.files.length > 0) {
-    folderId = searchData.files[0].id;
-  } else {
-    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: 'Tactical Briefings',
-        mimeType: 'application/vnd.google-apps.folder',
-        parents: [driveRootId]
-      })
-    });
-    const createData = await createRes.json();
-    folderId = createData.id;
-  }
+  const folderId = await ensureBriefingFolder();
 
   const filename = `Intelligence_Briefing_${request.startDate}_to_${request.endDate}.pdf`;
   const uploadRes = await uploadToDrive(token, folderId, filename, pdfBlob, 'application/pdf', {
@@ -616,13 +605,24 @@ function createActionHandlers() {
       return { success: true, allowed, platforms: [...platforms], profile };
     },
 
-    async listAccessUsers(request) {
+    async listAccessUsers(request, sender) {
+      if (!isTeamPageSender(sender, chrome.runtime.id)) throw new Error('Open Team & Access from extension Settings to manage users.');
       const actorProfile = request[ACCESS_CONTEXT];
       const result = await customerMembershipService.listMembers(actorProfile, request.query || '');
       return { success: true, ...result };
     },
 
-    async updateAccessUser(request) {
+    async teamAccess(request, sender) {
+      if (!isTeamPageSender(sender, chrome.runtime.id)) throw new Error('Open Team & Access from extension Settings to manage users.');
+      const result = await customerMembershipService.teamRequest(request[ACCESS_CONTEXT], request.payload);
+      if (request.payload.operation === 'team_commit' && result.accessChanged) {
+        await accessRegistry.clearProfileCache();
+      }
+      return { success: true, ...result };
+    },
+
+    async updateAccessUser(request, sender) {
+      if (!isTeamPageSender(sender, chrome.runtime.id)) throw new Error('Open Team & Access from extension Settings to manage users.');
       const actorProfile = request[ACCESS_CONTEXT];
       const result = await customerMembershipService.mutateMember(actorProfile, request.mutation);
       let profile = null;
@@ -937,8 +937,8 @@ function createActionHandlers() {
       return { success: true };
     },
 
-    async initRogueTakedown(request) {
-      return rogueWorkflow.capture(request.data);
+    async initRogueTakedown(request, sender) {
+      return rogueWorkflow.capture(request.data, sender.tab);
     },
 
     async logRogueToSheet(request) {
@@ -951,7 +951,9 @@ function registerMessageRouter() {
   const actionHandlers = createActionHandlers();
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    const handler = actionHandlers[request.action];
+    try { assertMessageSender(request,sender,chrome.runtime.id); }
+    catch(error) { sendResponse({success:false,error:error.message}); return false; }
+    const handler = Object.hasOwn(actionHandlers,request.action) ? actionHandlers[request.action] : null;
     if (!handler) return false;
 
     Promise.resolve(authorizeAction(request.action, request))

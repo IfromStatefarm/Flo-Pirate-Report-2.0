@@ -1,21 +1,8 @@
-import fs from 'node:fs/promises';
 import { getPool } from '../db.js';
-
-const sqlDirectory = new URL('../sql/', import.meta.url);
-const migrationFiles = (await fs.readdir(sqlDirectory))
-  .filter((name) => /^\d+_[a-z0-9_]+\.sql$/i.test(name))
-  .sort();
-const pool = getPool({
-  connectionString: process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL
-});
-
+import { applyMigrations } from '../migrations.js';
+if (!process.env.DATABASE_URL_UNPOOLED) throw new Error('DATABASE_URL_UNPOOLED is required for migrations.');
+const pool=getPool({connectionString:process.env.DATABASE_URL_UNPOOLED});
 try {
-  for (const migrationFile of migrationFiles) {
-    const sql = await fs.readFile(new URL(migrationFile, sqlDirectory), 'utf8');
-    await pool.query(sql);
-    console.log(`Applied ${migrationFile}.`);
-  }
-  console.log(`Customer API database migrations completed (${migrationFiles.length}).`);
-} finally {
-  await pool.end();
-}
+  const count=await applyMigrations(pool,{onApplied:name=>console.log(`Applied ${name}.`)});
+  console.log(`Customer API schema verified (${count} migrations).`);
+} finally { await pool.end(); }

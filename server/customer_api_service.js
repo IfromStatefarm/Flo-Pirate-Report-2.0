@@ -1,10 +1,17 @@
-import { getPermissionsForRole, validateCustomerAccessProfile } from '../utils/access_control.js';
+import { verifyReportPolicy } from './report_policy.js';
+import { permissionsFor, requirePermission, EVENT_PERMISSIONS } from './access_policy.js';
+import { TEAM_OPERATIONS, validateTeamRequest } from '../utils/team_access.js';
+import { validateCustomerAccessProfile } from '../utils/access_control.js';
 import { validateCustomerConfig } from '../utils/customer_config.js';
 import {
   CUSTOMER_EVENT_ATTRIBUTE_KEYS,
   CUSTOMER_EVENT_TYPES
-} from '../services/customer_data_service.js';
+} from '../contracts/customer_events.js';
 import { ApiError, assert } from './api_error.js';
+import { generatePDF } from './report_pdf.js';
+import { authorizeEventPlatforms, effectivePlatforms, requireUrlPlatforms, statisticsPlatforms } from './platform_policy.js';
+import { createGoogleOperations } from './integrations/google_operations.js';
+import { readBearerToken } from './google_identity.js';
 
 const MEMBER_ROLES = new Set(['employee', 'manager', 'admin']);
 const MEMBER_ACTIONS = new Set(['approve', 'activate', 'reactivate', 'change_role', 'disable']);
@@ -24,30 +31,6 @@ const INTEGER_ATTRIBUTE_KEYS = new Set([
   'iframe_count', 'email_count', 'checked_count', 'resolved_count', 'active_count'
 ]);
 
-const FEATURE_PERMISSIONS = Object.freeze({
-  report: new Set(['sidepanel.report', 'settings.coreConnectivity']),
-  scoreboard: new Set(['sidepanel.scoreboard']),
-  automate: new Set(['sidepanel.automate', 'settings.openLocker']),
-  intel: new Set(['sidepanel.intel', 'settings.intelligenceTools']),
-  repair: new Set(['sidepanel.repair']),
-  feedback: new Set(['settings.feedbackComms']),
-  gamification: new Set(['sidepanel.scoreboard']),
-  briefing: new Set(['settings.briefingStats', 'settings.briefingContent']),
-  selector_editor: new Set(['settings.selectorPaths'])
-});
-const EVENT_PERMISSIONS = Object.freeze({
-  'activity.item_added': 'sidepanel.report',
-  'event.source_url_updated': 'sidepanel.report',
-  'report.whitelist_penalty': 'sidepanel.report',
-  'report.submitted': 'sidepanel.report',
-  'report.intelligence_generated': 'sidepanel.intel',
-  'rogue.evidence_logged': 'sidepanel.report',
-  'automation.scan_started': 'sidepanel.automate',
-  'automation.platform_outcome': 'sidepanel.automate',
-  'automation.row_status_changed': 'sidepanel.automate',
-  'automation.scan_completed': 'sidepanel.automate',
-  'platform.report_outcome': 'sidepanel.report'
-});
 
 function exactObject(value, keys, path = 'request') {
   assert(value && typeof value === 'object' && !Array.isArray(value), 400, 'invalid_request', `${path} must be an object.`);
@@ -96,7 +79,7 @@ function validateEventAttributes(eventType, attributes) {
       output[key] = safeUrl(value, `attributes.${key}`, { httpsOnly: key !== 'target_url' });
     } else if (INTEGER_ATTRIBUTE_KEYS.has(key)) {
       const minimum = ['scout_points', 'enforcer_points'].includes(key) ? -1000000 : 0;
-      assert(Number.isSafeInteger(value) && value >= minimum, 400, 'invalid_event', `attributes.${key} is invalid.`);
+      assert(Number.isSafeInteger(value) && value >= minimum && value <= 1000000000, 400, 'invalid_event', `attributes.${key} is invalid.`);
       output[key] = value;
     } else if (key === 'urls') {
       assert(Array.isArray(value) && value.length >= 1 && value.length <= 100, 400, 'invalid_event', 'attributes.urls must contain 1-100 URLs.');
@@ -106,25 +89,6 @@ function validateEventAttributes(eventType, attributes) {
   return output;
 }
 
-function permissionsFor(config, role) {
-  const enabledFeatures = new Set(config.capabilities.enabledFeatures);
-  const featurePermissions = new Set(
-    Object.entries(FEATURE_PERMISSIONS)
-      .filter(([feature]) => enabledFeatures.has(feature))
-      .flatMap(([, permissions]) => [...permissions])
-  );
-  if (role === 'admin') featurePermissions.add('settings.adminAccess');
-  return getPermissionsForRole(role).filter((permission) => featurePermissions.has(permission));
-}
-
-function requirePermission(actor, permission) {
-  assert(
-    permissionsFor(actor.customerConfig, actor.role).includes(permission),
-    403,
-    'not_authorized',
-    'The verified member is not authorized for this customer operation.'
-  );
-}
 
 function customerProfile(resolution, now) {
   const configResult = validateCustomerConfig(resolution.customerConfig);
@@ -141,9 +105,8 @@ function customerProfile(resolution, now) {
     email: member.email,
     name: member.name,
     role: member.role,
-    permissions: permissionsFor(config, member.role),
-    platforms: (member.platforms?.length ? member.platforms : config.capabilities.enabledPlatforms)
-      .filter((platform) => config.capabilities.enabledPlatforms.includes(platform)),
+    permissions: resolution.managementOnly ? ['settings.adminAccess'] : resolution.overCap ? ['settings.adminAccess', 'settings.coreConnectivity'] : permissionsFor(config, member.role),
+    platforms: effectivePlatforms(config, member.platforms),
     theme: {
       ...config.product,
       logoUrl: config.theme.logoUrl,
@@ -160,7 +123,7 @@ function customerProfile(resolution, now) {
       statsDashboardId: config.stats.dashboardId
     },
     issuedAt,
-    expiresAt: issuedAt + (10 * 60 * 1000)
+    expiresAt: Math.min(issuedAt + (10 * 60 * 1000), resolution.entitlementExpiresAt)
   };
   const validation = validateCustomerAccessProfile(profile, { expectedEmail: member.email, now: issuedAt });
   assert(validation.valid, 500, 'configuration_error', 'The server generated an invalid customer profile.');
@@ -205,7 +168,7 @@ function validateDataRequest(body, currentTime) {
   if (body.operation === 'record_event') {
     exactObject(body, ['protocol_version', 'operation', 'event']);
     exactObject(body.event, ['event_id', 'customer_id', 'user_id', 'event_type', 'occurred_at', 'attributes'], 'event');
-    assert(EVENT_ID.test(String(body.event.event_id || '')), 400, 'invalid_event', 'Invalid event ID.');
+    assert(EVENT_ID.test(String(body.event.event_id || '')) && !String(body.event.event_id).startsWith('sys_'), 400, 'invalid_event', 'Invalid event ID.');
     assert(Number.isSafeInteger(body.event.occurred_at) && body.event.occurred_at > 0, 400, 'invalid_event', 'Invalid event timestamp.');
     assert(body.event.occurred_at <= currentTime + (5 * 60 * 1000), 400, 'invalid_event', 'Event timestamp is too far in the future.');
     assert(body.event.attributes && typeof body.event.attributes === 'object' && !Array.isArray(body.event.attributes), 400, 'invalid_event', 'Invalid event attributes.');
@@ -233,7 +196,9 @@ function validateDataRequest(body, currentTime) {
     assert(ISO_DATE.test(body.query.start_date) && ISO_DATE.test(body.query.end_date), 400, 'invalid_query', 'Statistics dates must use YYYY-MM-DD.');
     const start = new Date(`${body.query.start_date}T00:00:00.000Z`);
     const end = new Date(`${body.query.end_date}T23:59:59.999Z`);
-    assert(!Number.isNaN(start.valueOf()) && !Number.isNaN(end.valueOf()) && start <= end, 400, 'invalid_query', 'Statistics date range is invalid.');
+    assert(!Number.isNaN(start.valueOf()) && !Number.isNaN(end.valueOf()) && start <= end &&
+      start.toISOString().slice(0, 10) === body.query.start_date && end.toISOString().slice(0, 10) === body.query.end_date &&
+      end - start <= 366 * 86400000, 400, 'invalid_query', 'Statistics require a valid date range of at most 366 days.');
     assert(Array.isArray(body.query.platforms) && body.query.platforms.length <= 100, 400, 'invalid_query', 'Statistics platforms must be a bounded list.');
     body.query = {
       dashboard_id: safeText(body.query.dashboard_id, 'query.dashboard_id', 128),
@@ -248,6 +213,7 @@ function validateDataRequest(body, currentTime) {
 export function createCustomerApiService({
   repository,
   verifyIdentity,
+  reportPolicy,
   now = () => Date.now(),
   allowedExtensionIds = new Set(String(process.env.ALLOWED_EXTENSION_IDS || '').split(',').map((value) => value.trim()).filter(Boolean))
 }) {
@@ -263,6 +229,12 @@ export function createCustomerApiService({
   async function memberships(request, body) {
     const identity = await verifyIdentity(request);
     assert(body?.protocolVersion === 1, 400, 'invalid_request', 'Unsupported membership protocol.');
+    if (TEAM_OPERATIONS.includes(body.operation)) {
+      let parsed;
+      try { parsed = validateTeamRequest(body); }
+      catch (error) { throw new ApiError(400, 'invalid_request', error.message); }
+      return repository.teamOperation(identity, parsed);
+    }
     const parsed = validateMembershipRequest(body);
     const actor = await repository.requireAdministrator(identity);
     if (parsed.operation === 'list_members') return repository.listMembers(actor, parsed.query);
@@ -271,16 +243,92 @@ export function createCustomerApiService({
 
   async function data(request, body) {
     const identity = await verifyIdentity(request);
+    if (body?.operation === 'google_operation') {
+      exactObject(body, ['protocol_version','operation','command']);
+      assert(body.protocol_version === 1,400,'invalid_request','Unsupported operation protocol.');
+      const actor = await repository.requireActiveMember(identity);
+      return createGoogleOperations({repository}).execute(actor,body.command,readBearerToken(request));
+    }
+    if(body?.operation==='finalize_report_batch') {
+      exactObject(body,['protocol_version','operation','batch']);
+      assert(body.protocol_version===1,400,'invalid_request','Unsupported report protocol.');
+      const batch=body.batch;
+      exactObject(batch,['batchId','reports'],'batch');
+      assert(typeof batch.batchId==='string' && EVENT_ID.test(batch.batchId),400,'invalid_report','Invalid batch ID.');
+      assert(Array.isArray(batch.reports) && batch.reports.length>=1 && batch.reports.length<=100,400,'invalid_report','A batch requires 1–100 reports.');
+      const reportIds=new Set(),eventIds=new Set();
+      for(const report of batch.reports) {
+        exactObject(report,['reportId','eventId','pdfUrl','mode','contentType'],'batch report');
+        assert(typeof report.reportId==='string' && typeof report.eventId==='string' && EVENT_ID.test(report.reportId) && EVENT_ID.test(report.eventId),400,'invalid_report','Invalid report identifiers.');
+        assert(!reportIds.has(report.reportId) && !eventIds.has(report.eventId),400,'invalid_report','Duplicate batch reports are not allowed.');
+        reportIds.add(report.reportId);eventIds.add(report.eventId);
+        report.pdfUrl=safeUrl(report.pdfUrl,'report.pdfUrl',{httpsOnly:true});
+        assert(['scout','enforcer'].includes(report.mode) && ['Live','VOD','Clip'].includes(report.contentType),400,'invalid_report','Unsupported report mode or content type.');
+      }
+      const actor=await repository.requireActiveMember(identity);
+      requirePermission(actor,'sidepanel.report');
+      const result=await repository.finalizeReportBatch(actor,batch,now());
+      await repository.claimIntegrationResources(actor);
+      const {adapter}=await createGoogleOperations({repository}).adapterFor(actor,readBearerToken(request));
+      for(const report of result.reports) await repository.projectReport(actor,report.reportId,(value,options)=>adapter.projectReport(value,options));
+      return result;
+    }
+    if (body?.operation === 'generate_report') {
+      exactObject(body, ['protocol_version', 'operation', 'report']);
+      assert(body.protocol_version === 1, 400, 'invalid_request', 'Unsupported report protocol.');
+      const report = body.report;
+      exactObject(report, ['reportId', 'eventId', 'eventName', 'vertical', 'handle', 'items'], 'report');
+      assert(typeof report.reportId === 'string' && typeof report.eventId === 'string' && EVENT_ID.test(report.reportId) && EVENT_ID.test(report.eventId), 400, 'invalid_report', 'Invalid report identifier.');
+      for (const key of ['eventName', 'vertical', 'handle']) report[key] = safeText(report[key], `report.${key}`, 160);
+      assert(Array.isArray(report.items) && report.items.length > 0 && report.items.length <= 100, 400, 'invalid_report', 'Reports require 1–100 evidence items.');
+      for (const item of report.items) {
+        exactObject(item, ['url', 'screenshotLink', 'views'], 'evidence');
+        for (const key of ['url', 'screenshotLink']) {
+          assert(typeof item[key] === 'string' && item[key].length <= 2048, 400, 'invalid_report', 'Invalid evidence URL.');
+          if (key === 'screenshotLink' && !item[key]) continue;
+          let url; try { url = new URL(item[key]); } catch { throw new ApiError(400, 'invalid_report', 'Invalid evidence URL.'); }
+          assert(['https:', 'http:'].includes(url.protocol) && !url.username && !url.password, 400, 'invalid_report', 'Evidence links must use HTTP or HTTPS without credentials.');
+        }
+        item.views = safeText(item.views, 'evidence.views', 40);
+      }
+      const actor = await repository.requireActiveMember(identity);
+      requirePermission(actor, 'sidepanel.report');
+      requireUrlPlatforms(actor, report.items.map(item => item.url));
+      const policy = reportPolicy ? await reportPolicy(actor, report) : await (async () => {
+        await repository.claimIntegrationResources(actor);
+        const {adapter} = await createGoogleOperations({repository}).adapterFor(actor,readBearerToken(request));
+        return verifyReportPolicy(actor,report,adapter);
+      })();
+      return repository.generateReport(actor, report, generatePDF, policy);
+    }
     const parsed = validateDataRequest(body, now());
     const actor = await repository.requireActiveMember(identity);
     if (parsed.operation === 'record_event') {
       assert(parsed.event.customer_id === actor.customerId && parsed.event.user_id === actor.memberId, 403, 'scope_mismatch', 'Event scope does not match the verified identity.');
       requirePermission(actor, EVENT_PERMISSIONS[parsed.event.event_type]);
-      return repository.recordEvent(actor, parsed.event, now());
+      authorizeEventPlatforms(actor, parsed.event);
+      const accepted=await repository.recordEvent(actor, parsed.event, now());
+      if(parsed.event.event_type==='report.submitted') {
+        await repository.claimIntegrationResources(actor);
+        const {adapter}=await createGoogleOperations({repository}).adapterFor(actor,readBearerToken(request));
+        await repository.projectReport(actor,parsed.event.attributes.report_id,(report,options)=>adapter.projectReport(report,options));
+      }
+      return accepted;
     }
     assert(parsed.customer_id === actor.customerId && parsed.user_id === actor.memberId, 403, 'scope_mismatch', 'Statistics scope does not match the verified identity.');
     requirePermission(actor, parsed.query_type === 'scoreboard' ? 'sidepanel.scoreboard' : 'sidepanel.intel');
-    return repository.queryStatistics(actor, parsed.query_type, parsed.query, now(), parsed.operation === 'query_legacy_statistics');
+    // Empty filters mean the actor's scope, never unrestricted customer data.
+    parsed.query.platforms = statisticsPlatforms(actor, parsed.query.platforms);
+    if(parsed.operation==='query_legacy_statistics') {
+      assert(parsed.query.dashboard_id===actor.customerConfig.stats.dashboardId,403,'scope_mismatch','Invalid dashboard.');
+      await repository.claimIntegrationResources(actor);
+      const {adapter}=await createGoogleOperations({repository}).adapterFor({...actor,platforms:parsed.query.platforms},readBearerToken(request));
+      const data=parsed.query_type==='scoreboard'?await adapter.fetchLeaderboardData(actor.email):await adapter.fetchIntelligenceData(parsed.query.start_date,parsed.query.end_date);
+      assert(data,503,'legacy_unavailable','The independent legacy source is unavailable.');
+      data._provenance={source:'google_sheets',version:1};
+      return {protocol_version:1,customer_id:actor.customerId,user_id:actor.memberId,dashboard_id:parsed.query.dashboard_id,query_type:parsed.query_type,generated_at:now(),data};
+    }
+    return repository.queryStatistics(actor, parsed.query_type, parsed.query, now());
   }
 
   return Object.freeze({ bootstrap, memberships, data });

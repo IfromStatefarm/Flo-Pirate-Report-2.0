@@ -3,7 +3,7 @@ import { ApiError, assert } from './api_error.js';
 const TOKENINFO_ENDPOINT = 'https://oauth2.googleapis.com/tokeninfo';
 const REQUIRED_EMAIL_SCOPE = 'https://www.googleapis.com/auth/userinfo.email';
 
-function readBearerToken(request) {
+export function readBearerToken(request) {
   const header = String(request.headers.get('authorization') || '');
   const match = /^Bearer ([^\s]+)$/i.exec(header);
   assert(match, 401, 'identity_error', 'A Google bearer token is required.');
@@ -17,15 +17,22 @@ export async function verifyGoogleIdentity(request, {
 } = {}) {
   assert(expectedClientId, 500, 'configuration_error', 'GOOGLE_OAUTH_CLIENT_ID is not configured.');
   const token = readBearerToken(request);
-  const response = await fetchImpl(TOKENINFO_ENDPOINT, {
+  let response;
+  try { response = await fetchImpl(TOKENINFO_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ access_token: token }),
-    cache: 'no-store'
-  });
+    cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000)
+  }); } catch {
+    throw new ApiError(503, 'identity_unavailable', 'Identity verification is temporarily unavailable.');
+  }
+  if (response.status === 429 || response.status >= 500) throw new ApiError(503, 'identity_unavailable', 'Identity verification is temporarily unavailable.');
   if (!response.ok) throw new ApiError(401, 'identity_error', 'Google rejected or expired the access token.');
 
-  const info = await response.json();
+  let info;
+  try { info = await response.json(); } catch { throw new ApiError(503, 'identity_unavailable', 'Identity verification is temporarily unavailable.'); }
+  assert(info && typeof info === 'object', 401, 'identity_error', 'Invalid identity response.');
+  if (info.expires_in !== undefined) assert(Number(info.expires_in) > 0, 401, 'identity_error', 'The Google token has expired.');
   // Google's access-token tokeninfo response currently uses the OAuth-style
   // `aud` and `email_verified` names. Retain the older aliases as well so the
   // verifier stays compatible with both documented response shapes.

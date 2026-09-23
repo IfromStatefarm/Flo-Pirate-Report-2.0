@@ -39,8 +39,18 @@ function json(request, value, status = 200) {
 async function parseBody(request) {
   const type = String(request.headers.get('content-type') || '').toLowerCase();
   if (!type.startsWith('application/json')) throw new ApiError(415, 'invalid_request', 'Content-Type must be application/json.');
-  const text = await request.text();
-  if (!text || text.length > 1024 * 1024) throw new ApiError(400, 'invalid_request', 'The request body is empty or oversized.');
+  const reader = request.body?.getReader();
+  if (!reader) throw new ApiError(400, 'invalid_request', 'The request body is empty.');
+  const chunks = []; let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > 8 * 1024 * 1024) { await reader.cancel(); throw new ApiError(413, 'invalid_request', 'The request body is oversized.'); }
+    chunks.push(Buffer.from(value));
+  }
+  const text = Buffer.concat(chunks).toString('utf8');
+  if (!text) throw new ApiError(400, 'invalid_request', 'The request body is empty.');
   try {
     return JSON.parse(text);
   } catch {
@@ -71,7 +81,7 @@ export async function handleCustomerApi(kind, request) {
   } catch (error) {
     const status = error instanceof ApiError ? error.status : 500;
     const code = error instanceof ApiError ? error.code : 'internal_error';
-    if (!(error instanceof ApiError)) console.error('Customer API error:', error);
+    if (!(error instanceof ApiError)) console.error('Customer API error:', { code: error?.code || 'internal_error' });
     return json(request, {
       error: {
         code,
@@ -81,4 +91,3 @@ export async function handleCustomerApi(kind, request) {
     }, status);
   }
 }
-

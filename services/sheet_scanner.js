@@ -1,3 +1,4 @@
+import { evidenceScope, belongsToScope } from '../utils/evidence_scope.js';
 import {
   detectPlatformDetails,
   extractHandleFromUrl,
@@ -474,6 +475,7 @@ export function createSheetScanner({
               newRuns.push({ startIndex: cursor, format: defaultStyle });
             }
 
+            if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
             await updateCellWithRichText(rowIndex, cellValue, newRuns, customerProfile.integrations);
           } else {
             totalActive++;
@@ -502,6 +504,7 @@ export function createSheetScanner({
             active_count: 0,
             enforcer_points: newlyStruck * 15
           });
+          if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
           await updateRowStatus(rowIndex, 'Resolved', customerProfile.integrations);
           cellData.status = 'Resolved';
           sendProgress(`Row ${rowIndex + 1}`, 'All links DOWN. Row resolved.');
@@ -519,6 +522,7 @@ export function createSheetScanner({
             active_count: totalActive,
             enforcer_points: 0
           });
+          if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
           await updateRowStatus(rowIndex, 'Investigating', customerProfile.integrations);
           cellData.status = 'Investigating';
           sendProgress(
@@ -674,11 +678,12 @@ export function createSheetScanner({
 
       if (activeLinks.length > 0) {
         const storage = await chrome.storage.local.get('piracy_cart');
-        const existingCart = storage.piracy_cart || [];
+        const existingCart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
         const uniqueCart = Array.from(
-          new Map([...existingCart, ...activeLinks].map((item) => [item.url, item])).values()
+          new Map([...existingCart, ...activeLinks.map(item => ({ ...item, ...evidenceScope(customerProfile) }))].map((item) => [item.url, item])).values()
         );
 
+        if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
         await chrome.storage.local.set({ piracy_cart: uniqueCart });
       }
 

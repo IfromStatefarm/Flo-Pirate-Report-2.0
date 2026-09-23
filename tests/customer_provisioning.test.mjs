@@ -7,7 +7,7 @@ import {
   provisionCustomer,
   validateCustomerProvisioningRequest
 } from '../server/customer_provisioning.js';
-import { startCustomerSetupServer } from '../server/customer_setup_web.js';
+import { startCustomerSetupServer, sellerFetch } from './seller_test_helpers.mjs';
 
 const FLOSPORTS = JSON.parse(await fs.readFile(new URL('../migrations/flosports/customer.json', import.meta.url), 'utf8'));
 
@@ -186,6 +186,12 @@ function requestToForm(request, csrf) {
   for (const role of config.access.enabledRoles) form.append('access.enabledRoles', role);
   for (const feature of config.capabilities.enabledFeatures) form.append('capabilities.enabledFeatures', feature);
   for (const platform of config.capabilities.enabledPlatforms) form.append('capabilities.enabledPlatforms', platform);
+  form.set('subscription.planKey', 'standard-v1');
+  form.set('subscription.interval', 'month');
+  form.set('subscription.startsAt', '2026-09-01T00:00');
+  form.set('subscription.paymentKind', 'paid');
+  form.set('subscription.paymentReference', 'invoice-test-1');
+  form.set('subscription.reason', 'Initial payment');
   return form;
 }
 
@@ -219,7 +225,7 @@ test('the setup UI binds locally, requires CSRF, reviews, then provisions once',
   }
   t.after(() => server.close());
 
-  const landing = await fetch(server.url);
+  const landing = await sellerFetch(server.url);
   assert.equal(landing.status, 200);
   assert.match(landing.headers.get('content-security-policy'), /default-src 'none'/);
   const cookie = landing.headers.get('set-cookie');
@@ -229,7 +235,7 @@ test('the setup UI binds locally, requires CSRF, reviews, then provisions once',
   assert.ok(cookie?.includes(`customer_setup_csrf=${csrf}`));
   assert.equal(html.includes('DATABASE_URL'), false);
 
-  const crossOrigin = await fetch(new URL('/review', server.url), {
+  const crossOrigin = await sellerFetch(new URL('/review', server.url), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -240,7 +246,7 @@ test('the setup UI binds locally, requires CSRF, reviews, then provisions once',
   });
   assert.equal(crossOrigin.status, 403);
 
-  const review = await fetch(new URL('/review', server.url), {
+  const review = await sellerFetch(new URL('/review', server.url), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -255,7 +261,7 @@ test('the setup UI binds locally, requires CSRF, reviews, then provisions once',
   assert.ok(confirmationToken);
   assert.equal(provisioned, null);
 
-  const confirmed = await fetch(new URL('/provision', server.url), {
+  const confirmed = await sellerFetch(new URL('/provision', server.url), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -268,7 +274,7 @@ test('the setup UI binds locally, requires CSRF, reviews, then provisions once',
   assert.equal(provisioned.config.customerId, 'acme-sports');
   assert.match(await confirmed.text(), /Customer created successfully/);
 
-  const repeated = await fetch(new URL('/provision', server.url), {
+  const repeated = await sellerFetch(new URL('/provision', server.url), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',

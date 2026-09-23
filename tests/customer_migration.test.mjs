@@ -46,7 +46,7 @@ test('comparison mode stores digests and paths without raw customer data', async
   const storageArea = fakeStorage();
   const customerDataService = {
     async queryLegacyStatistics() {
-      return { data: { totals: { reports: 12 }, people: ['Sensitive Name'] } };
+      return { data: { _provenance: {source:'google_sheets'}, totals: { reports: 12 }, people: ['Sensitive Name'] } };
     }
   };
   const service = createCustomerMigrationService({
@@ -60,7 +60,7 @@ test('comparison mode stores digests and paths without raw customer data', async
     PROFILE,
     'scoreboard',
     { period: 'current_month' },
-    { data: { people: ['Sensitive Name'], totals: { reports: 13 } } }
+    { data: { _provenance:{source:'customer_events'}, people: ['Sensitive Name'], totals: { reports: 13 } } }
   );
 
   assert.equal(result.compared, true);
@@ -73,7 +73,7 @@ test('comparison mode stores digests and paths without raw customer data', async
 
 test('fallback removal remains blocked until parity passes and comparison is turned off', async () => {
   const storageArea = fakeStorage();
-  const customerDataService = { async queryLegacyStatistics() { return { data: { total: 1 } }; } };
+  const customerDataService = { async queryLegacyStatistics() { return { data: { _provenance:{source:'google_sheets'}, total: 1 } }; } };
   const service = createCustomerMigrationService({
     customerDataService,
     storageArea,
@@ -85,10 +85,19 @@ test('fallback removal remains blocked until parity passes and comparison is tur
     for (let index = 0; index < 2; index += 1) {
       await service.compareStatistics(PROFILE, readKind, readKind === 'scoreboard'
         ? { period: 'current_month' }
-        : { start_date: '2026-09-01', end_date: '2026-09-30', platforms: [] }, { data: { total: 1 } });
+        : { start_date: '2026-09-01', end_date: '2026-09-30', platforms: [] }, { data: { _provenance:{source:'customer_events'}, total: 1 } });
     }
   }
   const status = await service.getStatus(PROFILE);
   assert.equal(status.parityConfirmed, true);
   assert.equal(status.legacyFallbackRemovalAllowed, false);
+});
+
+test('identical values from the same or an unspecified source never prove parity',async()=>{
+  for(const source of [undefined,'customer_events']) {
+    const data={total:1,...(source?{_provenance:{source}}:{})};
+    const service=createCustomerMigrationService({customerDataService:{queryLegacyStatistics:async()=>({data})},storageArea:fakeStorage(),loadSettings:async()=>settings()});
+    const result=await service.compareStatistics(PROFILE,'scoreboard',{}, {data:{total:1,_provenance:{source:'customer_events'}}});
+    assert.equal(result.matched,false);assert.equal(result.result.errorCode,'independent_source_required');
+  }
 });

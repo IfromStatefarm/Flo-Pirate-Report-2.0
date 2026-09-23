@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { startCustomerSetupServer } from '../customer_setup_web.js';
+import { saveLocalSettings } from '../local_credentials.js';
 
 const connectionString = String(process.env.DATABASE_URL_UNPOOLED || '').trim();
 if (!connectionString) {
@@ -13,6 +14,7 @@ pool.on('error', (error) => console.error('Customer setup database connection er
 await pool.query('SELECT 1');
 const setup = await startCustomerSetupServer({
   pool,
+  persistPassword: hash => saveLocalSettings({ CUSTOMER_SETUP_PASSWORD_HASH: hash, CUSTOMER_SETUP_PASSWORD_MUST_CHANGE: 'false' }),
   operatorEmail: String(process.env.CUSTOMER_SETUP_OPERATOR_EMAIL || '').trim().toLowerCase()
 });
 

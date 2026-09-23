@@ -1,4 +1,8 @@
 import crypto from 'node:crypto';
+import { saveBillingMapping } from './billing_service.js';
+import { createSellerAuth } from './seller_auth.js';
+import { subscriptionFields, subscriptionFromForm, renderSubscription } from './subscription_web.js';
+import { loadSubscription, applySubscriptionChange, setAdministrativeStatus } from './subscription_service.js';
 import http from 'node:http';
 import { ApiError } from './api_error.js';
 import { provisionCustomer, validateCustomerProvisioningRequest } from './customer_provisioning.js';
@@ -562,13 +566,11 @@ function page(title, content) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} · Rights Reporter Customer Setup</title>
   <link rel="stylesheet" href="/style.css">
-  <script src="/colors.js" defer></script>
-  <script src="/preview.js" defer></script>
-  <script src="/customer-preview.js" defer></script>
+  ${['Seller sign in', 'Replace password', 'Sign out', 'Setup error'].includes(title) ? '' : '<script src="/colors.js" defer></script><script src="/preview.js" defer></script><script src="/customer-preview.js" defer></script>'}
 </head>
 <body>
   <header><div class="header-row"><div><h1>Rights Reporter Customer Setup</h1><p>Local operator tool · credentials stay on this computer</p></div>
-    <nav class="header-nav" aria-label="Customer setup"><a href="/customers">View customers</a><a href="/">Create customer</a></nav>
+    <nav class="header-nav" aria-label="Customer setup"><a href="/customers">View customers</a><a href="/">Create customer</a><a href="/password">Password</a><a href="/logout">Sign out</a></nav>
   </div></header>
   <main>${content}</main>
 </body>
@@ -918,8 +920,9 @@ function renderForm(csrfToken, draft, errors = [], { mode = 'create', expectedCo
     <form method="post" action="${editing ? `/customers/${customerPath}/review` : '/review'}" autocomplete="off" data-customer-config-form>
       <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}">
       ${editing ? `<input type="hidden" name="expectedConfigVersion" value="${escapeHtml(expectedConfigVersion)}">` : ''}
+      ${editing ? `<section class="notice">Purchased limits and features are managed on the <a href="/customers/${customerPath}/subscription">Subscription page</a>.</section>` : subscriptionFields(draft.subscription)}
       <fieldset><legend>${editing ? 'Change operator' : 'Operator and initial administrator'}</legend><div class="grid">
-        ${input('operator.email', 'Operator email', draft.operator.email, { type: 'email', help: editing ? 'Configuration audit: records who saved this update. It is never sent to the extension.' : 'Audit log: records who performed this customer setup. It is not shown in the extension.' })}
+        ${input('operator.email', 'Operator email', draft.operator.email, { type: 'email', readonly: true, help: editing ? 'Configuration audit: records who saved this update. It is never sent to the extension.' : 'Audit log: records who performed this customer setup. It is not shown in the extension.' })}
         ${editing ? '' : input('initialAdministrator.name', 'Initial administrator name', draft.initialAdministrator.name, { help: 'Access management: identifies the first administrator created for this customer.' })}
         ${editing ? '' : input('initialAdministrator.email', 'Initial administrator Google email', draft.initialAdministrator.email, { type: 'email', help: 'Google sign-in: this exact account receives the initial administrator role and must match an allowed domain.' })}
       </div></fieldset>
@@ -1036,7 +1039,7 @@ function renderCustomerDirectory(customers) {
       <div class="customer-stat">Active users<strong>${escapeHtml(customer.activeUsers)}${customer.totalUserCap === null ? '' : ` / ${escapeHtml(customer.totalUserCap)}`}</strong></div>
       <div class="customer-stat">Administrators<strong>${escapeHtml(customer.activeAdministrators)}${customer.administratorCap === null ? '' : ` / ${escapeHtml(customer.administratorCap)}`}</strong><span>Updated ${escapeHtml(displayTimestamp(customer.updatedAt))}</span></div>
       <div class="actions">${customer.configurationValid
-        ? `<a class="button" href="/customers/${customerPath}/edit">Edit customer</a>`
+        ? `<a class="button" href="/customers/${customerPath}/edit">Edit customer</a><a class="button secondary" href="/customers/${customerPath}/subscription">Subscription</a>`
         : '<span class="help">Repair the stored configuration before editing.</span>'}</div>
     </article>`;
   }).join('');
@@ -1046,11 +1049,12 @@ function renderCustomerDirectory(customers) {
   `);
 }
 
-function renderReview(csrfToken, confirmationToken, request) {
+function renderReview(csrfToken, confirmationToken, request, subscription) {
   const { config, initialAdministrator, operator } = request;
   return page('Review customer', `
     <section class="notice"><strong>Review carefully.</strong> Confirming creates this customer immediately. Customer IDs cannot be reused by this tool.</section>
     <dl>
+      ${subscription ? `<dt>Subscription</dt><dd>${escapeHtml(subscription.planKey)} · ${escapeHtml(subscription.interval)} · ${escapeHtml(subscription.startsAt)} through ${escapeHtml(subscription.paidThrough)} · ${escapeHtml(subscription.paymentKind)}</dd>` : ''}
       <dt>Customer</dt><dd>${escapeHtml(config.product.displayName)} (<code>${escapeHtml(config.customerId)}</code>)</dd>
       <dt>Configuration version</dt><dd>${escapeHtml(config.configVersion)}</dd>
       <dt>Operator</dt><dd>${escapeHtml(operator.email)}</dd>
@@ -1185,7 +1189,7 @@ function validateLocalPost(request, parameters, csrfToken) {
 
 function setupError(error) {
   if (error instanceof ApiError) return error;
-  console.error('Customer setup error:', error);
+  console.error('Customer setup error:', { code: error?.code || 'internal_error' });
   return new ApiError(500, 'customer_setup_failed', 'The customer operation could not be completed. No partial change was saved.');
 }
 
@@ -1202,7 +1206,10 @@ function customerRouteId(pathname, action) {
 
 export async function startCustomerSetupServer({
   pool,
-  operatorEmail = '',
+  operatorEmail = process.env.CUSTOMER_SETUP_OPERATOR_EMAIL || '',
+  passwordHash = process.env.CUSTOMER_SETUP_PASSWORD_HASH,
+  mustChangePassword = process.env.CUSTOMER_SETUP_PASSWORD_MUST_CHANGE === 'true',
+  persistPassword,
   host = '127.0.0.1',
   port = 4174,
   provision = provisionCustomer,
@@ -1212,7 +1219,7 @@ export async function startCustomerSetupServer({
   now = () => Date.now()
 }) {
   if (host !== '127.0.0.1') throw new Error('The customer setup server must bind to 127.0.0.1.');
-  const csrfToken = crypto.randomBytes(32).toString('hex');
+  const auth = createSellerAuth({ passwordHash, operatorEmail, mustChangePassword, persistPassword, now });
   const pendingReviews = new Map();
   let expectedOrigin = '';
 
@@ -1224,6 +1231,11 @@ export async function startCustomerSetupServer({
         throw new ApiError(403, 'invalid_host', 'Open customer setup using localhost or 127.0.0.1 and the setup server port.');
       }
       const url = new URL(request.url || '/', expectedOrigin);
+      if (request.method === 'GET' && url.pathname === '/favicon.ico') { send(response, 204, '', 'image/x-icon'); return; }
+      if (request.method === 'GET' && url.pathname === '/style.css') { send(response, 200, STYLE, 'text/css; charset=utf-8'); return; }
+      const session = await auth.gate(request, response, url, { send, page, readParameters });
+      if (!session) return;
+      const csrfToken = session.csrf;
       const currentTime = now();
       for (const [token, review] of pendingReviews) {
         if (review.expiresAt <= currentTime) pendingReviews.delete(token);
@@ -1255,6 +1267,52 @@ export async function startCustomerSetupServer({
         send(response, 200, renderCustomerDirectory(customers), 'text/html; charset=utf-8', csrfCookie);
         return;
       }
+      const statusCustomerId = customerRouteId(url.pathname, 'status');
+      if (statusCustomerId && request.method === 'POST') {
+        const parameters = await readParameters(request);
+        validateLocalPost(request, parameters, csrfToken);
+        if (!['true','false'].includes(parameters.get('active'))) throw new ApiError(400, 'invalid_request', 'Invalid customer status.');
+        await setAdministrativeStatus(pool, { customerId: statusCustomerId, active: parameters.get('active') === 'true', expectedConfigVersion: Number(parameters.get('expectedConfigVersion')), idempotencyKey: parameters.get('idempotencyKey'), reason: parameters.get('reason') }, session.email);
+        send(response, 200, page('Status updated', '<h2>Customer status updated</h2><a href="/customers">Return to customers</a>'));
+        return;
+      }
+      const billingCustomerId = customerRouteId(url.pathname, 'billing-link');
+      if (billingCustomerId && request.method === 'POST') {
+        const parameters = await readParameters(request);
+        validateLocalPost(request, parameters, csrfToken);
+        await saveBillingMapping(pool, {
+          customerId: billingCustomerId, accountId: parameters.get('accountId'), orderId: parameters.get('orderId'),
+          planId: parameters.get('planId'), planKey: parameters.get('planKey'), interval: parameters.get('interval'),
+          package: { totalUserCap: Number(parameters.get('billing.totalUserCap')), roleSeatCaps: Object.fromEntries(['employee','manager','admin'].map(role => [role, Number(parameters.get(`billing.cap.${role}`))])), enabledFeatures: parameters.getAll('billing.features') },
+          expectedConfigVersion: Number(parameters.get('expectedConfigVersion'))
+        }, session.email);
+        send(response, 200, page('Billing linked', '<h2>Billing mapping saved</h2><a href="/customers">Return to customers</a>'));
+        return;
+      }
+      const subscriptionCustomerId = customerRouteId(url.pathname, 'subscription');
+      if (subscriptionCustomerId && request.method === 'GET') {
+        const customer = await load(pool, subscriptionCustomerId);
+        const details = await loadSubscription(pool, subscriptionCustomerId);
+        send(response, 200, page('Subscription', renderSubscription(csrfToken, customer, details)), 'text/html; charset=utf-8', csrfCookie);
+        return;
+      }
+      if (subscriptionCustomerId && request.method === 'POST') {
+        const parameters = await readParameters(request);
+        validateLocalPost(request, parameters, csrfToken);
+        const customer = await load(pool, subscriptionCustomerId);
+        const config = structuredClone(customer.config);
+        config.access.totalUserCap = Number(parameters.get('totalUserCap'));
+        config.access.roleSeatCaps = Object.fromEntries(['employee','manager','admin'].map(r => [r, Number(parameters.get(`cap.${r}`))]));
+        config.capabilities.enabledFeatures = parameters.getAll('features');
+        const candidate = subscriptionFromForm(parameters, config, {
+          expectedRevision: Number(parameters.get('expectedRevision')),
+          expectedConfigVersion: Number(parameters.get('expectedConfigVersion')),
+          idempotencyKey: String(parameters.get('idempotencyKey') || ''), active: parameters.has('active')
+        });
+        const result = await applySubscriptionChange(pool, candidate, session.email);
+        send(response, 200, page('Subscription saved', `<h2>Subscription saved</h2><p>Paid through ${escapeHtml(result.paidThrough)}. Purchased users: ${result.totalUserCap}.</p><a href="/customers/${encodeURIComponent(result.customerId)}/subscription">Return to subscription</a>`));
+        return;
+      }
       const editCustomerId = customerRouteId(url.pathname, 'edit');
       if (request.method === 'GET' && editCustomerId) {
         const customer = await load(pool, editCustomerId);
@@ -1273,6 +1331,7 @@ export async function startCustomerSetupServer({
         const parameters = await readParameters(request);
         validateLocalPost(request, parameters, csrfToken);
         const candidate = customerSetupRequestFromForm(parameters);
+        candidate.operator.email = session.email;
         const validation = validateCustomerProvisioningRequest(candidate);
         if (!validation.valid) {
           send(response, 400, renderForm(csrfToken, candidate, validation.errors));
@@ -1281,11 +1340,13 @@ export async function startCustomerSetupServer({
         const confirmationToken = crypto.randomBytes(32).toString('hex');
         pendingReviews.set(confirmationToken, {
           kind: 'create',
+          sessionId: session.id,
+          subscription: subscriptionFromForm(parameters, validation.request.config, { idempotencyKey: confirmationToken }),
           request: validation.request,
           expiresAt: currentTime + REVIEW_TTL_MS,
           inProgress: false
         });
-        send(response, 200, renderReview(csrfToken, confirmationToken, validation.request));
+        send(response, 200, renderReview(csrfToken, confirmationToken, validation.request, pendingReviews.get(confirmationToken).subscription));
         return;
       }
       const reviewCustomerId = customerRouteId(url.pathname, 'review');
@@ -1293,6 +1354,7 @@ export async function startCustomerSetupServer({
         const parameters = await readParameters(request);
         validateLocalPost(request, parameters, csrfToken);
         const candidate = customerUpdateRequestFromForm(parameters);
+        candidate.operator.email = session.email;
         if (candidate.config.customerId !== reviewCustomerId) {
           throw new ApiError(409, 'customer_scope_mismatch', 'The customer ID cannot be changed through the edit form.');
         }
@@ -1307,6 +1369,7 @@ export async function startCustomerSetupServer({
         const confirmationToken = crypto.randomBytes(32).toString('hex');
         pendingReviews.set(confirmationToken, {
           kind: 'update',
+          sessionId: session.id,
           request: validation.request,
           expiresAt: currentTime + REVIEW_TTL_MS,
           inProgress: false
@@ -1319,12 +1382,12 @@ export async function startCustomerSetupServer({
         validateLocalPost(request, parameters, csrfToken);
         const confirmationToken = String(parameters.get('confirmationToken') || '');
         const review = pendingReviews.get(confirmationToken);
-        if (!review || review.kind !== 'create' || review.expiresAt <= currentTime || review.inProgress) {
+        if (!review || review.sessionId !== session.id || review.kind !== 'create' || review.expiresAt <= currentTime || review.inProgress) {
           throw new ApiError(409, 'invalid_confirmation', 'The confirmation expired or was already used. Start over.');
         }
         review.inProgress = true;
         try {
-          const result = await provision(pool, review.request);
+          const result = await provision(pool, review.request, { subscription: review.subscription });
           pendingReviews.delete(confirmationToken);
           send(response, 201, renderSuccess(result));
         } catch (error) {
@@ -1341,6 +1404,7 @@ export async function startCustomerSetupServer({
         const review = pendingReviews.get(confirmationToken);
         if (
           !review
+          || review.sessionId !== session.id
           || review.kind !== 'update'
           || review.request.config.customerId !== updateCustomerId
           || review.expiresAt <= currentTime

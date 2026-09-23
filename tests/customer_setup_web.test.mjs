@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import vm from 'node:vm';
-import { startCustomerSetupServer } from '../server/customer_setup_web.js';
+import { startCustomerSetupServer, sessionCookie } from './seller_test_helpers.mjs';
 
 const FLOSPORTS = JSON.parse(await fs.readFile(new URL('../migrations/flosports/customer.json', import.meta.url), 'utf8'));
 
@@ -12,7 +12,7 @@ function request(url, { host, origin, cookie, body, path = '/' } = {}) {
     const headers = {};
     if (host) headers.host = host;
     if (origin) headers.origin = origin;
-    if (cookie) headers.cookie = cookie;
+    headers.cookie = `${sessionCookie(url)}; ${cookie || ''}`;
     if (body) headers['content-type'] = 'application/x-www-form-urlencoded';
     const req = http.request(new URL(path, url), { method: body ? 'POST' : 'GET', headers }, (res) => {
       let text = '';

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Team &amp; Access · Rights Reporter</title>
+  <link rel="stylesheet" href="team.css">
+</head>
+<body>
+<main>
+  <header><div><a href="../options.html" class="back">← Settings</a><p class="eyebrow" id="company">Rights Reporter</p><h1>Team &amp; Access</h1><p>Give each person the right tools. Keep your team within its purchased seats.</p></div><button id="refresh" type="button">Refresh</button></header>
+  <p id="message" role="status" aria-live="polite">Verifying your administrator access…</p>
+  <div id="workspace" hidden>
+    <section class="overview" aria-label="Subscription and seats"><div class="subscription"><span id="subscription"></span><span id="signed-in"></span></div><div id="seats" class="seat-grid"></div><p class="muted" id="recovery" hidden></p></section>
+    <nav aria-label="Team views"><button id="directory-tab" aria-pressed="true">People</button><button id="history-tab" aria-pressed="false">Change history</button><button id="add" class="primary push">Add people</button></nav>
+    <section id="directory" aria-label="People">
+      <form id="filters" class="filters"><label class="grow">Search people<input id="query" type="search" maxlength="120" placeholder="Name or email"></label><label>Role<select id="role-filter"><option value="">All roles</option><option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option></select></label><label>Access<select id="status-filter"><option value="">All people</option><option value="active">Active</option><option value="pending">Pending approval</option><option value="approved">Approved</option><option value="disabled">Deactivated</option></select></label><button type="submit">Search</button></form>
+      <div class="bulk"><span id="selected-count">0 selected</span><label class="sr-only" for="bulk-role">Role for selected people</label><select id="bulk-role"><option value="">Choose role…</option><option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option></select><button id="apply-role">Set selected role</button><button id="review-selected">Review role changes</button><button id="deactivate" class="danger push">Deactivate selected</button></div>
+      <div class="table-wrap"><table><thead><tr><th><input id="select-all" type="checkbox" aria-label="Select all people on this page"></th><th>Person</th><th>Current role</th><th>Access</th><th>New role / activation</th></tr></thead><tbody id="people"></tbody></table></div>
+      <p id="empty" class="empty" hidden>No people match these filters.</p><div class="pagination"><button id="first-page">First page</button><span id="page-label"></span><button id="next-page">Next page →</button></div>
+      <details class="role-guide"><summary>What can each role do?</summary><dl id="role-guide"></dl><p>Only customer admins manage users. Ivan controls purchased limits and subscription dates. Preapproved users reserve seats before their first sign-in.</p></details>
+    </section>
+    <section id="history" hidden aria-label="Change history"><h2>Change history</h2><p class="muted">User and role changes in your organization.</p><ol id="history-list"></ol><button id="more-history">Load older changes</button></section>
+  </div>
+  <p id="access-help" hidden>Open Settings to sign in with your approved Google account. Only a customer admin can open this page. If your subscription is suspended, contact Ivan.</p>
+</main>
+<dialog id="add-dialog" aria-labelledby="add-title"><form id="add-form"><h2 id="add-title">Add people</h2><p>Paste up to 50 email addresses. One per line, or separate with commas. You can use Name &lt;email&gt;.</p><label for="emails">People</label><textarea id="emails" rows="6" maxlength="20000" placeholder="Jamie Lee &lt;jamie@company.com&gt;&#10;alex@company.com" required></textarea><p id="domains" class="muted"></p><label for="add-role">Role</label><select id="add-role"><option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option></select><p id="add-role-description" class="muted"></p><p>Seats are reserved when you confirm. Each person must sign in with the exact approved Google email.</p><p id="add-error" role="alert"></p><footer><button type="button" id="cancel-add">Cancel</button><button type="submit" class="primary">Review people</button></footer></form></dialog>
+<dialog id="review-dialog" aria-labelledby="review-title"><h2 id="review-title">Review team changes</h2><p>Changes apply together after the server rechecks your team and purchased limits.</p><div id="review-counts" class="seat-grid"></div><ul id="review-changes"></ul><p id="review-warning" class="warning"></p><label class="ack"><input type="checkbox" id="acknowledge"> I have reviewed these changes.</label><p id="review-error" role="alert"></p><footer><button id="cancel-review">Cancel</button><button id="confirm" class="primary" disabled>Confirm changes</button></footer></dialog>
+<dialog id="instructions-dialog" aria-labelledby="instructions-title"><h2 id="instructions-title">People added</h2><p>Share these instructions with your team. No email has been sent automatically.</p><textarea id="instructions" rows="7" readonly aria-label="Installation and sign-in instructions"></textarea><p id="copy-status" role="status"></p><footer><button id="copy-instructions">Copy instructions</button><button id="close-instructions" class="primary">Done</button></footer></dialog>
+<script type="module" src="team.js"></script>
+</body></html>

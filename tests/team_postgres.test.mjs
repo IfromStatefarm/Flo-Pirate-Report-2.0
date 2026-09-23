@@ -1,0 +1,118 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import pg from 'pg';
+import { createPostgresRepository } from '../server/postgres_repository.js';
+import { createCustomerApiService } from '../server/customer_api_service.js';
+import { validateTeamRequest } from '../utils/team_access.js';
+import { migrateTeamTestDatabase, teamFixture } from './team_fixture.mjs';
+
+test('Team & Access against isolated Postgres',{skip:!process.env.TEST_DATABASE_URL},async t=>{
+  assert.equal(process.env.TEST_DATABASE_ISOLATED,'true');
+  const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,max:6});t.after(()=>pool.end());
+  await migrateTeamTestDatabase(pool);
+  const repo=createPostgresRepository({pool});
+  const call=(identity,operation,args={})=>repo.teamOperation(identity,validateTeamRequest({protocolVersion:1,operation,...args}));
+  const list=(identity,args={})=>call(identity,'team_list',{query:'',role:'',status:'',cursor:'',...args});
+  const preview=(identity,changes,requestId=crypto.randomUUID())=>call(identity,'team_preview',{changes,requestId});
+  const commit=(identity,requestId)=>call(identity,'team_commit',{requestId});
+  const add=(f,suffix,role='employee')=>({action:'add',email:f.email(suffix),name:suffix,role});
+  const change=(member,action,role)=>({action,memberId:member.memberId,expectedVersion:member.version,...(role?{role}:{})});
+
+  await t.test('onboarding reserves seats, binds Google identity, records history, and retries exactly once',async()=>{
+    const f=await teamFixture(pool);
+    const p=await preview(f.identity,[add(f,'Jamie'),add(f,'Morgan','manager')]);
+    assert.equal((await list(f.identity)).members.length,1);
+    const result=await commit(f.identity,p.requestId);
+    assert.equal(result.changed,2);assert.deepEqual(await commit(f.identity,p.requestId),result);
+    await assert.rejects(preview(f.identity,[add(f,'different')],p.requestId),{code:'idempotency_conflict'});
+    let members=(await list(f.identity)).members;
+    const employee=members.find(m=>m.email===f.email('Jamie').toLowerCase());assert.equal(employee.awaitingSignIn,true);
+    const newIdentity={email:employee.email,subject:`sub-${employee.memberId}`};
+    assert.equal((await repo.requireActiveMember(newIdentity)).role,'employee');
+    members=(await list(f.identity)).members;assert.equal(members.find(m=>m.memberId===employee.memberId).awaitingSignIn,false);
+    await assert.rejects(list(newIdentity),{code:'not_authorized'});
+    await assert.rejects(list({email:f.email('Morgan').toLowerCase(),subject:`manager-${f.id}`}),{code:'not_authorized'});
+    await assert.rejects(repo.requireActiveMember({email:employee.email,subject:'wrong-subject'}),{code:'not_a_member'});
+    const history=await call(f.identity,'team_history',{cursor:''});assert.equal(history.entries.length,2);
+    assert.equal(JSON.stringify(history).includes('google_subject'),false);
+    await assert.rejects(preview(f.identity,[add(f,'Jamie')]),{code:'email_unavailable'});
+    await commit(f.identity,(await preview(f.identity,[change(members.find(m=>m.memberId===employee.memberId),'disable')])).requestId);
+    await assert.rejects(repo.requireActiveMember(newIdentity),{code:'not_a_member'});
+    const disabled=(await list(f.identity)).members.find(m=>m.memberId===employee.memberId);
+    await commit(f.identity,(await preview(f.identity,[change(disabled,'reactivate','employee')])).requestId);
+    assert.equal((await repo.requireActiveMember(newIdentity)).role,'employee');
+  });
+  await t.test('bulk role swaps use final capacity and stale reviews roll back completely',async()=>{
+    const f=await teamFixture(pool,{total:3,employee:1,manager:1,admin:1});
+    await commit(f.identity,(await preview(f.identity,[add(f,'employee'),add(f,'manager','manager')])).requestId);
+    let members=(await list(f.identity)).members, employee=members.find(m=>m.role==='employee'),manager=members.find(m=>m.role==='manager');
+    const swap=await preview(f.identity,[change(employee,'change_role','manager'),change(manager,'change_role','employee')]);
+    await commit(f.identity,swap.requestId);
+    members=(await list(f.identity)).members;employee=members.find(m=>m.role==='employee');manager=members.find(m=>m.role==='manager');
+    const stale=await preview(f.identity,[change(employee,'disable'),change(manager,'disable')]);
+    await commit(f.identity,(await preview(f.identity,[change(employee,'disable')])).requestId);
+    await assert.rejects(commit(f.identity,stale.requestId),{code:'stale_review'});
+    assert.equal((await list(f.identity)).members.find(m=>m.memberId===manager.memberId).status,'active');
+    const expired=await preview(f.identity,[change(manager,'disable')]);
+    await pool.query("UPDATE team_change_requests SET expires_at=now()-interval '1 second' WHERE customer_id=$1 AND request_id=$2",[f.id,expired.requestId]);
+    await assert.rejects(commit(f.identity,expired.requestId),{code:'review_expired'});
+  });
+  await t.test('concurrent batches cannot overfill seats and other customers cannot replay reviews',async()=>{
+    const f=await teamFixture(pool,{total:2,employee:1,manager:1,admin:1}),other=await teamFixture(pool);
+    const a=await preview(f.identity,[add(f,'a')]),b=await preview(f.identity,[add(f,'b')]);
+    await assert.rejects(commit(other.identity,a.requestId),{code:'review_required'});
+    const results=await Promise.allSettled([commit(f.identity,a.requestId),commit(f.identity,b.requestId)]);
+    assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal((await list(f.identity)).utilization.activeUsers.used,2);
+    const otherMember=(await list(other.identity)).members[0];
+    await assert.rejects(preview(f.identity,[change(otherMember,'disable')]),{code:'member_not_found'});
+    await assert.rejects(preview(other.identity,[{action:'add',email:f.identity.email,name:'Duplicate',role:'employee'}]),{code:'email_unavailable'});
+  });
+  await t.test('admin self-demotion is explicit and the final admin remains protected',async()=>{
+    const f=await teamFixture(pool);const self=(await list(f.identity)).members[0];
+    await assert.rejects(preview(f.identity,[change(self,'disable')]),{code:'final_admin_required'});
+    const p=await preview(f.identity,[change(self,'change_role','employee'),add(f,'backup','admin')]);
+    assert.equal(p.affectsSelf,true);assert.equal(p.grantsAdmin,true);
+    const result=await commit(f.identity,p.requestId);assert.equal(result.adminAccess,false);
+    await assert.rejects(list(f.identity),{code:'not_authorized'});
+    const backup={email:f.email('backup'),subject:`backup-${f.id}`};
+    const roster=(await list(backup)).members;assert.equal(roster.filter(m=>m.role==='admin'&&m.status==='active').length,1);
+    await assert.rejects(commit(f.identity,p.requestId),{code:'not_authorized'});
+  });
+  await t.test('expired and future subscriptions allow only deactivation; suspension denies recovery',async()=>{
+    const f=await teamFixture(pool);await commit(f.identity,(await preview(f.identity,[add(f,'employee')])).requestId);
+    const employee=(await list(f.identity)).members.find(m=>m.role==='employee');
+    const beforeExpiry=await preview(f.identity,[add(f,'before-expiry')]);
+    await pool.query("UPDATE customer_subscriptions SET starts_at=now()-interval '2 days',paid_through=now()-interval '1 day' WHERE customer_id=$1",[f.id]);
+    const directory=await list(f.identity);assert.equal(directory.subscription.managementOnly,true);assert.equal(directory.subscription.state,'expired');
+    const service=createCustomerApiService({repository:repo,verifyIdentity:async()=>f.identity,allowedExtensionIds:new Set(['test-extension'])});
+    const {profile}=await service.bootstrap({}, {protocolVersion:1,identity:{email:f.identity.email},extension:{id:'test-extension',version:'3.4.0'}});
+    assert.deepEqual(profile.permissions,['settings.adminAccess']);
+    await assert.rejects(repo.requireActiveMember(f.identity),{code:'subscription_expired'});
+    await assert.rejects(preview(f.identity,[add(f,'new')]),{code:'team_read_only'});
+    await assert.rejects(commit(f.identity,beforeExpiry.requestId),{code:'team_read_only'});
+    await commit(f.identity,(await preview(f.identity,[change(employee,'disable')])).requestId);
+    await pool.query("UPDATE customer_subscriptions SET starts_at=now()+interval '1 day',paid_through=now()+interval '2 days' WHERE customer_id=$1",[f.id]);
+    assert.equal((await list(f.identity)).subscription.state,'scheduled');
+    await pool.query("UPDATE customer_subscriptions SET service_status='revoked' WHERE customer_id=$1",[f.id]);
+    await assert.rejects(list(f.identity),{code:'subscription_suspended'});
+    await assert.rejects(repo.resolveActiveMembership(f.identity),{code:'subscription_suspended'});
+  });
+  await t.test('pagination, literal search, filters, over-cap recovery, and mutation throttling',async()=>{
+    const f=await teamFixture(pool,{total:70,employee:68,manager:2,admin:2});
+    await commit(f.identity,(await preview(f.identity,Array.from({length:50},(_,i)=>add(f,`person${String(i).padStart(2,'0')}`)))).requestId);
+    const first=await list(f.identity),second=await list(f.identity,{cursor:first.nextCursor});
+    assert.equal(first.members.length,50);assert.equal(second.members.length,1);assert.equal(new Set([...first.members,...second.members].map(m=>m.memberId)).size,51);
+    assert.equal((await list(f.identity,{query:'%'})).members.length,0);assert.equal((await list(f.identity,{role:'admin'})).members.length,1);
+    const members=[...first.members,...second.members];
+    await commit(f.identity,(await preview(f.identity,[change(members.find(m=>m.role==='employee'),'disable')])).requestId);
+    const h=await call(f.identity,'team_history',{cursor:''});assert.equal(h.entries.length,50);assert.ok(h.nextCursor);
+    const h2=await call(f.identity,'team_history',{cursor:h.nextCursor});assert.equal(h2.entries.length,1);
+    await pool.query("UPDATE customers SET config=jsonb_set(jsonb_set(config,'{access,totalUserCap}','3'),'{access,roleSeatCaps,employee}','1') WHERE customer_id=$1",[f.id]);
+    const active=(await list(f.identity)).members.find(m=>m.role==='employee'&&m.status==='active');
+    await commit(f.identity,(await preview(f.identity,[change(active,'disable')])).requestId);
+    await pool.query(`INSERT INTO team_change_requests(customer_id,request_id,actor_member_id,payload_hash,changes,roster_hash,config_version,preview)
+      SELECT $1,'rate-'||n,$2,repeat('a',64),'[]'::jsonb,repeat('a',64),2,'{}'::jsonb FROM generate_series(1,100) n`,[f.id,members.find(m=>m.role==='admin').memberId]);
+    await assert.rejects(preview(f.identity,[change(active,'disable')]),{code:'rate_limited'});
+  });
+});

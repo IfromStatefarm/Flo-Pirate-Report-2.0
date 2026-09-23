@@ -65,3 +65,10 @@ test('rejects a token issued to another OAuth client', async () => {
     (error) => error instanceof ApiError && error.code === 'identity_error' && error.status === 401
   );
 });
+
+test('provider outages stay retryable while expired and unverified identities are rejected',async()=>{
+  for(const fetchImpl of [async()=>{throw Error('network');},fetchTokenInfo({},429),fetchTokenInfo({},503),async()=>new Response('not-json')]) {
+    await assert.rejects(verifyGoogleIdentity(request(),{expectedClientId:CLIENT_ID,fetchImpl}),{code:'identity_unavailable'});
+  }
+  for(const data of [{expires_in:0},{email_verified:false},{scope:''}]) await assert.rejects(verifyGoogleIdentity(request(),{expectedClientId:CLIENT_ID,fetchImpl:fetchTokenInfo(tokenInfo(data))}),{code:'identity_error'});
+});

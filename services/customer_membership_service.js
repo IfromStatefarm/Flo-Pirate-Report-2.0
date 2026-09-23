@@ -1,3 +1,4 @@
+import { validateTeamRequest } from '../utils/team_access.js';
 export const CUSTOMER_MEMBERSHIP_PROTOCOL_VERSION = 1;
 export const CUSTOMER_MEMBERSHIP_SETTINGS_PATH = 'config/customer_bootstrap.json';
 
@@ -15,6 +16,18 @@ export const MEMBERSHIP_ERROR_MESSAGES = Object.freeze({
   final_admin_required: 'The customer must retain at least one active administrator.',
   cross_customer_forbidden: 'Users cannot be moved between customers from the extension.',
   stale_member_version: 'This membership changed elsewhere. Refresh and try again.',
+  stale_review: 'The team or package changed. Refresh and review your changes again.',
+  review_expired: 'This review expired. Start a new review.',
+  review_required: 'Review your changes before saving.',
+  request_unavailable: 'This review is unavailable to your account.',
+  idempotency_conflict: 'This request ID was already used for different changes.',
+  invalid_transition: 'The action no longer matches this person’s access. Refresh the directory.',
+  email_unavailable: 'An address is already registered. Refresh the directory or contact Ivan.',
+  seat_limit_exceeded: 'There are not enough purchased seats. Free capacity or reduce an existing overage.',
+  team_read_only: 'You can view and deactivate users until this subscription is active. Contact Ivan.',
+  subscription_suspended: 'This subscription is suspended. Contact Ivan.',
+  subscription_required: 'Subscription terms are missing. Contact Ivan.',
+  rate_limited: 'Too many team reviews. Try again later.',
   not_authorized: 'Only a verified administrator for this customer can make this change.',
   member_not_found: 'The selected customer member no longer exists.',
   role_disabled: 'The selected role is not enabled for this customer.',
@@ -367,5 +380,31 @@ export function createCustomerMembershipService({
     );
   }
 
-  return { listMembers, mutateMember };
+  async function teamRequest(actorProfile, payload) {
+    const body = validateTeamRequest({ protocolVersion: 1, ...payload });
+    return request(actorProfile, body, (value, customerId) => {
+      if (value?.protocolVersion !== 1 || value.customerId !== customerId || !Number.isSafeInteger(value.configVersion)) {
+        throw new MembershipApiError('The team response does not match your organization.', 'invalid_response');
+      }
+      if (body.operation === 'team_list') {
+        if (!Array.isArray(value.members) || value.members.length > 50 || typeof value.nextCursor !== 'string') throw new MembershipApiError('Invalid team directory.', 'invalid_response');
+        value.members = value.members.map(({ awaitingSignIn, ...row }) => {
+          if (typeof awaitingSignIn !== 'boolean') throw new MembershipApiError('Invalid sign-in state.', 'invalid_response');
+          return { ...validateMember(row), awaitingSignIn };
+        });
+        value.utilization = validateMembershipUtilization(value.utilization);
+        if (!['active', 'expired', 'scheduled'].includes(value.subscription?.state) || typeof value.subscription.managementOnly !== 'boolean' || !Array.isArray(value.allowedDomains)) throw new MembershipApiError('Invalid subscription state.', 'invalid_response');
+      } else if (body.operation === 'team_preview') {
+        if (value.requestId !== body.requestId || !Array.isArray(value.changes) || value.changes.length !== body.changes.length || typeof value.affectsSelf !== 'boolean' || typeof value.grantsAdmin !== 'boolean') throw new MembershipApiError('The review does not match this request.', 'invalid_response');
+        value.before = validateMembershipUtilization(value.before);
+        value.after = validateMembershipUtilization(value.after);
+      } else if (body.operation === 'team_commit') {
+        if (value.requestId !== body.requestId || !Number.isInteger(value.changed) || typeof value.adminAccess !== 'boolean' || typeof value.accessChanged !== 'boolean') throw new MembershipApiError('Invalid saved result.', 'invalid_response');
+        value.utilization = validateMembershipUtilization(value.utilization);
+      } else if (!Array.isArray(value.entries) || value.entries.length > 50 || typeof value.nextCursor !== 'string') throw new MembershipApiError('Invalid team history.', 'invalid_response');
+      return value;
+    });
+  }
+
+  return { listMembers, mutateMember, teamRequest };
 }

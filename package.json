@@ -11,7 +11,15 @@
     "configure:api": "node scripts/configure_customer_api.mjs",
     "db:migrate": "node --env-file=.env.local server/scripts/migrate.mjs",
     "db:seed:flosports": "node server/scripts/seed_flosports.mjs",
-    "customer:setup": "node --env-file=.env.local server/scripts/customer_setup.mjs"
+    "customer:setup": "node --env-file=.env.local server/scripts/customer_setup.mjs",
+    "seller:password": "node server/scripts/set_seller_password.mjs",
+    "billing:process": "node --env-file=.env.local server/scripts/process_billing.mjs",
+    "build:extension": "node scripts/build_extension.mjs",
+    "test:licensing:db": "node --test tests/subscription_postgres.test.mjs",
+    "test:team:db": "node --test tests/team_postgres.test.mjs",
+    "licensing:preflight": "node --env-file=.env.local server/scripts/licensing_preflight.mjs",
+    "test:ci": "node scripts/test_ci.mjs",
+    "test:architecture": "node --test tests/architecture_security.test.mjs tests/google_operations.test.mjs tests/operations_postgres.test.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.3.0",

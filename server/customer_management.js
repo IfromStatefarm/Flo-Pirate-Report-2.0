@@ -224,6 +224,12 @@ export async function updateCustomer(pool, candidate, {
         throw new ApiError(404, 'customer_not_found', 'The selected customer was not found.');
       }
       const customer = customerResult.rows[0];
+      const subscription = await client.query('SELECT customer_id FROM customer_subscriptions WHERE customer_id = $1', [request.config.customerId]);
+      if (subscription.rows.length && (
+        request.config.access.totalUserCap !== customer.config.access.totalUserCap
+        || CUSTOMER_ROLES.some(role => request.config.access.roleSeatCaps[role] !== customer.config.access.roleSeatCaps[role])
+        || JSON.stringify([...request.config.capabilities.enabledFeatures].sort()) !== JSON.stringify([...customer.config.capabilities.enabledFeatures].sort())
+      )) throw new ApiError(409, 'subscription_managed_fields', 'Change purchased seats and package features from the Subscription page.');
       const currentValidation = validateCustomerConfig(customer.config);
       if (!currentValidation.valid || currentValidation.config.configVersion !== Number(customer.config_version)) {
         throw new ApiError(409, 'configuration_error', 'The stored customer configuration is invalid and cannot be updated.');

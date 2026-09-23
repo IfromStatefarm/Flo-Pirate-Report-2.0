@@ -52,7 +52,7 @@ function normalizeComparable(value) {
   if (!isPlainObject(value)) return value;
   return Object.fromEntries(
     Object.keys(value)
-      .filter((key) => !['generatedAt', 'generated_at', 'lastUpdated', 'fetchedAt'].includes(key))
+      .filter((key) => !['generatedAt', 'generated_at', 'lastUpdated', 'fetchedAt', '_provenance'].includes(key))
       .sort()
       .map((key) => [key, normalizeComparable(value[key])])
   );
@@ -152,6 +152,7 @@ export function createCustomerMigrationService({
     let result;
     try {
       const legacyResult = await customerDataService.queryLegacyStatistics(profile, readKind, query);
+      if(customerResult?.data?._provenance?.source!=='customer_events' || legacyResult?.data?._provenance?.source!=='google_sheets') throw Object.assign(new Error('Independent source provenance is required.'),{code:'independent_source_required'});
       const customerValue = normalizeComparable(customerResult?.data);
       const legacyValue = normalizeComparable(legacyResult?.data);
       const [customerDigest, legacyDigest] = await Promise.all([digest(customerValue), digest(legacyValue)]);

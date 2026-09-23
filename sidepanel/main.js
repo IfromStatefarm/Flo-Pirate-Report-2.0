@@ -322,7 +322,7 @@ async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAc
           const hasApprovedHandleBeforeMenu = candidateStrings
             .map(normalize)
             .filter(Boolean)
-            .some((candidate) => approvedHandles.some((handle) => candidate.includes(handle)));
+            .some((candidate) => approvedYouTubeHandles.some((handle) => candidate.includes(handle)));
 
           if (!hasApprovedHandleBeforeMenu) {
             const trigger = findFirstElement(platformConfig.youtube?.accountMenuTrigger);

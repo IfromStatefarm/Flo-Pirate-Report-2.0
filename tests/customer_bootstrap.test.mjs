@@ -321,3 +321,15 @@ test('a cached profile cannot authorize when there is no active Google identity'
   assert.equal(hasPermission(profile, PERMISSIONS.SIDEPANEL_REPORT), false);
   assert.equal(requestCount, 0);
 });
+
+test('logout cannot be undone by a late successful or failed bootstrap',async()=>{
+  for(const failure of [false,true]) {
+    let release,entered;
+    const started=new Promise(resolve=>{entered=resolve;});
+    const blocked=new Promise(resolve=>{release=resolve;});
+    const h=createHarness({fetchImpl:async()=>{entered();await blocked;if(failure) throw Error('offline');return jsonResponse({profile:validProfile()});}});
+    const pending=h.service.bootstrap();await started;await h.service.logout();release();
+    assert.equal((await pending).status,'logged_out');
+    assert.equal(h.localStorageArea.state[CUSTOMER_ACCESS_PROFILE_CACHE_KEY],undefined);
+  }
+});
