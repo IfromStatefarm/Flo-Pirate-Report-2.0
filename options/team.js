@@ -1,3 +1,4 @@
+import { hasPermission, PERMISSIONS } from '../utils/access_control.js';
 import { TEAM_ROLES, TEAM_ROLE_DESCRIPTIONS, validateTeamRequest } from '../utils/team_access.js';
 
 const $ = id => document.getElementById(id);
@@ -20,7 +21,7 @@ function lockPage(text) {
 async function verify() {
   const result = await send('refreshAccessProfile');
   const p = result.profile;
-  if (p?.status !== 'ready' || p?.verification !== 'verified' || p.role !== 'admin' || !p.permissions?.includes('settings.adminAccess')) throw new Error('Team & Access is available to verified customer admins only.');
+  if (!hasPermission(p, PERMISSIONS.SETTINGS_ADMIN_ACCESS)) throw new Error('Team & Access is available to verified customer admins only.');
   if (state.profile && state.profile.customerId !== p.customerId) throw new Error('Your organization changed. Reopen Team & Access.');
   state.profile = p;
   const colors = { primary: '--brand-primary', onPrimary: '--brand-on-primary', background: '--page-background', surface: '--surface', text: '--text-primary', muted: '--text-muted', border: '--border', accent: '--brand-accent' };

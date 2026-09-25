@@ -365,15 +365,14 @@ export function createReportingWorkflow({
             target_url: data.url,
             handle: data.handle || '',
             source_event_name: data.eventName || '',
-            vertical: data.vertical || '',
-            scout_points: -15
+            vertical: data.vertical || ''
           });
 
           return {
             success: false,
             status: 'whitelisted',
             milestoneHit: true,
-            milestoneMessage: `⚠️ BLOCKED: @${data.handle} is whitelisted! Penalty: -15 Points.`
+            milestoneMessage: `⚠️ BLOCKED: @${data.handle} is whitelisted.`
           };
         }
       } catch (error) {
@@ -568,7 +567,8 @@ export function createReportingWorkflow({
             return {
               url: item.url,
               screenshotLink,
-              views: item.views
+              views: item.views,
+              contentType: item.isLive || String(item.contentType || '').toLowerCase()==='live' ? 'Live' : String(item.contentType || '').toLowerCase()==='clip' ? 'Clip' : 'VOD'
             };
           })
         );

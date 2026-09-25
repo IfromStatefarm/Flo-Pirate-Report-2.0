@@ -14,6 +14,7 @@ function request(token = 'test-access-token') {
 function tokenInfo(overrides = {}) {
   return {
     aud: CLIENT_ID,
+    expires_in: 3600,
     email: 'ivan.mcclay@flosports.tv',
     email_verified: 'true',
     user_id: '108503226143975152667',
@@ -71,4 +72,16 @@ test('provider outages stay retryable while expired and unverified identities ar
     await assert.rejects(verifyGoogleIdentity(request(),{expectedClientId:CLIENT_ID,fetchImpl}),{code:'identity_unavailable'});
   }
   for(const data of [{expires_in:0},{email_verified:false},{scope:''}]) await assert.rejects(verifyGoogleIdentity(request(),{expectedClientId:CLIENT_ID,fetchImpl:fetchTokenInfo(tokenInfo(data))}),{code:'identity_error'});
+});
+
+test('identity verification fails closed on missing, malformed, or conflicting provider claims', async () => {
+  for (const claims of [
+    { expires_in: undefined }, { expires_in: 'Infinity' }, { expires_in: true },
+    { expires_in: -1 }, { sub: {} }, { email: ['admin@example.test'] },
+    { email_verified: false, verified_email: true }
+  ]) {
+    await assert.rejects(verifyGoogleIdentity(request(), {
+      expectedClientId: CLIENT_ID, fetchImpl: fetchTokenInfo(tokenInfo(claims))
+    }), { code: 'identity_error' });
+  }
 });

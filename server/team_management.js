@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { permissionsFor } from './access_policy.js';
 import { assert } from './api_error.js';
 import { TEAM_ROLES } from '../utils/team_access.js';
 
@@ -61,9 +62,8 @@ export function projectTeamChanges(rows, changes, config, managementOnly = false
 export function createTeamManagement({ transact, resolveInside }) {
   return async function teamOperation(identity, body) {
     return transact(async client => {
-      // The customer lock serializes roster and subscription changes. Serializable
-      // isolation additionally protects cross-customer email preapproval races.
-      const actor = await resolveInside(client, identity, { requireAdmin: true, allowOverCap: true, allowManagement: true });
+      // The customer lock serializes roster and subscription changes.
+      const actor = await resolveInside(client, identity, { permission: 'settings.adminAccess', allowOverCap: true, allowManagement: true });
       const envelope = { protocolVersion: 1, customerId: actor.customerId, configVersion: actor.configVersion };
       if (body.operation === 'team_list') {
         const values = [actor.customerId, body.cursor, body.query, body.role, body.status];
@@ -102,12 +102,8 @@ export function createTeamManagement({ transact, resolveInside }) {
       const rows = (await client.query('SELECT * FROM customer_memberships WHERE customer_id=$1 ORDER BY member_id FOR UPDATE', [actor.customerId])).rows;
       if (stored) assert(stored.roster_hash === rosterHash(rows) && stored.config_version === actor.configVersion, 409, 'stale_review', 'The team or package changed. Refresh and review again.');
       const changes = stored ? stored.changes : body.changes;
-      // Prevent ambiguous Google identity binding without exposing other rosters.
-      const emails = changes.filter(c => c.action === 'add').map(c => c.email).sort();
-      if (emails.length) {
-        const existing = await client.query('SELECT 1 FROM customer_memberships WHERE lower(email)=ANY($1::text[]) LIMIT 1', [emails]);
-        assert(!existing.rows.length, 409, 'email_unavailable', 'An address is already registered. Refresh the directory or contact Ivan.');
-      }
+      // Duplicate checks are tenant-local. Looking up other tenants' emails here
+      // would turn team administration into a membership enumeration endpoint.
       const projection = projectTeamChanges(rows, changes, actor.customerConfig, actor.managementOnly);
       const preview = { ...envelope, requestId: body.requestId, expiresAt: Date.now()+10*60000, before: projection.before, after: projection.after, changes: projection.updates.map(u => ({ action: u.action, before: summary(u.before), after: summary(u.after) })), affectsSelf: projection.updates.some(u => u.after.member_id === actor.memberId), grantsAdmin: projection.updates.some(u => u.after.role === 'admin' && u.after.status === 'active' && (u.before?.role !== 'admin' || u.before?.status !== 'active')) };
       if (body.operation === 'team_preview') {
@@ -125,7 +121,7 @@ export function createTeamManagement({ transact, resolveInside }) {
         await client.query('INSERT INTO membership_audit(audit_id,customer_id,actor_member_id,actor_email,target_member_id,action,before_state,after_state,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)', [`audit_${crypto.randomUUID().replaceAll('-', '')}`, actor.customerId, actor.memberId, actor.email, row.member_id, update.action, summary(update.before) || {}, summary(row), occurredAt]);
       }
       const self = projection.updates.find(u => u.after.member_id === actor.memberId);
-      const result = { ...envelope, requestId: body.requestId, changed: projection.updates.length, utilization: projection.after, accessChanged: Boolean(self), adminAccess: !self || (self.after.role === 'admin' && self.after.status === 'active') };
+      const result = { ...envelope, requestId: body.requestId, changed: projection.updates.length, utilization: projection.after, accessChanged: Boolean(self), adminAccess: !self || (permissionsFor(actor.customerConfig, self.after.role).includes('settings.adminAccess') && self.after.status === 'active') };
       await client.query('UPDATE team_change_requests SET result=$3 WHERE customer_id=$1 AND request_id=$2', [actor.customerId, body.requestId, result]);
       return result;
     }, { isolation: 'SERIALIZABLE' });

@@ -2,6 +2,7 @@ export const CUSTOMER_DATA_PROTOCOL_VERSION = 1;
 export const CUSTOMER_DATA_SETTINGS_PATH = 'config/customer_bootstrap.json';
 
 import { CUSTOMER_EVENT_TYPES, CUSTOMER_EVENT_ATTRIBUTE_KEYS } from '../contracts/customer_events.js';
+import { isVerifiedAccessProfile } from '../utils/access_control.js';
 export { CUSTOMER_EVENT_TYPES, CUSTOMER_EVENT_ATTRIBUTE_KEYS } from '../contracts/customer_events.js';
 
 const TEXT_ATTRIBUTE_KEYS = new Set([
@@ -111,7 +112,7 @@ async function defaultLoadSettings(fetchImpl) {
 }
 
 function validateProfile(profile) {
-  if (profile?.status !== 'ready' || profile?.verification !== 'verified') {
+  if (!isVerifiedAccessProfile(profile)) {
     throw new CustomerDataApiError('A current verified customer profile is required.', 'not_authorized');
   }
   if (!CUSTOMER_ID_PATTERN.test(String(profile.customerId || ''))) {

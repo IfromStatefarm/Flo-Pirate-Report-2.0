@@ -32,16 +32,19 @@ export async function verifyGoogleIdentity(request, {
   let info;
   try { info = await response.json(); } catch { throw new ApiError(503, 'identity_unavailable', 'Identity verification is temporarily unavailable.'); }
   assert(info && typeof info === 'object', 401, 'identity_error', 'Invalid identity response.');
-  if (info.expires_in !== undefined) assert(Number(info.expires_in) > 0, 401, 'identity_error', 'The Google token has expired.');
+  assert((typeof info.expires_in === 'string' || typeof info.expires_in === 'number') &&
+    Number.isFinite(Number(info.expires_in)) && Number(info.expires_in) > 0,
+    401, 'identity_error', 'Google did not confirm an unexpired access token.');
   // Google's access-token tokeninfo response currently uses the OAuth-style
   // `aud` and `email_verified` names. Retain the older aliases as well so the
   // verifier stays compatible with both documented response shapes.
   const audience = String(info.aud || info.audience || info.issued_to || '');
-  const email = String(info.email || '').trim().toLowerCase();
-  const subject = String(info.user_id || info.sub || '').trim();
+  const email = typeof info.email === 'string' ? info.email.trim().toLowerCase() : '';
+  const rawSubject = info.sub ?? info.user_id;
+  const subject = typeof rawSubject === 'string' ? rawSubject.trim() : '';
   const scopes = new Set(String(info.scope || '').split(/\s+/).filter(Boolean));
-  const verifiedEmail = info.email_verified === true || info.email_verified === 'true' ||
-    info.verified_email === true || info.verified_email === 'true';
+  const verificationClaims = [info.email_verified, info.verified_email].filter(value => value !== undefined);
+  const verifiedEmail = verificationClaims.length > 0 && verificationClaims.every(value => value === true || value === 'true');
 
   assert(audience === expectedClientId, 401, 'identity_error', 'The Google token was issued to a different OAuth client.');
   assert(verifiedEmail && email && subject, 401, 'identity_error', 'Google did not return a verified identity.');

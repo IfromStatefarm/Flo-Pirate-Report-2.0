@@ -90,6 +90,32 @@ test('architecture controls against isolated Postgres',{skip:!process.env.TEST_D
     await pool.query("UPDATE customer_memberships SET platforms=ARRAY['youtube'] WHERE member_id=$1",[ba.memberId]);
     await assert.rejects(repo.finalizeReportBatch(ba,batch,now),{code:'scope_mismatch'});
   });
+  await t.test('scanner reservations deduplicate observations, survive retry and isolate customer awards',async()=>{
+    const rowKey=crypto.createHash('sha256').update('scanner-row').digest('hex');
+    const urls=['https://youtube.com/watch?v=scanner-one','https://youtube.com/watch?v=scanner-two'];
+    await repo.recordScannerResolutions(actor,rowKey,[...urls,urls[0]]);
+    await repo.recordScannerResolutions(actor,rowKey,urls);
+    assert.equal(await repo.reserveScannerBonus(foreign,rowKey),null);
+    const [first,retry]=await Promise.all([repo.reserveScannerBonus(actor,rowKey),repo.reserveScannerBonus(actor,rowKey)]);
+    assert.deepEqual(first,retry);assert.equal(first.points,30);
+    await repo.recordScannerResolutions(actor,rowKey,['https://youtube.com/watch?v=scanner-three']);
+    assert.deepEqual(await repo.reserveScannerBonus(actor,rowKey),first);
+    await Promise.all([repo.completeScannerBonus(actor,rowKey,first.awardId,2),repo.completeScannerBonus(actor,rowKey,first.awardId,2)]);
+    const second=await repo.reserveScannerBonus(actor,rowKey);
+    assert.equal(second.points,15);assert.notEqual(second.awardId,first.awardId);
+    await repo.completeScannerBonus(actor,rowKey,second.awardId,2);
+    await repo.completeScannerBonus(actor,rowKey,second.awardId,2);
+    assert.equal(await repo.reserveScannerBonus(actor,rowKey),null);
+    await repo.recordScannerResolutions(actor,rowKey,urls);
+    assert.equal(await repo.reserveScannerBonus(actor,rowKey),null);
+    const rows=(await pool.query("SELECT attributes FROM customer_events WHERE customer_id=$1 AND attributes->>'provenance'='server_reward'",[f.id])).rows;
+    assert.equal(rows.length,2);assert.equal(rows.reduce((sum,row)=>sum+row.attributes.enforcer_points,0),45);
+    assert.ok(rows.every(row=>row.attributes.reason==='operator_observed_resolution'));
+    await repo.recordScannerResolutions(actor,rowKey,['https://youtube.com/watch?v=scanner-four']);
+    await pool.query("UPDATE customer_memberships SET platforms=ARRAY['tiktok'] WHERE member_id=$1",[actor.memberId]);
+    await assert.rejects(repo.reserveScannerBonus(actor,rowKey),{code:'scope_mismatch'});
+    await pool.query("UPDATE customer_memberships SET platforms=ARRAY['youtube','tiktok'] WHERE member_id=$1",[actor.memberId]);
+  });
   await t.test('platform revocation is rechecked inside the transaction and observation scores are ignored',async()=>{
     await repo.recordEvent(actor,{...event,event_id:'observation',event_type:'automation.row_status_changed',attributes:{row_index:2,enforcer_points:999999}},Date.now());
     const row=(await pool.query('SELECT attributes FROM customer_events WHERE customer_id=$1 AND event_id=$2',[f.id,'observation'])).rows[0];

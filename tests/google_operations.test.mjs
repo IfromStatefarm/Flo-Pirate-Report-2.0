@@ -5,6 +5,7 @@ import { validateGoogleCommand, createGoogleOperations } from '../server/integra
 import { googleConnectorToken } from '../server/integrations/google_credentials.js';
 import { verifyReportPolicy, authoritativeReportAttributes } from '../server/report_policy.js';
 import { assertMessageSender } from '../utils/message_policy.js';
+import { ApiError } from '../server/api_error.js';
 const config=JSON.parse(await fs.readFile(new URL('../migrations/flosports/customer.json',import.meta.url)));
 const actor={customerId:'flosports',memberId:'user',email:'operator@flosports.tv',name:'Operator',role:'admin',platforms:['youtube'],customerConfig:config};
 const command=(name,args)=>({name,args,requestId:'op-1'});
@@ -27,9 +28,10 @@ test('unconfigured connector fails closed; legacy delegation must be explicitly 
 
 test('gateway denies a folder outside the configured customer root before upload',async()=>{
   let uploaded=false;
-  const service=createGoogleOperations({repository:{claimIntegrationResources:async()=>{},runIntegrationOperation:async(_a,_c,work)=>work()},tokenProvider:async()=> 'server-token',fetchImpl:async(url)=>{
+  const service=createGoogleOperations({repository:{claimIntegrationResources:async()=>actor,requireUploadFolder:async()=>{throw new ApiError(403,'scope_mismatch','Folder unavailable');},verifyGoogleResourceScope:async()=>actor,runIntegrationOperation:async(_a,_c,work)=>work()},tokenProvider:async()=> 'server-token',fetchImpl:async(url)=>{
     if(url.includes('/upload/')) uploaded=true;
-    return Response.json({mimeType:'application/vnd.google-apps.folder',parents:[]});
+    const id = new URL(url).pathname.split('/').at(-1);
+    return Response.json({id,trashed:false,driveId:'fixture-google-home',mimeType:[config.destinations.driveRootFolderId,'outside-folder-1','fixture-google-home'].includes(id) ? 'application/vnd.google-apps.folder' : 'application/vnd.google-apps.spreadsheet',parents:id==='fixture-google-home'?[]:['fixture-google-home'],capabilities:{canListChildren:true,canAddChildren:true}});
   }});
   await assert.rejects(service.execute(actor,command('uploadToDrive',['outside-folder-1','x.pdf',Buffer.from('%PDF-x').toString('base64'),'application/pdf','evt-1'])),{code:'scope_mismatch'});
   assert.equal(uploaded,false);
@@ -40,7 +42,7 @@ test('report policy checks catalog, whitelist, duplicate URLs and server expiry 
   const adapter={fetchConfig:async()=>({verticals:[{name:'Sports',events:[{name:'Final',double_xp:true,double_xp_expires_at:'2000-01-01'}]}]}),getEventData:async()=>({eventMap:{final:{name:'Final'}}}),checkIfAuthorized:async()=>false};
   const policy=await verifyReportPolicy(actor,report,adapter);
   const attributes=authoritativeReportAttributes(report,policy,{url_count:10000,scout_points:1000000,enforcer_points:1000000,outcome:'confirmed',pdf_url:'https://drive.google.com/file/d/x'});
-  assert.equal(attributes.url_count,1);assert.equal(attributes.scout_points,10);assert.equal(attributes.enforcer_points,20);assert.equal(attributes.outcome,'operator_prepared');
+  assert.equal(attributes.url_count,1);assert.equal(attributes.scout_points,50);assert.equal(attributes.enforcer_points,20);assert.equal(attributes.outcome,'operator_prepared');
   await assert.rejects(verifyReportPolicy(actor,{...report,items:[...report.items,...report.items]},adapter),{code:'invalid_report'});
   await assert.rejects(verifyReportPolicy(actor,{...report,vertical:'Foreign'},adapter),{code:'rights_policy_denied'});
   adapter.checkIfAuthorized=async()=>true;

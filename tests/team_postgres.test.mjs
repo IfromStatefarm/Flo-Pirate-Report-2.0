@@ -66,7 +66,10 @@ test('Team & Access against isolated Postgres',{skip:!process.env.TEST_DATABASE_
     assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal((await list(f.identity)).utilization.activeUsers.used,2);
     const otherMember=(await list(other.identity)).members[0];
     await assert.rejects(preview(f.identity,[change(otherMember,'disable')]),{code:'member_not_found'});
-    await assert.rejects(preview(other.identity,[{action:'add',email:f.identity.email,name:'Duplicate',role:'employee'}]),{code:'email_unavailable'});
+    // An admin must not learn whether an email belongs to another customer.
+    const invitation=await preview(other.identity,[{action:'add',email:f.identity.email,name:'Duplicate',role:'employee'}]);
+    await commit(other.identity,invitation.requestId);
+    assert.equal((await repo.requireActiveMember(f.identity)).customerId,f.id);
   });
   await t.test('admin self-demotion is explicit and the final admin remains protected',async()=>{
     const f=await teamFixture(pool);const self=(await list(f.identity)).members[0];

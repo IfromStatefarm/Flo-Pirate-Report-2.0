@@ -19,7 +19,9 @@
     "test:team:db": "node --test tests/team_postgres.test.mjs",
     "licensing:preflight": "node --env-file=.env.local server/scripts/licensing_preflight.mjs",
     "test:ci": "node scripts/test_ci.mjs",
-    "test:architecture": "node --test tests/architecture_security.test.mjs tests/google_operations.test.mjs tests/operations_postgres.test.mjs"
+    "test:architecture": "node --test tests/architecture_security.test.mjs tests/google_operations.test.mjs tests/operations_postgres.test.mjs",
+    "test:tenant-isolation": "node --test --test-concurrency=1 tests/tenant_isolation_postgres.test.mjs tests/customer_authority_postgres.test.mjs tests/google_resource_postgres.test.mjs tests/customer_bootstrap.test.mjs tests/google_resource_guard.test.mjs",
+    "security:tenant:preflight": "node --env-file=.env.local server/scripts/tenant_isolation_preflight.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.3.0",

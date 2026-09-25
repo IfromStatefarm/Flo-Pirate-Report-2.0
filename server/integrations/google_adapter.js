@@ -1,10 +1,14 @@
 import { requireUrlPlatforms } from '../platform_policy.js';
 import { aggregateIntelligenceData } from '../../utils/intel_aggregator.js';
 // Provider implementation moved from the extension. Never expose arbitrary URLs/methods.
-export function createGoogleAdapter({ token, integrations, defaults, actor, fetchImpl = globalThis.fetch }) {
+export function createGoogleAdapter({ token, integrations, defaults, actor, resourceGuard, fetchImpl = globalThis.fetch }) {
 const getAuthToken = async () => token;
 const escapeDrive = value => String(value).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
-const fetch = (url, options = {}) => fetchImpl(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(20000) });
+const fetch = async (url, options = {}) => {
+  if (!resourceGuard) throw new Error('A server Google resource guard is required.');
+  await resourceGuard.authorizeRequest(url, options);
+  return fetchImpl(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(20000) });
+};
 
 const WHITELIST_TAB = 'Handles White List';
 const TARGET_TAB_NAME = 'Report Submissions and status';
@@ -446,13 +450,17 @@ async function findOrCreateFolder(token, parentId, name) {
   const query = `mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and name='${escapeDrive(name)}' and trashed=false`;
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`;
   const data = await safeFetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (data.files && data.files.length > 0) return data.files[0].id;
+  if (data.files && data.files.length > 0) {
+    await resourceGuard.assertFolder(data.files[0].id);
+    return data.files[0].id;
+  }
   
   const d = await safeFetchJson('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] })
   });
+  await resourceGuard.assertFolder(d.id);
   return d.id;
 }
 // ==========================================

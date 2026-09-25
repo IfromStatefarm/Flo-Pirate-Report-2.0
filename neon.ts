@@ -1,6 +1,7 @@
 import { defineConfig } from "@neon/config/v1";
 
 const customerApiEnvironment = {
+  CUSTOMER_DATABASE_URL: process.env.CUSTOMER_DATABASE_URL!,
   GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID!,
   ALLOWED_EXTENSION_IDS: process.env.ALLOWED_EXTENSION_IDS!,
   ALLOWED_EXTENSION_ORIGINS: process.env.ALLOWED_EXTENSION_ORIGINS!,

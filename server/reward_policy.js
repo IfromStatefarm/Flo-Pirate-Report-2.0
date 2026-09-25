@@ -13,10 +13,22 @@ export function advanceReportingStreak(previous, acceptedAt) {
   return {lastReportDate:today,streakCount,freezes};
 }
 
-export function reportReward({itemCount,batchSize=itemCount,multiplier=1,streakCount=1}) {
+// Provider metadata is an observation; only this server rule assigns points.
+export function observedViews(value) {
+  const match=String(value || '').toLowerCase().replaceAll(',','').trim().match(/^(\d+(?:\.\d+)?)\s*([kmb])?(?:\s+(?:views?|viewers?))?$/);
+  return match ? Math.min(1000000000,Math.round(Number(match[1])*({k:1000,m:1000000,b:1000000000}[match[2]]||1))) : 0;
+}
+
+export function reportReward({itemCount,items,batchSize=itemCount,multiplier=1,streakCount=1}) {
   if(!Number.isSafeInteger(itemCount)||itemCount<1||itemCount>100||!Number.isSafeInteger(batchSize)||batchSize<itemCount||batchSize>100||![1,2].includes(multiplier)||!Number.isSafeInteger(streakCount)||streakCount<1) throw new Error('Invalid authoritative reward context.');
+  if(items && (!Array.isArray(items)||items.length!==itemCount)) throw new Error('Invalid reward evidence.');
+  const scoutBase=items ? items.reduce((sum,item)=>{
+    const views=observedViews(item.views);
+    const live=item.contentType==='Live' || new URL(item.url).pathname.includes('/live/');
+    return sum+(views>=100000?50:views>=10000?20:10)*(live?2:1);
+  },0) : itemCount*10;
   return {
-    scoutPoints:itemCount*10*multiplier,
+    scoutPoints:scoutBase*multiplier,
     enforcerPoints:Math.floor(itemCount*20*multiplier*(batchSize>50?1.2:1))+(streakCount>=3?50:0),
     scoringVersion:2
   };

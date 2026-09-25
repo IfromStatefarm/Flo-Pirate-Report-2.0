@@ -59,3 +59,19 @@ test('neutral release removes nested organization account IDs without changing F
   assert.deepEqual(release.platform_selectors.youtube.session.channel_handle, ['#account']);
   assert.equal(source.platform_selectors.youtube.session.authorized_channel_ids[0], 'private-customer-id');
 });
+
+test('report API accepts bounded observations but rejects client scores and internal event IDs',async()=>{
+  const actor={customerId:config.customerId,memberId:'a',role:'manager',customerConfig:config,platforms:['youtube']};
+  const accepted=[];
+  const service=createCustomerApiService({verifyIdentity:async()=>({}),reportPolicy:async()=>({}),repository:{requireActiveMember:async()=>actor,generateReport:async(_actor,report)=>{accepted.push(report);return {};}}});
+  const report={reportId:'r1',eventId:'e1',eventName:'Final',vertical:'Sports',handle:'pirate',items:[{url:'https://youtube.com/watch?v=one',views:'100K',screenshotLink:'',contentType:'Live'}]};
+  const send=value=>service.data({}, {protocol_version:1,operation:'generate_report',report:value});
+  await send(structuredClone(report));
+  const legacy=structuredClone(report);delete legacy.items[0].contentType;await send(legacy);
+  for(const change of [value=>value.items[0].scoutScore=999999,value=>value.items[0].contentType='arbitrary',value=>value.eventId='sys_bonus_forged']) {
+    const value=structuredClone(report);change(value);await assert.rejects(send(value));
+  }
+  assert.equal(accepted.length,2);
+  const submission={reportId:'r1',eventId:'sys_bonus_forged',pdfUrl:'https://drive.google.com/file/d/one',mode:'enforcer',contentType:'VOD'};
+  await assert.rejects(service.data({}, {protocol_version:1,operation:'finalize_report_batch',batch:{batchId:'b1',reports:[submission]}}),{code:'invalid_report'});
+});

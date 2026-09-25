@@ -324,7 +324,7 @@ export function createSheetScanner({
         }
 
         const cellData = rows[rowIndex];
-        if (isClosedRowStatus(cellData?.status)) {
+        if (isClosedRowStatus(cellData?.status) && cellData.status !== 'Resolved') {
           consecutiveBlanks = 0;
           rowIndex++;
           continue;
@@ -370,6 +370,13 @@ export function createSheetScanner({
         ));
         if (hasDisallowedPlatform) {
           sendProgress(`Skipping Row ${rowIndex + 1}`, 'The row contains a platform that is not assigned to your account.');
+          rowIndex++;
+          continue;
+        }
+
+        if (cellData.status === 'Resolved') {
+          if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
+          await addEnforcerBonusPoints(rowIndex, 0, customerProfile.integrations);
           rowIndex++;
           continue;
         }
@@ -508,9 +515,7 @@ export function createSheetScanner({
           await updateRowStatus(rowIndex, 'Resolved', customerProfile.integrations);
           cellData.status = 'Resolved';
           sendProgress(`Row ${rowIndex + 1}`, 'All links DOWN. Row resolved.');
-          if (newlyStruck > 0) {
-            await addEnforcerBonusPoints(rowIndex, newlyStruck * 15, customerProfile.integrations);
-          }
+          await addEnforcerBonusPoints(rowIndex, 0, customerProfile.integrations);
         } else if (totalActive > 0) {
           const previousStatus = cellData.status || '';
           await recordCustomerEvent(customerProfile, 'automation.row_status_changed', {

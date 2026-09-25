@@ -186,6 +186,19 @@ test('an unexpired last-known-good profile serves without another API request', 
   assert.equal(harness.requests.length, 1);
 });
 
+test('browser storage cannot supply tenant authority after a service restart or failed bootstrap', async () => {
+  const forged = validProfile({customerId: 'foreign-customer', userId: 'foreign-member'});
+  const h = createHarness({initialLocal: {[CUSTOMER_ACCESS_PROFILE_CACHE_KEY]: forged}});
+  // Reading display state must not promote an untrusted cache into authority.
+  await h.service.getDisplayProfile();
+  assert.equal((await h.service.requirePermission(PERMISSIONS.SIDEPANEL_REPORT)).customerId, 'acme-sports');
+  assert.equal(h.requests.length, 1);
+  const offline = createHarness({initialLocal: {[CUSTOMER_ACCESS_PROFILE_CACHE_KEY]: forged}, fetchImpl: async () => { throw Error('offline'); }});
+  for (let attempt=0; attempt<2; attempt++) {
+    await assert.rejects(offline.service.requirePermission(PERMISSIONS.SIDEPANEL_REPORT), /Access denied/);
+  }
+});
+
 test('clears customer-scoped local activity when the verified customer or user changes', async () => {
   let customerId = 'acme-sports';
   const harness = createHarness({
@@ -221,7 +234,7 @@ test('expired last-known-good profile remains displayable but cannot authorize p
   assert.equal(hasPermission(stale, PERMISSIONS.SIDEPANEL_REPORT), false);
   await assert.rejects(
     harness.service.requirePermission(PERMISSIONS.SIDEPANEL_REPORT),
-    /Access denied: The cached customer profile is expired/
+    /Access denied: The cached customer profile cannot authorize work/
   );
 });
 
@@ -256,6 +269,26 @@ test('an authoritative membership denial blocks a previously cached profile', as
   const subsequent = await harness.service.getCurrentProfile();
   assert.equal(subsequent.status, 'not_a_member');
   await assert.rejects(harness.service.requirePermission(PERMISSIONS.SIDEPANEL_REPORT), /Access denied/);
+});
+
+test('protected actions revalidate unexpired profiles and fail closed on disable, revocation and outages', async () => {
+  for (const status of [401, 403, 503]) {
+    let nextStatus = 200;
+    let requests = 0;
+    const harness = createHarness({ fetchImpl: async () => {
+      requests++;
+      return jsonResponse(nextStatus === 200 ? { profile: validProfile() } : {}, nextStatus);
+    } });
+    await harness.service.requirePermission(PERMISSIONS.SIDEPANEL_REPORT);
+    nextStatus = status;
+    await assert.rejects(harness.service.requirePermission(PERMISSIONS.SIDEPANEL_REPORT), /Access denied/);
+    assert.equal(requests, 2);
+    if (status !== 503) {
+      nextStatus = 503;
+      const retry = await harness.service.getCurrentProfile({ forceRefresh: true });
+      assert.equal(hasPermission(retry, PERMISSIONS.SIDEPANEL_REPORT), false, 'An outage must not revive denied authority');
+    }
+  }
 });
 
 test('ambiguous membership and identity mismatch fail closed', async () => {

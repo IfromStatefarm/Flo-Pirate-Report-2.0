@@ -10,11 +10,22 @@ import {
 const ENDPOINT = 'https://api.example.com/v1/extension/memberships';
 
 const ACTOR = Object.freeze({
+  schemaVersion: 1,
+  issuedAt: Date.now(),
+  expiresAt: Date.now() + 600000,
+  permissions: ['settings.adminAccess'],
   status: 'ready',
   verification: 'verified',
   customerId: 'acme-sports',
   email: 'admin@acme.example',
   role: 'admin'
+});
+
+test('membership client rejects expired and permission-stripped Admin profiles before sending', async () => {
+  const service = createService(() => assert.fail('Unauthorized request reached the network'));
+  for (const profile of [{ ...ACTOR, expiresAt: Date.now() }, { ...ACTOR, permissions: [] }]) {
+    await assert.rejects(service.listMembers(profile), { code: 'not_authorized' });
+  }
 });
 
 const UTILIZATION = Object.freeze({

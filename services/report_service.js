@@ -25,7 +25,7 @@ async function sendReportCommand(body,scope,{fetchImpl=fetch,tokenProvider=getAu
 }
 
 export async function generatePDF(data,options) {
-  const report={reportId:String(data.reportId),eventId:data.dataScope?.eventId,eventName:String(data.eventName||'Unknown Event'),vertical:String(data.vertical||'General'),handle:String(data.handle||''),items:data.items.map(item=>({url:String(item.url),screenshotLink:item.screenshotLink==='No Screenshot Available'?'':String(item.screenshotLink||''),views:String(item.views||'N/A')}))};
+  const report={reportId:String(data.reportId),eventId:data.dataScope?.eventId,eventName:String(data.eventName||'Unknown Event'),vertical:String(data.vertical||'General'),handle:String(data.handle||''),items:data.items.map(item=>({url:String(item.url),screenshotLink:item.screenshotLink==='No Screenshot Available'?'':String(item.screenshotLink||''),views:String(item.views||'N/A'),contentType:item.contentType||'VOD'}))};
   const envelope=await sendReportCommand({protocol_version:1,operation:'generate_report',report},data.dataScope,options);
   if(envelope.reportId!==report.reportId || typeof envelope.pdf!=='string' || envelope.pdf.length>6*1024*1024) throw new Error('The generated report response is invalid.');
   const bytes=Uint8Array.from(atob(envelope.pdf),char=>char.charCodeAt(0));

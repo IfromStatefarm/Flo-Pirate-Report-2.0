@@ -1,3 +1,4 @@
+import { hasPermission, PERMISSIONS } from '../utils/access_control.js';
 import { validateTeamRequest } from '../utils/team_access.js';
 export const CUSTOMER_MEMBERSHIP_PROTOCOL_VERSION = 1;
 export const CUSTOMER_MEMBERSHIP_SETTINGS_PATH = 'config/customer_bootstrap.json';
@@ -279,7 +280,7 @@ export function validateMembershipMutation(value) {
 }
 
 function validateActorProfile(profile) {
-  if (profile?.status !== 'ready' || profile?.verification !== 'verified' || profile?.role !== 'admin') {
+  if (!hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS)) {
     throw new MembershipApiError(MEMBERSHIP_ERROR_MESSAGES.not_authorized, 'not_authorized');
   }
   if (!CUSTOMER_ID_PATTERN.test(String(profile.customerId || ''))) {

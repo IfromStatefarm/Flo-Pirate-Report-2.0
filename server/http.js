@@ -58,7 +58,7 @@ async function parseBody(request) {
   }
 }
 
-export async function handleCustomerApi(kind, request) {
+export async function handleCustomerApi(kind, request, { service: suppliedService } = {}) {
   const headers = responseHeaders(request);
   if (request.method === 'OPTIONS') {
     return new Response(null, {
@@ -75,7 +75,7 @@ export async function handleCustomerApi(kind, request) {
 
   try {
     const body = await parseBody(request);
-    const handler = getService()[kind];
+    const handler = (suppliedService || getService())[kind];
     if (!handler) throw new ApiError(404, 'not_found', 'API route not found.');
     return json(request, await handler(request, body));
   } catch (error) {

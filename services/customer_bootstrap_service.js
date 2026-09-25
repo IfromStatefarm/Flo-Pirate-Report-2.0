@@ -191,7 +191,6 @@ export function createCustomerBootstrapService({
       await localStorageArea.remove(CUSTOMER_ACCESS_PROFILE_CACHE_KEY);
       return null;
     }
-    inMemoryProfile = result.profile;
     return result.profile;
   }
 
@@ -284,9 +283,12 @@ export function createCustomerBootstrapService({
     return result.profile;
   }
 
-  async function loadCurrentProfile({ forceRefresh = false } = {}) {
+  async function loadCurrentProfile({ forceRefresh = false, allowCachedFallback = true } = {}) {
     const startedGeneration = generation;
     let email = normalizeAccessEmail(await getUserEmail());
+    // Only profiles obtained by this running service are authority. Persisted
+    // profiles can be edited in browser storage and are display hints only.
+    const verifiedInMemory = inMemoryProfile?.email === email ? inMemoryProfile : null;
     let cached = email ? await readCachedProfile(email) : null;
     const denial = email ? await readDenial(email) : null;
     if (!forceRefresh && denial) {
@@ -296,8 +298,8 @@ export function createCustomerBootstrapService({
         cachedProfile: cached ? toPublicAccessProfile(cached, { loadedAt: now() }) : null
       });
     }
-    if (!forceRefresh && email && cached && cached.expiresAt > now()) {
-      return toPublicAccessProfile(cached, { loadedAt: now() });
+    if (!forceRefresh && email && verifiedInMemory && verifiedInMemory.expiresAt > now()) {
+      return toPublicAccessProfile(verifiedInMemory, { loadedAt: now() });
     }
     try {
       const token = await getAuthToken();
@@ -314,9 +316,9 @@ export function createCustomerBootstrapService({
       const status = error?.profileStatus || (email ? 'bootstrap_error' : 'logged_out');
       const message = error?.message || 'Customer access could not be verified.';
       const authoritativeDenial = ['identity_error', 'not_a_member', 'ambiguous_customer'].includes(status);
-      if (email && authoritativeDenial) { await onScopeChange(); await storeDenial(email, error); }
-      if (cached && cached.expiresAt > now() && !authoritativeDenial) {
-        return toPublicAccessProfile(cached, { loadedAt: now() });
+      if (email && authoritativeDenial) { inMemoryProfile = null; await onScopeChange(); await storeDenial(email, error); }
+      if (allowCachedFallback && verifiedInMemory && verifiedInMemory.expiresAt > now() && !authoritativeDenial) {
+        return toPublicAccessProfile(verifiedInMemory, { loadedAt: now() });
       }
       return createUnavailableAccessProfile(cached && !authoritativeDenial ? 'stale' : status, {
         email,
@@ -361,10 +363,10 @@ export function createCustomerBootstrapService({
   }
 
   async function requirePermission(permission) {
-    const profile = await getCurrentProfile();
+    const profile = await getCurrentProfile({ forceRefresh: true, allowCachedFallback: false });
     if (!hasPermission(profile, permission)) {
       const detail = profile.status === 'stale'
-        ? 'The cached customer profile is expired and the customer API could not be reached.'
+        ? 'The cached customer profile cannot authorize work because current access could not be verified.'
         : profile.message || 'The verified customer profile does not grant this permission.';
       throw new Error(`Access denied: ${detail}`);
     }

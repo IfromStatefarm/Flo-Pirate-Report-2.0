@@ -1,6 +1,10 @@
 # Future architecture modification map
 
+**Baseline roadmap:** some entries below are now implemented. See [implementation status](IMPLEMENTATION_STATUS.md) for completed changes, validation and remaining gates. This map preserves the original audit scope.
+
 Companion to [the production-readiness audit](PRODUCTION_READINESS_AUDIT.md). Paths below are repository-relative; these are future modifications, not changes performed by the audit. Priority IDs refer to that document. Use existing modules incrementally, preserving public contracts until their consumers migrate.
+
+2026-09-23 additions: `server/customer_authorization.js` centralizes live member authority; `server/integrations/google_command_policy.js` defines command permissions; `server/integrations/google_resource_guard.js` checks provider requests and replayed resource receipts against current Google metadata and customer ownership. See [the API security contract](P0_AUTHORIZATION.md) for behavior and remaining rollout gates.
 
 ## Existing files requiring future modification
 

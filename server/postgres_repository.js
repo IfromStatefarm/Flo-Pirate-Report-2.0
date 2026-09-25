@@ -2,11 +2,13 @@ import { advanceReportingStreak } from './reward_policy.js';
 import { authoritativeReportAttributes, reportTargetKeys } from './report_policy.js';
 import crypto from 'node:crypto';
 import { ApiError, assert } from './api_error.js';
-import { withTransaction } from './db.js';
+import { withCustomerTransaction } from './tenant_transaction.js';
 import { validateCustomerConfig } from '../utils/customer_config.js';
-import { entitlementFor, requireEntitlement } from './subscription_service.js';
+import { domainAllowed, identityRows, resolveInside, utilization, reauthorizeActor } from './customer_authorization.js';
+import { EVENT_PERMISSIONS } from './access_policy.js';
+import { validateGoogleCommand } from './integrations/google_command_policy.js';
 import { createTeamManagement } from './team_management.js';
-import { authorizeEventPlatforms, effectivePlatforms, requireUrlPlatforms, requirePlatforms, statisticsPlatforms } from './platform_policy.js';
+import { authorizeEventPlatforms, requireUrlPlatforms, requirePlatforms, statisticsPlatforms } from './platform_policy.js';
 
 function member(row) {
   return {
@@ -17,91 +19,6 @@ function member(row) {
     status: row.status,
     version: Number(row.version),
     platforms: row.platforms || []
-  };
-}
-
-function domainAllowed(config, email) {
-  const domain = String(email || '').toLowerCase().split('@')[1] || '';
-  return config.access.allowedEmailDomains.includes(domain);
-}
-
-function identityRows(client, identity, { activeOnly = true, lock = false } = {}) {
-  const statusClause = activeOnly ? "AND m.status = 'active'" : '';
-  const lockClause = lock ? 'FOR UPDATE OF m, c' : '';
-  return client.query(`
-    SELECT m.*, c.config, c.config_version
-    FROM customer_memberships m
-    JOIN customers c ON c.customer_id = m.customer_id
-    WHERE c.active = TRUE
-      ${statusClause}
-      AND (m.google_subject = $1 OR (m.google_subject IS NULL AND lower(m.email) = lower($2)))
-    ${lockClause}
-  `, [identity.subject, identity.email]);
-}
-
-async function resolveInside(client, identity, { requireAdmin = false, allowOverCap = false, allowManagement = false } = {}) {
-  const result = await identityRows(client, identity, { lock: true });
-  if (result.rows.length === 0) throw new ApiError(403, 'not_a_member', 'No active customer membership was found.');
-  if (result.rows.length !== 1) throw new ApiError(409, 'ambiguous_customer', 'The Google identity resolves to more than one active customer.');
-  const row = result.rows[0];
-  assert(row.email.toLowerCase() === identity.email, 401, 'identity_error', 'The verified Google email does not match the membership.');
-  if (requireAdmin) assert(row.role === 'admin', 403, 'not_authorized', 'Only an active customer administrator may perform this operation.');
-  const subscription = await entitlementFor(client, row.customer_id, { allowExpired: true });
-  let managementOnly = false;
-  let subscriptionState = 'active';
-  let entitlementExpiresAt;
-  try { entitlementExpiresAt = requireEntitlement(subscription); }
-  catch (error) {
-    if (!allowManagement || row.role !== 'admin' || !['subscription_expired', 'subscription_not_started'].includes(error.code)) throw error;
-    managementOnly = true;
-    subscriptionState = error.code === 'subscription_expired' ? 'expired' : 'scheduled';
-    entitlementExpiresAt = Date.now() + 10 * 60 * 1000;
-  }
-  if (!row.google_subject) {
-    await client.query('UPDATE customer_memberships SET google_subject = $1, updated_at = now() WHERE member_id = $2', [identity.subject, row.member_id]);
-  }
-  const configResult = validateCustomerConfig(row.config);
-  assert(configResult.valid, 500, 'configuration_error', 'Stored customer configuration is invalid.');
-  assert(configResult.config.configVersion === Number(row.config_version), 500, 'configuration_error', 'Stored configuration versions do not match.');
-  assert(configResult.config.access.enabledRoles.includes(row.role), 403, 'role_disabled', 'The member role is disabled for this customer.');
-  assert(domainAllowed(configResult.config, row.email), 403, 'domain_not_allowed', 'The membership email domain is not approved for this customer.');
-  const totals = await utilization(client, configResult.config);
-  const overCap = totals.activeUsers.used > totals.activeUsers.limit || Object.values(totals.roles).some(r => r.used > r.limit);
-  assert(!overCap || (allowOverCap && row.role === 'admin'), 403, 'subscription_over_cap', 'Your administrator must disable excess users to meet the purchased limits.');
-  return {
-    entitlementExpiresAt,
-    managementOnly,
-    subscriptionState,
-    subscriptionPaidThrough: subscription?.paid_through ? new Date(subscription.paid_through).toISOString() : null,
-    overCap,
-    customerId: row.customer_id,
-    memberId: row.member_id,
-    googleSubject: identity.subject,
-    email: row.email,
-    name: row.name,
-    role: row.role,
-    configVersion: Number(row.config_version),
-    platforms: effectivePlatforms(configResult.config, row.platforms || []),
-    customerConfig: configResult.config
-  };
-}
-
-async function utilization(client, customerConfig) {
-  const counts = await client.query(`
-    SELECT role, count(*)::int AS used
-    FROM customer_memberships
-    WHERE customer_id = $1 AND status = 'active'
-    GROUP BY role
-  `, [customerConfig.customerId]);
-  const used = Object.fromEntries(counts.rows.map((row) => [row.role, Number(row.used)]));
-  const activeUsers = Object.values(used).reduce((sum, value) => sum + value, 0);
-  return {
-    activeUsers: { used: activeUsers, limit: customerConfig.access.totalUserCap },
-    roles: Object.fromEntries(['employee', 'manager', 'admin'].map((role) => [role, {
-      used: used[role] || 0,
-      limit: customerConfig.access.roleSeatCaps[role],
-      enabled: customerConfig.access.enabledRoles.includes(role)
-    }]))
   };
 }
 
@@ -262,28 +179,51 @@ async function advanceRewardState(client,actor,acceptedAt) {
 }
 
 export function createPostgresRepository({ pool } = {}) {
-  const transact = (work, options = {}) => withTransaction(work, { pool, retries: 3, ...options });
+  const transact = (work, options = {}) => withCustomerTransaction(work, { pool, retries: 3, ...options });
   return {
     teamOperation: createTeamManagement({ transact, resolveInside }),
     async claimIntegrationResources(actor) {
       return transact(async client => {
-        const current = await resolveInside(client, { subject: actor.googleSubject, email: actor.email });
-        assert(current.customerId === actor.customerId && current.configVersion === actor.configVersion, 409, 'access_changed', 'Refresh customer access before retrying.');
+        const current = await reauthorizeActor(client, actor);
         for (const [purpose, resourceId] of Object.entries(current.customerConfig.destinations)) {
           if (!resourceId) continue;
-          await client.query("INSERT INTO customer_integration_resources(provider,resource_id,customer_id,purpose) VALUES ('google',$1,$2,$3) ON CONFLICT DO NOTHING", [resourceId, current.customerId, purpose]);
-          const owner = (await client.query("SELECT customer_id FROM customer_integration_resources WHERE provider='google' AND resource_id=$1", [resourceId])).rows[0];
-          assert(owner?.customer_id === current.customerId, 409, 'resource_already_assigned', 'This integration resource is already assigned to another customer.');
+          const owner = (await client.query("SELECT customer_id FROM customer_integration_resources WHERE customer_id=$1 AND provider='google' AND resource_id=$2", [current.customerId, resourceId])).rows[0];
+          assert(owner, 409, 'resource_already_assigned', 'This integration resource is unavailable.');
         }
         return current;
       });
     },
-    async runIntegrationOperation(actor, command, work, authorize = () => {}) {
+    async verifyGoogleResourceScope(actor, resourceIds, permission) {
+      assert(typeof permission === 'string' && permission, 500, 'configuration_error', 'A provider operation permission is required.');
+      assert(Array.isArray(resourceIds) && resourceIds.length >= 1 && resourceIds.length <= 32 &&
+        resourceIds.every(id => typeof id === 'string' && /^[A-Za-z0-9_-]{10,256}$/.test(id)),
+        403, 'scope_mismatch', 'Invalid Google resource scope.');
+      return transact(async client => {
+        const current = await reauthorizeActor(client, actor, permission);
+        assert(Object.entries(current.customerConfig.destinations).every(([key, value]) => actor.customerConfig.destinations[key] === value) &&
+          Array.isArray(actor.platforms) && actor.platforms.every(platform => current.platforms.includes(platform)),
+          409, 'access_changed', 'Customer integration access changed. Refresh before retrying.');
+        const result = await client.query('SELECT rr_private.google_resources_available($1::text[]) AS available', [resourceIds]);
+        assert(result.rows[0]?.available === true, 403, 'scope_mismatch', 'The Google resource is unavailable in this customer scope.');
+        return current;
+      });
+    },
+    async requireUploadFolder(actor, folderId) {
+      return transact(async client => {
+        const current = await reauthorizeActor(client, actor, 'sidepanel.report');
+        if (folderId === current.customerConfig.destinations.driveRootFolderId) return;
+        const issued = await client.query(`SELECT 1 FROM integration_operations
+          WHERE customer_id=$1 AND status='completed'
+            AND name IN ('ensureRogueScreenshotFolder','ensureYearlyReportFolder','ensureDailyScreenshotFolder','ensureBriefingFolder')
+            AND result=to_jsonb($2::text) LIMIT 1`, [current.customerId, folderId]);
+        assert(issued.rows.length === 1, 403, 'scope_mismatch', 'The Google resource is unavailable in this customer scope.');
+      });
+    },
+    async runIntegrationOperation(actor, command, work) {
       const hash = crypto.createHash('sha256').update(JSON.stringify([command.name,command.args])).digest('hex');
       const prior = await transact(async client => {
-        const current = await resolveInside(client, { subject: actor.googleSubject, email: actor.email });
-        assert(current.customerId === actor.customerId && current.configVersion === actor.configVersion && current.role === actor.role, 409, 'access_changed', 'Refresh access before retrying.');
-        authorize(current, command);
+        const current = await reauthorizeActor(client, actor);
+        validateGoogleCommand(current, command);
         const stored = (await client.query('SELECT * FROM integration_operations WHERE customer_id=$1 AND operation_id=$2 FOR UPDATE', [actor.customerId,command.requestId])).rows[0];
         if (stored) {
           assert(stored.user_id === actor.memberId && stored.request_hash === hash,409,'operation_conflict','This operation ID has already been used.');
@@ -298,23 +238,29 @@ export function createPostgresRepository({ pool } = {}) {
       if (prior.found) return prior.result;
       try {
         const result = await work(prior.actor);
-        await transact(client => client.query("UPDATE integration_operations SET status='completed',result=$3,completed_at=now() WHERE customer_id=$1 AND operation_id=$2",[actor.customerId,command.requestId,JSON.stringify(result)]));
+        await transact(async client => {
+          await reauthorizeActor(client, actor);
+          await client.query("UPDATE integration_operations SET status='completed',result=$3,completed_at=now() WHERE customer_id=$1 AND operation_id=$2",[actor.customerId,command.requestId,JSON.stringify(result)]);
+        });
         return result;
       } catch(error) {
-        await transact(client => client.query("UPDATE integration_operations SET status='uncertain' WHERE customer_id=$1 AND operation_id=$2",[actor.customerId,command.requestId])).catch(()=>{});
+        await transact(async client => {
+          await reauthorizeActor(client, actor);
+          await client.query("UPDATE integration_operations SET status='uncertain' WHERE customer_id=$1 AND operation_id=$2",[actor.customerId,command.requestId]);
+        }).catch(()=>{});
         throw error;
       }
     },
     async recordScannerResolutions(actor,rowKey,urls) {
-      const entries=urls.map(url=>({targetKey:crypto.createHash('sha256').update(url).digest('hex'),platform:requireUrlPlatforms(actor,[url])[0]}));
       return transact(async client=>{
+        actor = await reauthorizeActor(client, actor, 'sidepanel.automate');
+        const entries=urls.map(url=>({targetKey:crypto.createHash('sha256').update(url).digest('hex'),platform:requireUrlPlatforms(actor,[url])[0]}));
         for(const entry of entries) await client.query('INSERT INTO scanner_resolutions(customer_id,row_key,target_key,platform,user_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[actor.customerId,rowKey,entry.targetKey,entry.platform,actor.memberId]);
       });
     },
     async reserveScannerBonus(actor,rowKey) {
       return transact(async client=>{
-        const current=await resolveInside(client,{subject:actor.googleSubject,email:actor.email});
-        assert(current.customerId===actor.customerId && current.configVersion===actor.configVersion && current.role===actor.role,409,'access_changed','Refresh customer access.');
+        const current = await reauthorizeActor(client, actor, 'sidepanel.automate');
         const rows=(await client.query('SELECT * FROM scanner_resolutions WHERE customer_id=$1 AND row_key=$2 AND rewarded_at IS NULL ORDER BY observed_at,target_key FOR UPDATE',[actor.customerId,rowKey])).rows;
         if(!rows.length) return null;
         requirePlatforms(current,rows.map(row=>row.platform));
@@ -327,7 +273,9 @@ export function createPostgresRepository({ pool } = {}) {
     },
     async completeScannerBonus(actor,rowKey,awardId,rowIndex) {
       return transact(async client=>{
+        actor = await reauthorizeActor(client, actor, 'sidepanel.automate');
         const rows=(await client.query('SELECT * FROM scanner_resolutions WHERE customer_id=$1 AND row_key=$2 AND award_id=$3 AND rewarded_at IS NULL FOR UPDATE',[actor.customerId,rowKey,awardId])).rows;
+        if (rows.length) requirePlatforms(actor, rows.map(row => row.platform));
         const groups=new Map();
         for(const row of rows) {
           const key=JSON.stringify([row.user_id,row.platform]);
@@ -345,8 +293,7 @@ export function createPostgresRepository({ pool } = {}) {
     async finalizeReportBatch(actor,batch,acceptedAt) {
       const requestHash=crypto.createHash('sha256').update(JSON.stringify(batch)).digest('hex');
       return transact(async client=>{
-        const current=await resolveInside(client,{subject:actor.googleSubject,email:actor.email});
-        assert(current.customerId===actor.customerId && current.role===actor.role && current.configVersion===actor.configVersion,409,'access_changed','Refresh customer access.');
+        const current = await reauthorizeActor(client, actor, 'sidepanel.report');
         const prior=(await client.query('SELECT * FROM report_batches WHERE customer_id=$1 AND batch_id=$2 FOR UPDATE',[actor.customerId,batch.batchId])).rows[0];
         if(prior) {
           assert(prior.user_id===actor.memberId && prior.request_hash===requestHash,409,'batch_conflict','This batch ID was already used.');
@@ -386,8 +333,7 @@ export function createPostgresRepository({ pool } = {}) {
     },
     async projectReport(actor,reportId,work) {
       const job=await transact(async client=>{
-        const current=await resolveInside(client,{subject:actor.googleSubject,email:actor.email});
-        assert(current.customerId===actor.customerId && current.configVersion===actor.configVersion,409,'access_changed','Refresh customer access.');
+        const current = await reauthorizeActor(client, actor, 'sidepanel.report');
         const row=(await client.query(`SELECT j.*,e.attributes,e.occurred_at,g.user_id FROM report_projection_jobs j
           JOIN generated_reports g USING(customer_id,report_id)
           JOIN customer_events e ON e.customer_id=g.customer_id AND e.event_id=g.report_data->>'eventId'
@@ -400,18 +346,23 @@ export function createPostgresRepository({ pool } = {}) {
       });
       if(!job) return;
       await work(job,{reconcileOnly:job.reconcileOnly});
-      await transact(client=>client.query("UPDATE report_projection_jobs SET status='completed',updated_at=now() WHERE customer_id=$1 AND report_id=$2",[actor.customerId,reportId]));
+      await transact(async client => {
+        await reauthorizeActor(client, actor, 'sidepanel.report');
+        await client.query("UPDATE report_projection_jobs SET status='completed',updated_at=now() WHERE customer_id=$1 AND report_id=$2",[actor.customerId,reportId]);
+      });
     },
     async recordUploadedFile(actor,eventId,mimeType,file,contentHash) {
       assert(file?.id && typeof file.webViewLink==='string',502,'upload_failed','Google did not return an evidence file.');
       const url=new URL(file.webViewLink);
       assert(url.protocol==='https:' && ['drive.google.com','docs.google.com'].includes(url.hostname),502,'upload_failed','Invalid Google file URL.');
-      return transact(client=>client.query('INSERT INTO integration_uploaded_files(customer_id,file_id,user_id,event_id,mime_type,web_url,content_sha256) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',[actor.customerId,file.id,actor.memberId,eventId,mimeType,file.webViewLink,contentHash]));
+      return transact(async client=> {
+        actor = await reauthorizeActor(client, actor, 'sidepanel.report');
+        return client.query('INSERT INTO integration_uploaded_files(customer_id,file_id,user_id,event_id,mime_type,web_url,content_sha256) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',[actor.customerId,file.id,actor.memberId,eventId,mimeType,file.webViewLink,contentHash]);
+      });
     },
     async generateReport(actor, report, render, policy) {
       return transact(async client => {
-        const current = await resolveInside(client, { subject: actor.googleSubject, email: actor.email });
-        assert(current.customerId === actor.customerId && current.configVersion === actor.configVersion && current.role === actor.role, 409, 'access_changed', 'Access changed. Refresh before retrying.');
+        const current = await reauthorizeActor(client, actor, 'sidepanel.report');
         requireUrlPlatforms(current, report.items.map(item => item.url));
         assert(policy && policy.version === 1, 403, 'rights_policy_denied', 'The report policy must be verified.');
         for (const item of report.items) if (item.screenshotLink) {
@@ -455,13 +406,13 @@ export function createPostgresRepository({ pool } = {}) {
       return transact((client) => resolveInside(client, identity));
     },
 
-    requireAdministrator(identity) {
-      return transact((client) => resolveInside(client, identity, { requireAdmin: true, allowOverCap: true }));
+    requireMemberPermission(identity, permission, options = {}) {
+      return transact((client) => resolveInside(client, identity, { ...options, permission }));
     },
 
     async listMembers(actor, query) {
       return transact(async client => {
-      actor = await resolveInside(client, { subject: actor.googleSubject, email: actor.email }, { requireAdmin: true, allowOverCap: true });
+      actor = await reauthorizeActor(client, actor, 'settings.adminAccess', { permission: 'settings.adminAccess', allowOverCap: true });
       const configResult = validateCustomerConfig(actor.customerConfig);
       assert(configResult.valid, 500, 'configuration_error', 'Stored customer configuration is invalid.');
       const values = [actor.customerId];
@@ -480,8 +431,7 @@ export function createPostgresRepository({ pool } = {}) {
 
     mutateMembership(actor, mutation, occurredAt) {
       return transact(async (client) => {
-        const refreshedActor = await resolveInside(client, { subject: actor.googleSubject, email: actor.email }, { requireAdmin: true, allowOverCap: mutation.action === 'disable' });
-        assert(refreshedActor.customerId === actor.customerId, 403, 'scope_mismatch', 'Customer changed. Sign in again.');
+        await reauthorizeActor(client, actor, 'settings.adminAccess', { permission: 'settings.adminAccess', allowOverCap: mutation.action === 'disable' });
         const customer = await client.query('SELECT * FROM customers WHERE customer_id = $1 AND active = TRUE FOR UPDATE', [actor.customerId]);
         assert(customer.rows.length === 1, 404, 'member_not_found', 'The customer is inactive or missing.');
         const configResult = validateCustomerConfig(customer.rows[0].config);
@@ -493,7 +443,7 @@ export function createPostgresRepository({ pool } = {}) {
         assert(Number(target.version) === mutation.expectedVersion, 409, 'stale_member_version', 'The membership changed elsewhere.');
         const currentUtilization = await utilization(client, config);
         const { nextRole, nextStatus } = enforceMembershipPolicy(members.rows, target, mutation, config, currentUtilization);
-        const updated = await client.query(`UPDATE customer_memberships SET role = $1, status = $2, version = version + 1, updated_at = now() WHERE member_id = $3 RETURNING *`, [nextRole, nextStatus, target.member_id]);
+        const updated = await client.query(`UPDATE customer_memberships SET role = $1, status = $2, version = version + 1, updated_at = now() WHERE customer_id = $3 AND member_id = $4 RETURNING *`, [nextRole, nextStatus, actor.customerId, target.member_id]);
         const auditId = `audit_${crypto.randomUUID().replaceAll('-', '')}`;
         await client.query(`INSERT INTO membership_audit (audit_id, customer_id, actor_member_id, actor_email, target_member_id, action, before_state, after_state, occurred_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,to_timestamp($9 / 1000.0))`, [auditId, actor.customerId, actor.memberId, actor.email, target.member_id, mutation.action, target, updated.rows[0], occurredAt]);
         return {
@@ -519,8 +469,8 @@ export function createPostgresRepository({ pool } = {}) {
       }
       const payloadHash = crypto.createHash('sha256').update(JSON.stringify(event)).digest('hex');
       return transact(async (client) => {
-        const refreshed = await resolveInside(client, { subject: actor.googleSubject, email: actor.email });
-        assert(refreshed.customerId === actor.customerId && refreshed.memberId === actor.memberId && refreshed.configVersion === actor.configVersion && refreshed.role === actor.role, 409, 'access_changed', 'Access changed. Refresh before retrying.');
+        const refreshed = await reauthorizeActor(client, actor, EVENT_PERMISSIONS[event.event_type]);
+        assert(EVENT_PERMISSIONS[event.event_type], 400, 'invalid_event', 'Unsupported event type.');
         assert(event.customer_id===actor.customerId && event.user_id===actor.memberId,403,'scope_mismatch','Event scope does not match the verified actor.');
         authorizeEventPlatforms(refreshed, event);
         const existing = await client.query('SELECT payload_hash FROM customer_events WHERE customer_id = $1 AND event_id = $2 FOR UPDATE', [actor.customerId, event.event_id]);
@@ -541,8 +491,9 @@ export function createPostgresRepository({ pool } = {}) {
 
     async queryStatistics(actor, queryType, query, generatedAt, legacy = false) {
       return transact(async client => {
-      const refreshed = await resolveInside(client, { subject: actor.googleSubject, email: actor.email });
-      assert(refreshed.customerId === actor.customerId && refreshed.configVersion === actor.configVersion && refreshed.role === actor.role, 409, 'access_changed', 'Access changed. Refresh before retrying.');
+      assert(['scoreboard', 'intelligence'].includes(queryType), 400, 'invalid_query', 'Unsupported statistics query.');
+      const refreshed = await reauthorizeActor(client, actor, queryType === 'scoreboard' ? 'sidepanel.scoreboard' : 'sidepanel.intel');
+      actor = refreshed;
       const dashboardId = actor.customerConfig.stats.dashboardId;
       assert(query.dashboard_id === dashboardId, 403, 'scope_mismatch', 'The requested dashboard is outside the customer scope.');
       const allowedPlatforms = statisticsPlatforms(refreshed, query.platforms);

@@ -1592,21 +1592,8 @@ function finishMacroTraining() {
           return;
       }
 
-      // --- TRACK A: SCOUT SCORING ---
-      data.scoutScore = 10; // Standard Find
-      let parsedViews = 0;
-      const vStr = String(data.views || "0").toLowerCase();
-      if (vStr.includes('k')) parsedViews = parseFloat(vStr) * 1000;
-      else if (vStr.includes('m')) parsedViews = parseFloat(vStr) * 1000000;
-      else parsedViews = parseFloat(vStr.replace(/[^\d.]/g, '')) || 0;
-
-      // --- TRACK A: SCOUT SCORING (GOLD MINE MULTIPLIER) ---
-      let baseScore = 10;
-      if (parsedViews >= 100000) data.scoutScore = baseScore * 5; // 5x Viral Pirate
-      else if (parsedViews >= 10000) data.scoutScore = baseScore * 2; // 2x High-Impact
-      else data.scoutScore = baseScore; // 1x Standard
-
-      if (data.isLive || data.url.includes('/live/') || document.querySelector('[aria-label="LIVE"]')) data.scoutScore *= 2; // Live Event Bonus
+      // Capture observed metadata; reward policy is owned by the server.
+      data.isLive = Boolean(data.isLive || data.url.includes('/live/') || document.querySelector('[aria-label="LIVE"]'));
 
       const originalText = "+ Add";
       btnAdd.innerText = "Capturing...";

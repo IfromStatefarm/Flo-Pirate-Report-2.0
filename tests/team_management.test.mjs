@@ -47,7 +47,7 @@ test('team API validates before handing verified identity to the repository', as
   await assert.rejects(service.memberships({}, {...body,customerId:'other'}),{code:'invalid_request'});assert.equal(called,1);
 });
 test('client preserves safe team errors and rejects another customer response', async () => {
-  const profile={status:'ready',verification:'verified',role:'admin',customerId:'test',email:'admin@example.test'};
+  const profile={schemaVersion:1,expiresAt:Date.now()+600000,permissions:['settings.adminAccess'],status:'ready',verification:'verified',role:'admin',customerId:'test',email:'admin@example.test'};
   const options={getAuthToken:async()=> 'token',loadSettings:async()=>({schemaVersion:1,bootstrapEndpoint:'https://example.test/bootstrap'})};
   const call={operation:'team_list',query:'',role:'',status:'',cursor:''};
   const wrong=createCustomerMembershipService({...options,fetchImpl:async()=>new Response(JSON.stringify({protocolVersion:1,customerId:'other',configVersion:1}))});

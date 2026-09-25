@@ -4,6 +4,19 @@ import { ApiError } from './api_error.js';
 
 const { Pool } = pg;
 let pool;
+let customerPool;
+
+export function getCustomerPool() {
+  if (customerPool) return customerPool;
+  const connectionString = process.env.CUSTOMER_DATABASE_URL;
+  if (!connectionString) throw new ApiError(500, 'configuration_error', 'CUSTOMER_DATABASE_URL is not configured.');
+  customerPool = new Pool({ connectionString, max: 5, idleTimeoutMillis: 20_000,
+    connectionTimeoutMillis: 10_000, statement_timeout: 30_000, idle_in_transaction_session_timeout: 30_000 });
+  attachDatabasePool(customerPool, {
+    onUnexpectedError(error) { console.error('Customer database connection error:', { code: error.code }); }
+  });
+  return customerPool;
+}
 
 export function getPool({ connectionString = process.env.DATABASE_URL } = {}) {
   if (pool) return pool;

@@ -31,6 +31,12 @@ const INTEGER_ATTRIBUTE_KEYS = new Set([
   'iframe_count', 'email_count', 'checked_count', 'resolved_count', 'active_count'
 ]);
 
+const scopeHintKeys = value => ['customer_id', 'user_id'].filter(key => Object.hasOwn(value || {}, key));
+function assertScopeHints(value, actor) {
+  assert((!Object.hasOwn(value, 'customer_id') || value.customer_id === actor.customerId) &&
+    (!Object.hasOwn(value, 'user_id') || value.user_id === actor.memberId),
+    403, 'scope_mismatch', 'Request scope does not match the verified identity.');
+}
 
 function exactObject(value, keys, path = 'request') {
   assert(value && typeof value === 'object' && !Array.isArray(value), 400, 'invalid_request', `${path} must be an object.`);
@@ -105,7 +111,7 @@ function customerProfile(resolution, now) {
     email: member.email,
     name: member.name,
     role: member.role,
-    permissions: resolution.managementOnly ? ['settings.adminAccess'] : resolution.overCap ? ['settings.adminAccess', 'settings.coreConnectivity'] : permissionsFor(config, member.role),
+    permissions: resolution.managementOnly || resolution.overCap ? ['settings.adminAccess'] : permissionsFor(config, member.role),
     platforms: effectivePlatforms(config, member.platforms),
     theme: {
       ...config.product,
@@ -167,7 +173,7 @@ function validateDataRequest(body, currentTime) {
   assert(body?.protocol_version === 1, 400, 'invalid_request', 'Unsupported customer-data protocol.');
   if (body.operation === 'record_event') {
     exactObject(body, ['protocol_version', 'operation', 'event']);
-    exactObject(body.event, ['event_id', 'customer_id', 'user_id', 'event_type', 'occurred_at', 'attributes'], 'event');
+    exactObject(body.event, ['event_id', 'event_type', 'occurred_at', 'attributes', ...scopeHintKeys(body.event)], 'event');
     assert(EVENT_ID.test(String(body.event.event_id || '')) && !String(body.event.event_id).startsWith('sys_'), 400, 'invalid_event', 'Invalid event ID.');
     assert(Number.isSafeInteger(body.event.occurred_at) && body.event.occurred_at > 0, 400, 'invalid_event', 'Invalid event timestamp.');
     assert(body.event.occurred_at <= currentTime + (5 * 60 * 1000), 400, 'invalid_event', 'Event timestamp is too far in the future.');
@@ -181,7 +187,7 @@ function validateDataRequest(body, currentTime) {
       }
     };
   }
-  exactObject(body, ['protocol_version', 'operation', 'customer_id', 'user_id', 'query_type', 'query']);
+  exactObject(body, ['protocol_version', 'operation', 'query_type', 'query', ...scopeHintKeys(body)]);
   assert(['query_statistics', 'query_legacy_statistics'].includes(body.operation), 400, 'invalid_request', 'Unsupported customer-data operation.');
   assert(['scoreboard', 'intelligence'].includes(body.query_type), 400, 'invalid_query', 'Unsupported statistics query.');
   if (body.query_type === 'scoreboard') {
@@ -236,7 +242,8 @@ export function createCustomerApiService({
       return repository.teamOperation(identity, parsed);
     }
     const parsed = validateMembershipRequest(body);
-    const actor = await repository.requireAdministrator(identity);
+    const actor = await repository.requireMemberPermission(identity, 'settings.adminAccess', { allowOverCap: true });
+    requirePermission(actor, 'settings.adminAccess');
     if (parsed.operation === 'list_members') return repository.listMembers(actor, parsed.query);
     return repository.mutateMembership(actor, parsed.mutation, now());
   }
@@ -259,7 +266,7 @@ export function createCustomerApiService({
       const reportIds=new Set(),eventIds=new Set();
       for(const report of batch.reports) {
         exactObject(report,['reportId','eventId','pdfUrl','mode','contentType'],'batch report');
-        assert(typeof report.reportId==='string' && typeof report.eventId==='string' && EVENT_ID.test(report.reportId) && EVENT_ID.test(report.eventId),400,'invalid_report','Invalid report identifiers.');
+        assert(typeof report.reportId==='string' && typeof report.eventId==='string' && EVENT_ID.test(report.reportId) && EVENT_ID.test(report.eventId) && !report.eventId.startsWith('sys_'),400,'invalid_report','Invalid report identifiers.');
         assert(!reportIds.has(report.reportId) && !eventIds.has(report.eventId),400,'invalid_report','Duplicate batch reports are not allowed.');
         reportIds.add(report.reportId);eventIds.add(report.eventId);
         report.pdfUrl=safeUrl(report.pdfUrl,'report.pdfUrl',{httpsOnly:true});
@@ -278,11 +285,12 @@ export function createCustomerApiService({
       assert(body.protocol_version === 1, 400, 'invalid_request', 'Unsupported report protocol.');
       const report = body.report;
       exactObject(report, ['reportId', 'eventId', 'eventName', 'vertical', 'handle', 'items'], 'report');
-      assert(typeof report.reportId === 'string' && typeof report.eventId === 'string' && EVENT_ID.test(report.reportId) && EVENT_ID.test(report.eventId), 400, 'invalid_report', 'Invalid report identifier.');
+      assert(typeof report.reportId === 'string' && typeof report.eventId === 'string' && EVENT_ID.test(report.reportId) && EVENT_ID.test(report.eventId) && !report.eventId.startsWith('sys_'), 400, 'invalid_report', 'Invalid report identifier.');
       for (const key of ['eventName', 'vertical', 'handle']) report[key] = safeText(report[key], `report.${key}`, 160);
       assert(Array.isArray(report.items) && report.items.length > 0 && report.items.length <= 100, 400, 'invalid_report', 'Reports require 1–100 evidence items.');
       for (const item of report.items) {
-        exactObject(item, ['url', 'screenshotLink', 'views'], 'evidence');
+        exactObject(item, ['url', 'screenshotLink', 'views', ...(Object.hasOwn(item || {},'contentType')?['contentType']:[])], 'evidence');
+        if(Object.hasOwn(item,'contentType')) assert(['Live','VOD','Clip'].includes(item.contentType),400,'invalid_report','Invalid observed content type.');
         for (const key of ['url', 'screenshotLink']) {
           assert(typeof item[key] === 'string' && item[key].length <= 2048, 400, 'invalid_report', 'Invalid evidence URL.');
           if (key === 'screenshotLink' && !item[key]) continue;
@@ -302,9 +310,12 @@ export function createCustomerApiService({
       return repository.generateReport(actor, report, generatePDF, policy);
     }
     const parsed = validateDataRequest(body, now());
-    const actor = await repository.requireActiveMember(identity);
+    let actor = await repository.requireActiveMember(identity);
     if (parsed.operation === 'record_event') {
-      assert(parsed.event.customer_id === actor.customerId && parsed.event.user_id === actor.memberId, 403, 'scope_mismatch', 'Event scope does not match the verified identity.');
+      assertScopeHints(parsed.event, actor);
+      // Legacy scope fields are consistency hints only. Persist server-derived IDs.
+      parsed.event.customer_id = actor.customerId;
+      parsed.event.user_id = actor.memberId;
       requirePermission(actor, EVENT_PERMISSIONS[parsed.event.event_type]);
       authorizeEventPlatforms(actor, parsed.event);
       const accepted=await repository.recordEvent(actor, parsed.event, now());
@@ -315,14 +326,16 @@ export function createCustomerApiService({
       }
       return accepted;
     }
-    assert(parsed.customer_id === actor.customerId && parsed.user_id === actor.memberId, 403, 'scope_mismatch', 'Statistics scope does not match the verified identity.');
+    assertScopeHints(parsed, actor);
     requirePermission(actor, parsed.query_type === 'scoreboard' ? 'sidepanel.scoreboard' : 'sidepanel.intel');
     // Empty filters mean the actor's scope, never unrestricted customer data.
     parsed.query.platforms = statisticsPlatforms(actor, parsed.query.platforms);
     if(parsed.operation==='query_legacy_statistics') {
       assert(parsed.query.dashboard_id===actor.customerConfig.stats.dashboardId,403,'scope_mismatch','Invalid dashboard.');
-      await repository.claimIntegrationResources(actor);
-      const {adapter}=await createGoogleOperations({repository}).adapterFor({...actor,platforms:parsed.query.platforms},readBearerToken(request));
+      actor = await repository.claimIntegrationResources(actor);
+      requirePermission(actor, parsed.query_type === 'scoreboard' ? 'sidepanel.scoreboard' : 'sidepanel.intel');
+      parsed.query.platforms = statisticsPlatforms(actor, parsed.query.platforms);
+      const {adapter}=await createGoogleOperations({repository}).adapterFor({...actor,platforms:parsed.query.platforms},readBearerToken(request),{permission:parsed.query_type==='scoreboard'?'sidepanel.scoreboard':'sidepanel.intel'});
       const data=parsed.query_type==='scoreboard'?await adapter.fetchLeaderboardData(actor.email):await adapter.fetchIntelligenceData(parsed.query.start_date,parsed.query.end_date);
       assert(data,503,'legacy_unavailable','The independent legacy source is unavailable.');
       data._provenance={source:'google_sheets',version:1};

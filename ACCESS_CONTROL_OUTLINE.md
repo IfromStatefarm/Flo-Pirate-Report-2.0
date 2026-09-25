@@ -1,34 +1,79 @@
-# Customer access bootstrap
+# Authentication and customer access control
 
-## Trust boundary
+## Authority and identity
 
-The extension authenticates with Google OAuth and sends the resulting access token to the packaged HTTPS bootstrap endpoint. The server—not the extension and not a spreadsheet—validates the token, finds active memberships, enforces customer/user/role caps, and returns exactly one short-lived customer profile.
+The server is authoritative. Every extension API request verifies its Google bearer token with Google, checks the configured OAuth audience, a verified email and subject, the required email scope, and a finite positive remaining lifetime. Invalid, expired or revoked tokens return `401 identity_error`; verification outages fail closed with `503 identity_unavailable`. There is no positive token-verification cache.
 
-The endpoints are configured in `config/customer_bootstrap.json`. That file may contain only the schema version and public bootstrap, membership, and customer-data endpoint URLs. OAuth secrets, access tokens, service-account material, and other credentials must remain in the server-side secret store and must never be placed in a workbook or extension configuration file.
+The server resolves the verified subject/email to exactly one active membership in an active customer. No match denies access; multiple matches return `409 ambiguous_customer`. The request email is only a consistency hint. Browser profiles, roles, permissions, tenant IDs and UI visibility never grant server authority. Unsupported authority fields are rejected; supported legacy customer/user hints must match server-derived scope.
 
-## Permission matrix
+`server/customer_authorization.js` resolves current membership, enabled roles, approved email domains, subscription entitlement, seat limits, configuration and platform assignments. Repository admissions re-resolve that authority within their transactions, including replay of completed operations. Disabling a member blocks subsequent requests and repository admissions immediately, even if the caller retains an unexpired bootstrap or an old internal actor snapshot. Role/configuration changes invalidate stale actors; permission changes are checked even without a configuration-version bump.
 
-The extension retains the local ceiling in `utils/access_control.js`. A server response may narrow a role by returning fewer permissions, but it cannot grant a permission outside this matrix.
+A provider request already dispatched cannot be recalled atomically. Internal receipt completion may record an already admitted effect after revocation; it cannot authorize a new operation. Independent Google ACL access is separate from application access: customer workbooks/folders must use restricted sharing and a server-owned connector for SaaS revocation to be effective.
 
-| Area | Employee | Manager | Admin |
-| --- | --- | --- | --- |
-| Side panel: Report | Yes | Yes | Yes |
-| Side panel: Scoreboard | Yes | Yes | Yes |
-| Side panel: Automate | No | Yes | Yes |
-| Side panel: Intel | No | Yes | Yes |
-| Side panel: Repair | No | No | Yes |
-| Settings: Core Connectivity | Yes | Yes | Yes |
-| Settings: Open Locker | No | Yes | Yes |
-| Settings: Feedback Comms | Yes | Yes | Yes |
-| Settings: Intelligence & Config Tools | No | Yes | Yes |
-| Settings: Configure Briefing Stats | No | Yes | Yes |
-| Settings: Edit Briefing Content | No | Yes | Yes |
-| Settings: Edit Selector Paths | No | No | Yes |
-| Settings: Admin Access Management | No | No | Yes |
+## Central permission policy
 
-## Bootstrap request
+`utils/permission_policy.js` owns the permission vocabulary, explicit built-in role grants, feature mappings and configuration-section mappings. `server/access_policy.js` applies that policy to trusted server actors through `requirePermission()`. `utils/access_control.js` re-exports the shared vocabulary and implements expiring client profile checks for the UI and background worker.
 
-The extension performs `POST <bootstrapEndpoint>` with the Google access token in the `Authorization: Bearer` header. The body contains only fixed metadata:
+Effective permissions are the intersection of the role grants and customer feature entitlements. Unknown roles/permissions deny by default. Customer membership administration is independent of feature purchases so an eligible administrator can recover access. Customer permissions never include seller or platform authority.
+
+| Permission | Employee | Manager | Admin | Feature |
+| --- | --- | --- | --- | --- |
+| `sidepanel.report` | Yes | Yes | Yes | report |
+| `sidepanel.scoreboard` | Yes | Yes | Yes | scoreboard or gamification |
+| `sidepanel.automate` | No | Yes | Yes | automate |
+| `sidepanel.intel` | No | Yes | Yes | intel |
+| `sidepanel.repair` | No | No | Yes | repair |
+| `settings.coreConnectivity` | Yes | Yes | Yes | report |
+| `settings.openLocker` | No | Yes | Yes | automate |
+| `settings.feedbackComms` | Yes | Yes | Yes | feedback |
+| `settings.intelligenceTools` | No | Yes | Yes | intel |
+| `settings.briefingStats` | No | Yes | Yes | briefing |
+| `settings.briefingContent` | No | Yes | Yes | briefing |
+| `settings.selectorPaths` | No | No | Yes | selector_editor |
+| `settings.gamification` | No | No | Yes | gamification |
+| `settings.adminAccess` | No | No | Yes | Independent of feature purchases |
+
+`waiting_approval` grants nothing. Disabled users are excluded from identity resolution, regardless of their stored role. Expired/future subscriptions allow only membership viewing/history and deactivation through Team & Access for members with `settings.adminAccess`. Over-cap recovery similarly grants no operational permissions. Suspended/revoked subscriptions and inactive customers deny access entirely. The older membership endpoint still requires a current subscription.
+
+Custom role creation is not implemented. The shared role resolver is the extension point for future server-owned role definitions; endpoints depend on permission names, not role names. Adding custom roles will also require membership/configuration schemas, seat policy and profile validation to support those definitions. Client-submitted permission arrays must never become a role-definition source. The remaining role comparisons enforce roster counts, assignable roles, final-admin retention or descriptive UI metadata, rather than endpoint authorization.
+
+## Server operation enforcement
+
+| Surface / operation | Required permission |
+| --- | --- |
+| Bootstrap | Verified identity and eligible unique active membership; returns effective grants |
+| Membership list/mutation; Team & Access list/history/preview/commit | `settings.adminAccess`, plus subscription/recovery rules |
+| Generate/finalize/project reports | `sidepanel.report` |
+| Scoreboard statistics (database or legacy) | `sidepanel.scoreboard` |
+| Intelligence statistics (database or legacy) | `sidepanel.intel` |
+| Reporting/activity/evidence/outcome events | `sidepanel.report` |
+| Intelligence-generated events | `sidepanel.intel` |
+| Automation scan/outcome/row-status events | `sidepanel.automate` |
+| Google config/catalog/whitelist reads; event edits; evidence folders/uploads | `sidepanel.report` |
+| Google briefing folder | `sidepanel.intel` |
+| Google scanner reads/status/formatting/bonus writes | `sidepanel.automate` |
+| Google selector repair | `sidepanel.repair` |
+| Google feedback submission | `settings.feedbackComms` |
+| Google configuration-section updates | `settings.intelligenceTools` plus every submitted section's permission below |
+
+`EVENT_PERMISSIONS` and `GOOGLE_OPERATION_PERMISSIONS` enumerate the admitted events and commands. Arbitrary provider commands are rejected. Google operations also enforce customer-owned destinations, file ancestry, assigned platforms, bounded arguments and idempotency/replay rules. Statistics enforce the resolved dashboard and platform scope. Report and reward permissions do not bypass evidence ownership or server reward policy.
+
+Configuration section permissions are checked on the server even for an Admin:
+
+| Section | Additional permission |
+| --- | --- |
+| `verticals` | `settings.intelligenceTools` |
+| `platform_selectors` | `settings.selectorPaths` |
+| `double_xp_settings`, `gamification_levels` | `settings.gamification` |
+| `community_highlights`, `briefing_content` | `settings.briefingContent` |
+
+Membership writes use version checks, seat-cap enforcement, final-administrator protection and customer-scoped audit records. Team & Access reviews expire after ten minutes and bind the reviewed change to the original actor and roster. See [membership protocol](docs/white-label/MEMBERSHIP_CAP_ENFORCEMENT.md) and [tenant isolation](SECURITY_TENANT_ISOLATION.md).
+
+## Bootstrap protocol and expiration
+
+`config/customer_bootstrap.json` contains public endpoint URLs and a schema version only. Credentials belong in the server secret store, never workbooks or extension configuration.
+
+The extension sends `POST <bootstrapEndpoint>` with `Authorization: Bearer <Google access token>` and:
 
 ```json
 {
@@ -38,95 +83,31 @@ The extension performs `POST <bootstrapEndpoint>` with the Google access token i
 }
 ```
 
-The email is a matching hint. The server must derive and verify the actual subject and email from the bearer token instead of trusting the request body.
+Success returns exactly one `profile`. Its fixed fields are `schemaVersion`, `customerId`, `userId`, `configVersion`, `email`, `name`, `role`, `permissions`, `platforms`, `theme`, `legal`, `integrations`, `issuedAt` and `expiresAt`. Timestamps are milliseconds since the Unix epoch. Theme/legal/integration fields use the allowlisted schema in `validateCustomerAccessProfile()`; unknown fields, unsupported permissions, grants exceeding the built-in role or identity mismatches invalidate the response.
 
-## Bootstrap response
+The server issues ten-minute profiles, shortened to the operational entitlement expiry when applicable. Client validation rejects lifetimes over fifteen minutes, invalid timestamps and expired profiles. `hasPermission()` and `hasPlatformAccess()` deny at the expiry boundary. Membership client calls and Team & Access use the same permission/expiry guard; the data client also rejects expired profiles before sending events or statistics requests.
 
-Success returns an envelope with exactly one `profile` object:
+The profile is a UI snapshot, not a server credential. Server requests always reverify Google identity and persisted membership; submitting an old profile cannot extend access.
 
-```json
-{
-  "profile": {
-    "schemaVersion": 1,
-    "customerId": "customer-slug",
-    "userId": "user_123",
-    "configVersion": 4,
-    "email": "user@example.com",
-    "name": "Example User",
-    "role": "manager",
-    "permissions": ["sidepanel.report", "sidepanel.automate"],
-    "platforms": ["youtube", "tiktok"],
-    "theme": {
-      "productName": "Rights Reporter",
-      "displayName": "Example Rights Center",
-      "shortName": "Reporter",
-      "assistantName": "Reporting Assistant",
-      "tagline": "Capture evidence, manage reports, and track outcomes.",
-      "logoUrl": "https://cdn.example.com/logo.png",
-      "logoAltText": "Example",
-      "assistantImageUrl": "https://cdn.example.com/assistant.gif",
-      "easterEggImageUrl": "https://cdn.example.com/easter-egg.webp",
-      "colors": {
-        "primary": "#334155",
-        "primaryHover": "#1F2937",
-        "accent": "#2563EB",
-        "onPrimary": "#FFFFFF",
-        "background": "#F8FAFC",
-        "surface": "#FFFFFF",
-        "text": "#111827",
-        "muted": "#64748B",
-        "border": "#E5E7EB",
-        "success": "#166534",
-        "warning": "#B45309",
-        "danger": "#B91C1C"
-      }
-    },
-    "legal": {
-      "ownerName": "Example Sports",
-      "companyName": "Example Sports, Inc.",
-      "reportingEmail": "rights@example.com",
-      "secondaryEmail": "legal@example.com",
-      "phone": "555-010-1000",
-      "addressLine1": "100 Main Street",
-      "city": "Austin",
-      "region": "Texas",
-      "postalCode": "78701",
-      "country": "United States",
-      "originalWorkUrl": "https://www.example.com/"
-    },
-    "integrations": {
-      "driveRootFolderId": "driveRoot_12345",
-      "reportSpreadsheetId": "reportSheet_12345",
-      "eventSpreadsheetId": "eventSheet_12345",
-      "statsDashboardId": "stats_customer"
-    },
-    "issuedAt": 1788462000000,
-    "expiresAt": 1788462600000
-  }
-}
-```
+## Cache and protected background work
 
-The lifetime may not exceed fifteen minutes. All object keys, permission names, platform identifiers, color tokens, URLs, and destination identifiers are allowlisted. Unknown fields or an email mismatch invalidate the response.
+`customer_access_profile_v1` stores a validated display snapshot. Persisted browser storage is untrusted and cannot supply background authority after a service restart. Only a profile obtained by the current running bootstrap service may be reused in memory for display; a transient display refresh failure can retain it until expiry.
 
-## Customer resolution
+Each protected `requirePermission()` call and content-script `checkAccess` request forces an online bootstrap refresh and disallows cached fallback. Disabling a member, revoking authentication, or losing verification connectivity therefore denies new protected background work. Authoritative `401`, `403`, `404` and `409` bootstrap denials clear in-memory authority and record a denial; a subsequent outage cannot revive the old grant. Stale profiles may still supply display data but never authorize work. Logout clears access and customer-scoped caches and invalidates in-flight sign-in results. Online verification adds a bootstrap round trip to protected actions.
 
-- No active membership: return HTTP `403` or `404`.
-- More than one active customer: return HTTP `409`.
-- Invalid or expired Google token: return HTTP `401`.
-- Exactly one active membership: return HTTP `200` with one profile.
+## Customer versus seller administration
 
-The server must make membership and seat-cap checks atomically. The client cannot safely enforce organization-wide caps from workbook rows.
+Employee, Manager and Admin are customer roles only. Customer membership APIs accept only those assignable roles; a customer Admin cannot assign seller/platform roles or choose another customer. The seller setup application uses its own password/session authentication, loopback host checks, mutation Origin and CSRF checks, idle/absolute session expiry and session revocation on logout/password change. A customer Google bearer token or forged Admin profile cannot authenticate there. Billing bridge and worker endpoints use separate server credentials.
 
-## Membership administration
+## Verification and rollout
 
-Admins with `settings.adminAccess` can list and mutate members through the customer membership endpoint. The extension accepts only `approve`, `activate`, `reactivate`, `change_role`, and `disable`; it includes the target member's current version and never sends a client-selected customer ID. Every successful response must contain refreshed active-user/per-role utilization and a matching audit record. Cap violations and final-administrator protection return refreshed totals with a stable error code.
+- `tests/rbac.test.mjs`: explicit allow/deny matrix for all three roles, Google commands, feature-gated configuration edits, platform-role escalation rejection and profile expiration.
+- `tests/rbac_postgres.test.mjs`: real HTTP/service/repository paths for each role, allowed reporting/statistics, prohibited operations, team review/commit, demotion, feature removal, immediate disable and revoked credentials.
+- `tests/customer_bootstrap.test.mjs`, `tests/customer_membership.test.mjs`: strict protected refresh, expiry, untrusted cache, denial persistence and outage regression tests.
+- `tests/google_identity.test.mjs`, `tests/customer_authority.test.mjs`, `tests/seller_auth.test.mjs`: invalid/expired identity behavior, operation-wide authentication admission and seller/customer separation.
 
-The complete endpoint schema and required server transaction are documented in [`docs/white-label/MEMBERSHIP_CAP_ENFORCEMENT.md`](docs/white-label/MEMBERSHIP_CAP_ENFORCEMENT.md).
+Run `npm run test:ci` with `TEST_DATABASE_URL` and `TEST_DATABASE_ISOLATED=true` pointing to an isolated test database. This runner requires database coverage; `npm test` alone may skip it.
 
-## Customer data scope
+Validation on 2026-09-25: the complete required-database suite passed **198 tests, zero failures, zero skips** on a temporary schema-only Neon branch using synthetic customer fixtures and stubbed Google responses. The extension release build, JavaScript syntax checks and `git diff --check` also passed. Production data and local production credentials were unchanged.
 
-The bootstrap profile includes a stable opaque `userId` in addition to `customerId`. Reporting/activity events and statistics requests repeat both identifiers, but the API derives and verifies the authoritative scope from the Google token. Statistics responses repeat customer, user, and dashboard identifiers and are rejected on any mismatch. See [`docs/white-label/CUSTOMER_DATA_ISOLATION.md`](docs/white-label/CUSTOMER_DATA_ISOLATION.md).
-
-## Cache and fail-closed behavior
-
-Only a validated profile is stored under `customer_access_profile_v1`. An unexpired cached profile remains verified until its server-issued expiry, including during a transient network failure. An authoritative `401`, `403`, `404`, or `409` response records a denial and immediately blocks the cached profile. After expiry, a last-known-good profile may supply display data as `stale`, but `hasPermission()`, `hasPlatformAccess()`, and all protected background handlers reject it. Refresh failures do not erase the last-known-good profile; clearing cached access does.
+Ship the extension's shared permission vocabulary before enabling the updated server bootstrap grants: older extensions reject the new `settings.gamification` permission as unknown. Production configuration, Google sharing and live provider behavior require separate operational verification. This change does not deploy the application or modify production data.

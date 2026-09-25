@@ -29,6 +29,12 @@ test('seller login gates every customer route, rotates sessions, expires and log
     assert.equal(res.status, 303); assert.equal(res.headers.get('location'), '/login');
   }
   assert.equal((await fetch(new URL('/review', server.url), { method: 'POST' })).status, 401);
+  for (const role of ['employee', 'manager', 'admin']) {
+    const denied = await fetch(new URL('/review', server.url), { method: 'POST',
+      headers: { Authorization: 'Bearer customer-google-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, permissions: ['settings.adminAccess', 'seller.admin'], customerId: 'acme' }) });
+    assert.equal(denied.status, 401, `${role} cannot use customer credentials on the seller control plane`);
+  }
   assert.equal((await login(server, 'wrong')).result.status, 401);
   const { cookie } = await login(server);
   const res = await fetch(server.url, { headers: { Cookie: cookie } });

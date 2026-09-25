@@ -8,6 +8,8 @@ import {
 } from '../services/customer_data_service.js';
 
 const PROFILE = Object.freeze({
+  schemaVersion: 1,
+  expiresAt: Date.now() + 600000,
   status: 'ready',
   verification: 'verified',
   customerId: 'acme-sports',
@@ -16,6 +18,14 @@ const PROFILE = Object.freeze({
   integrations: {
     statsDashboardId: 'stats_acme'
   }
+});
+
+test('expired bootstrap cannot authorize event or statistics requests', async () => {
+  const expired = { ...PROFILE, expiresAt: Date.now() };
+  const service = serviceWith(() => assert.fail('Expired profile reached the network'));
+  await assert.rejects(service.recordEvent(expired, 'activity.item_added', {}), { code: 'not_authorized' });
+  await assert.rejects(service.queryStatistics(expired, 'scoreboard', {}), { code: 'not_authorized' });
+  await assert.rejects(service.queryLegacyStatistics(expired, 'intelligence', {}), { code: 'not_authorized' });
 });
 
 function jsonResponse(body, status = 200) {

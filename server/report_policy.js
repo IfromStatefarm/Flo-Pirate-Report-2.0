@@ -1,4 +1,4 @@
-import { reportReward } from './reward_policy.js';
+import { observedViews, reportReward } from './reward_policy.js';
 import crypto from 'node:crypto';
 import { assert } from './api_error.js';
 import { requireUrlPlatforms } from './platform_policy.js';
@@ -30,15 +30,11 @@ export async function verifyReportPolicy(actor, report, adapter) {
 
 export function authoritativeReportAttributes(report, policy, claimed, rewardContext={}) {
   const urls = report.items.map(item => item.url);
-  const reward=reportReward({itemCount:urls.length,multiplier:policy.multiplier,...rewardContext});
+  const reward=reportReward({itemCount:urls.length,items:report.items,multiplier:policy.multiplier,...rewardContext});
   return {
     platform: policy.platform, urls, handle: report.handle,
     source_event_name: report.eventName, vertical: report.vertical, report_id: report.reportId,
-    estimated_views: Math.min(1000000000,report.items.reduce((sum,item)=>{
-      const value=String(item.views).toLowerCase().replaceAll(',','');
-      const match=value.match(/^(\d+(?:\.\d+)?)\s*([kmb])?$/);
-      return sum+(match?Math.round(Number(match[1])*({k:1000,m:1000000,b:1000000000}[match[2]]||1)):0);
-    },0)),
+    estimated_views: Math.min(1000000000,report.items.reduce((sum,item)=>sum+observedViews(item.views),0)),
     mode: claimed.mode === 'scout' ? 'scout' : 'enforcer', url_count: urls.length,
     // Formula version is explicit; client awards/streaks can never change the ledger.
     scout_points: reward.scoutPoints,

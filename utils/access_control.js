@@ -1,76 +1,12 @@
 import { CUSTOMER_COLOR_TOKENS } from './customer_config.js';
 import { PLATFORM_CATALOG } from './platform_catalog.js';
+import { ACCESS_ROLES, ACCESS_ROLE_OPTIONS, ACCESS_ROLE_SHEET_VALUES, PERMISSIONS, getRolePermissions } from './permission_policy.js';
+export { ACCESS_ROLES, ACCESS_ROLE_OPTIONS, ACCESS_ROLE_SHEET_VALUES, PERMISSIONS, ROLE_PERMISSIONS } from './permission_policy.js';
 
 export const CUSTOMER_ACCESS_PROFILE_SCHEMA_VERSION = 1;
 export const CUSTOMER_ACCESS_PROFILE_CACHE_KEY = 'customer_access_profile_v1';
 export const CUSTOMER_ACCESS_PROFILE_MAX_TTL_MS = 15 * 60 * 1000;
 export const CUSTOMER_ACCESS_PROFILE_CLOCK_SKEW_MS = 5 * 60 * 1000;
-
-export const ACCESS_ROLES = Object.freeze({
-  WAITING_APPROVAL: 'waiting_approval',
-  EMPLOYEE: 'employee',
-  MANAGER: 'manager',
-  ADMIN: 'admin'
-});
-
-export const ACCESS_ROLE_OPTIONS = Object.freeze([
-  ACCESS_ROLES.WAITING_APPROVAL,
-  ACCESS_ROLES.EMPLOYEE,
-  ACCESS_ROLES.MANAGER,
-  ACCESS_ROLES.ADMIN
-]);
-
-export const ACCESS_ROLE_SHEET_VALUES = Object.freeze({
-  [ACCESS_ROLES.EMPLOYEE]: 'Employee',
-  [ACCESS_ROLES.ADMIN]: 'Admin',
-  [ACCESS_ROLES.MANAGER]: 'Manager',
-  [ACCESS_ROLES.WAITING_APPROVAL]: 'Waiting_Approval'
-});
-
-export const PERMISSIONS = Object.freeze({
-  SIDEPANEL_REPORT: 'sidepanel.report',
-  SIDEPANEL_SCOREBOARD: 'sidepanel.scoreboard',
-  SIDEPANEL_AUTOMATE: 'sidepanel.automate',
-  SIDEPANEL_INTEL: 'sidepanel.intel',
-  SIDEPANEL_REPAIR: 'sidepanel.repair',
-  SETTINGS_CORE_CONNECTIVITY: 'settings.coreConnectivity',
-  SETTINGS_OPEN_LOCKER: 'settings.openLocker',
-  SETTINGS_FEEDBACK_COMMS: 'settings.feedbackComms',
-  SETTINGS_INTELLIGENCE_TOOLS: 'settings.intelligenceTools',
-  SETTINGS_BRIEFING_STATS: 'settings.briefingStats',
-  SETTINGS_BRIEFING_CONTENT: 'settings.briefingContent',
-  SETTINGS_SELECTOR_PATHS: 'settings.selectorPaths',
-  SETTINGS_ADMIN_ACCESS: 'settings.adminAccess'
-});
-
-const EMPLOYEE_PERMISSIONS = Object.freeze([
-  PERMISSIONS.SIDEPANEL_REPORT,
-  PERMISSIONS.SIDEPANEL_SCOREBOARD,
-  PERMISSIONS.SETTINGS_CORE_CONNECTIVITY,
-  PERMISSIONS.SETTINGS_FEEDBACK_COMMS
-]);
-
-const MANAGER_PERMISSIONS = Object.freeze([
-  ...EMPLOYEE_PERMISSIONS,
-  PERMISSIONS.SIDEPANEL_AUTOMATE,
-  PERMISSIONS.SIDEPANEL_INTEL,
-  PERMISSIONS.SETTINGS_OPEN_LOCKER,
-  PERMISSIONS.SETTINGS_INTELLIGENCE_TOOLS,
-  PERMISSIONS.SETTINGS_BRIEFING_STATS,
-  PERMISSIONS.SETTINGS_BRIEFING_CONTENT
-]);
-
-export const ROLE_PERMISSIONS = Object.freeze({
-  [ACCESS_ROLES.WAITING_APPROVAL]: Object.freeze([]),
-  [ACCESS_ROLES.EMPLOYEE]: EMPLOYEE_PERMISSIONS,
-  [ACCESS_ROLES.MANAGER]: MANAGER_PERMISSIONS,
-  [ACCESS_ROLES.ADMIN]: Object.freeze([
-    ...MANAGER_PERMISSIONS,
-    PERMISSIONS.SIDEPANEL_REPAIR,
-    PERMISSIONS.SETTINGS_SELECTOR_PATHS,
-    PERMISSIONS.SETTINGS_ADMIN_ACCESS
-  ])
-});
 
 const PROFILE_KEYS = Object.freeze([
   'schemaVersion', 'customerId', 'userId', 'configVersion', 'email', 'name', 'role',
@@ -312,7 +248,7 @@ export function normalizeAccessPlatforms(value) {
 }
 
 export function getPermissionsForRole(role) {
-  return [...(ROLE_PERMISSIONS[normalizeAccessRole(role)] || [])];
+  return getRolePermissions(normalizeAccessRole(role));
 }
 
 export function validateCustomerAccessProfile(candidate, {
@@ -341,7 +277,7 @@ export function validateCustomerAccessProfile(candidate, {
     addError(errors, 'role', 'invalid_role', 'Expected an approved customer role.');
   }
   const permissions = readExactStringArray(input.permissions, 'permissions', errors, PERMISSION_KEYS, (item) => item.trim());
-  const rolePermissions = new Set(ROLE_PERMISSIONS[role] || []);
+  const rolePermissions = new Set(getRolePermissions(role));
   permissions.forEach((permission) => {
     if (!rolePermissions.has(permission)) addError(errors, 'permissions', 'permission_exceeds_role', 'A permission exceeds the retained role matrix.');
   });
@@ -439,13 +375,14 @@ export function isVerifiedAccessProfile(profile, now = Date.now()) {
     CUSTOMER_ID_PATTERN.test(String(profile.customerId || '')) &&
     profile.status === 'ready' &&
     profile.verification === 'verified' &&
+    Number.isSafeInteger(profile.expiresAt) &&
     Number(profile.expiresAt) > now
   );
 }
 
 export function hasPermission(profile, permission) {
   if (!isVerifiedAccessProfile(profile)) return false;
-  const rolePermissions = ROLE_PERMISSIONS[normalizeAccessRole(profile.role)] || [];
+  const rolePermissions = getRolePermissions(normalizeAccessRole(profile.role));
   return rolePermissions.includes(permission) && Array.isArray(profile.permissions) && profile.permissions.includes(permission);
 }
 

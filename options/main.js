@@ -253,8 +253,8 @@ async function initializeAssistantPreference() {
 function applyOptionsAccessProfile(profile) {
     const teamLink = getEl('team-access-link');
     if (teamLink) teamLink.hidden = !hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS);
-    canManageDoubleXpRetention = hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS);
-    canManageGamificationLevels = hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS);
+    canManageDoubleXpRetention = hasPermission(profile, PERMISSIONS.SETTINGS_GAMIFICATION);
+    canManageGamificationLevels = hasPermission(profile, PERMISSIONS.SETTINGS_GAMIFICATION);
     const control = getEl('double-xp-retention-control');
     const input = getEl('double_xp_retention_days');
     const levelSection = getEl('gamification-level-section');

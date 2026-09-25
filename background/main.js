@@ -594,7 +594,9 @@ function createActionHandlers() {
         return { success: false, allowed: false, error: 'Unknown permission.' };
       }
 
-      const profile = await accessRegistry.getCurrentProfile({ forceRefresh: request.forceRefresh === true });
+      // Content scripts use this result to admit autofill/scraping work. Treat
+      // it as an authorization check, even when the UI still has a fresh cache.
+      const profile = await accessRegistry.getCurrentProfile({ forceRefresh: true, allowCachedFallback: false });
       let allowed = hasPermission(profile, request.permission);
       const platforms = new Set();
       addPlatformCandidate(platforms, request.platform);
@@ -798,7 +800,7 @@ function createActionHandlers() {
       let requestedRetentionDays = null;
 
       if (updatesRetention) {
-        if (!hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS)) {
+        if (!hasPermission(profile, PERMISSIONS.SETTINGS_GAMIFICATION)) {
           throw new Error('Access denied: Double XP automatic removal settings are restricted to administrators.');
         }
         sections.double_xp_settings = validateDoubleXpSettings(sections.double_xp_settings);
@@ -806,7 +808,7 @@ function createActionHandlers() {
       }
 
       if (updatesGamificationLevels) {
-        if (!hasPermission(profile, PERMISSIONS.SETTINGS_ADMIN_ACCESS)) {
+        if (!hasPermission(profile, PERMISSIONS.SETTINGS_GAMIFICATION)) {
           throw new Error('Access denied: Scout and Enforcer level thresholds are restricted to administrators.');
         }
         sections.gamification_levels = validateGamificationLevels(sections.gamification_levels);
@@ -891,8 +893,9 @@ function createActionHandlers() {
       return reportingWorkflow.handleAddVideo(sender.tab, request.data);
     },
 
-    async clearCart() {
-      await Promise.all([chrome.storage.local.remove('piracy_cart'), clearImages()]);
+    async clearCart(request) {
+      const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_REPORT);
+      await Promise.all([chrome.storage.local.remove('piracy_cart'), clearImages(profile)]);
       return { success: true };
     },
 

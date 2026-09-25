@@ -84,7 +84,7 @@ test('commercial licensing against isolated Postgres', { skip: !process.env.TEST
     await pool.query("UPDATE customer_subscriptions SET starts_at=now()+interval '1 day', paid_through=now()+interval '2 days' WHERE customer_id=$1", [f.id]);
     await assert.rejects(repository.requireActiveMember(f.identity), { code: 'subscription_not_started' });
     await pool.query("UPDATE customer_subscriptions SET starts_at=now()-interval '2 days', paid_through=now()-interval '1 day' WHERE customer_id=$1", [f.id]);
-    await assert.rejects(repository.requireAdministrator(f.identity), { code: 'subscription_expired' });
+    await assert.rejects(repository.requireMemberPermission(f.identity, 'settings.adminAccess', { allowOverCap: true }), { code: 'subscription_expired' });
     await pool.query("UPDATE customer_subscriptions SET paid_through=now()+interval '1 day', service_status='revoked' WHERE customer_id=$1", [f.id]);
     await assert.rejects(repository.resolveActiveMembership(f.identity), { code: 'subscription_suspended' });
   });
@@ -105,7 +105,7 @@ test('commercial licensing against isolated Postgres', { skip: !process.env.TEST
   await t.test('concurrent approvals cannot overfill seats; tenant scope and suspension are enforced', async () => {
     const f = await fixture(); await apply(f.input);
     for (const suffix of ['a', 'b']) await pool.query("INSERT INTO customer_memberships(member_id,customer_id,email,name,role,status) VALUES($1,$2,$3,$4,'waiting_approval','pending')", [`${f.id}-${suffix}`, f.id, `${f.id}-${suffix}@example.test`, suffix]);
-    const actor = await repository.requireAdministrator(f.identity);
+    const actor = await repository.requireMemberPermission(f.identity, 'settings.adminAccess', { allowOverCap: true });
     const results = await Promise.allSettled(['a','b'].map(suffix => repository.mutateMembership(actor, { memberId: `${f.id}-${suffix}`, expectedVersion: 1, action: 'approve', role: 'employee' }, Date.now())));
     assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
     assert.equal(results.find(r => r.status === 'rejected').reason.code, 'total_user_cap_exceeded');
@@ -147,7 +147,7 @@ test('commercial licensing against isolated Postgres', { skip: !process.env.TEST
     await processBillingEvents(pool);
     await assert.rejects(repository.requireActiveMember(f.identity), { code: 'subscription_over_cap' });
     const limited = await repository.resolveActiveMembership(f.identity); assert.equal(limited.overCap, true);
-    const admin = await repository.requireAdministrator(f.identity);
+    const admin = await repository.requireMemberPermission(f.identity, 'settings.adminAccess', { allowOverCap: true });
     await repository.mutateMembership(admin, { memberId: `manager-${f.id}`, expectedVersion: 1, action: 'disable' }, Date.now());
     assert.equal((await repository.requireActiveMember(f.identity)).overCap, false);
     const status = { customerId: f.id, active: false, expectedConfigVersion: 3, idempotencyKey: crypto.randomUUID(), reason: 'Seller suspension' };

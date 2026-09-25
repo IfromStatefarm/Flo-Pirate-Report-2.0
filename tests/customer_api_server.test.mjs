@@ -65,7 +65,7 @@ function harness({ customerConfig = CUSTOMER, role = 'manager', count = 1 } = {}
     async requireActiveMember() {
       return currentActor;
     },
-    async requireAdministrator() {
+    async requireMemberPermission() {
       if (role !== 'admin') throw new ApiError(403, 'not_authorized', 'Administrator required.');
       return currentActor;
     },
