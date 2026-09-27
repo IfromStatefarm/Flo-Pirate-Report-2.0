@@ -22,7 +22,8 @@ import {
   ensureDailyScreenshotFolder
 } from '../utils/google_api.js';
 import { generatePDF, generateIntelligencePDF } from '../utils/pdf_gen.js';
-import { clearImages, getImage, saveImage } from '../utils/idb_storage.js';
+import { clearImages, deleteImages, getImage, saveImage } from '../utils/idb_storage.js';
+import { withCartMutation } from '../utils/cart_mutation.js';
 import { createSheetScanner } from '../services/sheet_scanner.js';
 import { base64ToBlob } from './lib/blob_utils.js';
 import { createMacroWorkflow } from './services/macro_workflow.js';
@@ -72,6 +73,7 @@ const accessRegistry = createCustomerBootstrapService({ getAuthToken, getUserEma
   onScopeChange: async () => {
     sheetScanner.stop();
     rogueWorkflow.reset();
+    await rumbleWorkflow.cancel();
     await clearImages();
   }
 });
@@ -148,6 +150,7 @@ const ACTION_ACCESS_POLICIES = Object.freeze({
   processFacebookLog: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
   processTwitchLog: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
   startRumbleQueue: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true, includeCart: true },
+  validateRumbleSession: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
   advanceRumbleQueue: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
   cancelRumbleQueue: { permission: PERMISSIONS.SIDEPANEL_REPORT },
   getConfig: { permission: PERMISSIONS.SIDEPANEL_REPORT },
@@ -276,7 +279,7 @@ const macroWorkflow = createMacroWorkflow();
 const reportingWorkflow = createReportingWorkflow({
   finalizeReportBatch,
   checkIfAuthorized,
-  clearImages,
+  deleteImages,
   ensureDailyScreenshotFolder,
   ensureYearlyReportFolder,
   ensureBriefingFolder,
@@ -300,7 +303,11 @@ const reportingWorkflow = createReportingWorkflow({
 });
 
 const rumbleWorkflow = createRumbleWorkflow({
-  handleBatchReport: reportingWorkflow.handleBatchReport
+  handleBatchReport: reportingWorkflow.handleBatchReport,
+  getCustomerProfile: async () => {
+    const profile = await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_REPORT);
+    return accessRegistry.requirePlatform(profile, 'rumble');
+  }
 });
 
 async function maybeBroadcastManagedSourceUrl(url) {
@@ -749,8 +756,14 @@ function createActionHandlers() {
       return rumbleWorkflow.start(request.data);
     },
 
+    async validateRumbleSession(request, sender) {
+      if (sender?.frameId !== 0 || sender.url !== request.currentUrl) throw new Error('Rumble session must match the source page.');
+      return rumbleWorkflow.validate(sender.url, request.sessionId);
+    },
+
     async advanceRumbleQueue(request, sender) {
-      const response = await rumbleWorkflow.advance(request.currentUrl, sender?.tab?.id);
+      if (sender?.frameId !== 0 || sender.url !== request.currentUrl) throw new Error('Rumble session must match the source page.');
+      const response = await rumbleWorkflow.advance(sender.url, sender.tab.id, request.sessionId);
       if (response.done) {
         if (response.success) {
           chrome.runtime.sendMessage({ action: 'progressComplete' }).catch(() => {});
@@ -895,7 +908,7 @@ function createActionHandlers() {
 
     async clearCart(request) {
       const profile = request[ACCESS_CONTEXT] || await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_REPORT);
-      await Promise.all([chrome.storage.local.remove('piracy_cart'), clearImages(profile)]);
+      await withCartMutation(() => Promise.all([chrome.storage.local.remove('piracy_cart'), clearImages(profile)]));
       return { success: true };
     },
 

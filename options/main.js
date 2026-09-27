@@ -1605,7 +1605,7 @@ async function initializeOptionsPage() {
     }
 }
 
-globalThis.addEventListener('rights-reporter-theme-changed', () => setClippyState('default'));
+globalThis.RightsReporterTheme?.subscribe?.(() => setClippyState('default'));
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

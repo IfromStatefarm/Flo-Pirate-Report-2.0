@@ -341,11 +341,21 @@ export function createPostgresRepository({ pool } = {}) {
         assert(row && row.user_id===actor.memberId,404,'report_required','No accepted report is awaiting projection.');
         requireUrlPlatforms(current,row.attributes.urls);
         if(row.status==='completed') return null;
-        await client.query("UPDATE report_projection_jobs SET status='uncertain',attempts=attempts+1,updated_at=now() WHERE customer_id=$1 AND report_id=$2",[actor.customerId,reportId]);
+        await client.query("UPDATE report_projection_jobs SET attempts=attempts+1,updated_at=now() WHERE customer_id=$1 AND report_id=$2",[actor.customerId,reportId]);
         return {reportId,attributes:row.attributes,createdAt:row.occurred_at,reporterName:current.name,email:current.email,reconcileOnly:row.status==='uncertain'};
       });
       if(!job) return;
-      await work(job,{reconcileOnly:job.reconcileOnly});
+      // Reads, header repair and provider authorization can fail safely. Only
+      // an append dispatched after this durable claim has an unknown outcome.
+      // The conditional update also fences concurrent attempts that both read
+      // a pending job before either reached the provider write boundary.
+      const beforeAppend=()=>transact(async client=>{
+        const current=await reauthorizeActor(client,actor,'sidepanel.report');
+        requireUrlPlatforms(current,job.attributes.urls);
+        const claimed=await client.query("UPDATE report_projection_jobs SET status='uncertain',updated_at=now() WHERE customer_id=$1 AND report_id=$2 AND status='pending' RETURNING report_id",[actor.customerId,reportId]);
+        assert(claimed.rowCount===1,409,'projection_uncertain','Another attempt may have appended this report. Retry to reconcile its Google row.');
+      });
+      await work(job,{reconcileOnly:job.reconcileOnly,beforeAppend});
       await transact(async client => {
         await reauthorizeActor(client, actor, 'sidepanel.report');
         await client.query("UPDATE report_projection_jobs SET status='completed',updated_at=now() WHERE customer_id=$1 AND report_id=$2",[actor.customerId,reportId]);

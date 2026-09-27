@@ -366,3 +366,21 @@ test('logout cannot be undone by a late successful or failed bootstrap',async()=
     assert.equal(h.localStorageArea.state[CUSTOMER_ACCESS_PROFILE_CACHE_KEY],undefined);
   }
 });
+
+for (const transition of ['logout', 'customer', 'user']) {
+  test(`Rumble session is purged on ${transition}`, async () => {
+    let profile = validProfile();
+    const h = createHarness({ fetchImpl: async () => jsonResponse({ profile }) });
+    await h.service.bootstrap();
+    await h.localStorageArea.set({ rumble_report_session: {
+      active: true, customerId: profile.customerId, userId: profile.userId,
+      sessionId: 'old-session', formData: { eventName: 'Old customer event' }
+    } });
+    if (transition === 'logout') await h.service.logout();
+    else {
+      profile = { ...profile, [transition === 'customer' ? 'customerId' : 'userId']: 'different' };
+      await h.service.bootstrap();
+    }
+    assert.equal(h.localStorageArea.state.rumble_report_session, undefined);
+  });
+}

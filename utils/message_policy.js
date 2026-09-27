@@ -3,7 +3,7 @@
 const EXTENSION_PAGES = new Set(['/sidepanel.html','/popup.html','/options.html','/options/team.html']);
 const CONTENT_ACTIONS = new Set([
   'getRuntimeTheme','checkAccess','getConfig','openPopup','checkWhitelist',
-  'processNewItem','addToCart','initRogueTakedown','logToSheet','advanceRumbleQueue',
+  'processNewItem','addToCart','initRogueTakedown','logToSheet','advanceRumbleQueue','validateRumbleSession',
   'clearCart','undoCart','compileMacro','patchSelectorConfig','startMacroSession','recordMacroStep',
   'botSearchComplete','botSearchFailed'
 ]);

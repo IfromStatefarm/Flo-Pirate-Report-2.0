@@ -35,6 +35,27 @@
     let cachedOverlay = null;  // Caches the overlay element to preserve its state
     let hasRunAutomatedFill = false; // Prevents Youtube/Twitter loops on SPA wake-up
     let hasRunRumbleAutomation = false;
+    const revokedRumbleSessions = new Set();
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local' || !changes[RUMBLE_REPORT_SESSION_KEY]) return;
+        const { oldValue, newValue } = changes[RUMBLE_REPORT_SESSION_KEY];
+        if (oldValue?.sessionId && (!newValue?.active || oldValue.sessionId !== newValue.sessionId)) {
+            revokedRumbleSessions.add(oldValue.sessionId);
+            if (lastReportData?.rumbleSession?.sessionId === oldValue.sessionId) {
+                lastReportData = null;
+                document.getElementById('flo-rumble-overlay')?.remove();
+            }
+        }
+    });
+
+    async function assertRumbleSession(session) {
+        const fail = () => { throw new Error('Rumble reporting stopped because the session or account changed.'); };
+        if (!session?.sessionId || revokedRumbleSessions.has(session.sessionId)) fail();
+        const response = await chrome.runtime.sendMessage({
+            action: 'validateRumbleSession', currentUrl: window.location.href, sessionId: session.sessionId
+        });
+        if (!response?.success || revokedRumbleSessions.has(session.sessionId)) fail();
+    }
     let isTransitioning = false; // Prevents SPA wake-up from firing while we wait for a page transition
 
     function applyCustomerCopy(theme = globalThis.RightsReporterTheme?.getTheme?.()) {
@@ -51,7 +72,7 @@
     }
 
     applyCustomerCopy();
-    globalThis.addEventListener?.('rights-reporter-theme-changed', (event) => applyCustomerCopy(event.detail));
+    globalThis.RightsReporterTheme?.subscribe?.(applyCustomerCopy);
 
     async function hasAutofillAccess(platform = '', url = window.location.href) {
       try {
@@ -180,6 +201,7 @@
             createInstagramOverlay(data);
         } else if (host.includes('rumble.com')) {
             if (!isActiveRumbleSessionForCurrentPage(data?.rumbleSession)) return;
+            await assertRumbleSession(data.rumbleSession);
             createRumbleOverlay(data);
         } else if (host.includes('twitch.tv') && currentUrl.includes('/copyright-claims')) {
             createTwitchOverlay(data);
@@ -223,7 +245,8 @@
     function isActiveRumbleSessionForCurrentPage(session) {
         if (!session?.active || !Array.isArray(session.urls)) return false;
         const currentUrl = normalizeRuntimeUrl(window.location.href);
-        return session.urls.map(normalizeRuntimeUrl).includes(currentUrl);
+        return Boolean(session.sessionId) && !revokedRumbleSessions.has(session.sessionId) &&
+            normalizeRuntimeUrl(session.urls[session.currentIndex]) === currentUrl;
     }
 
     function findVisibleElement(selectors) {
@@ -1031,6 +1054,7 @@
     }
 
     async function runRumbleReportSequence(data, statusEl) {
+        await assertRumbleSession(data?.rumbleSession);
         const config = AUTOFILL_CONFIG.rumble?.autofill || {};
         const updateStatus = (message, color = '#333') => {
             if (!statusEl) return;
@@ -1060,6 +1084,7 @@
         if (!menuButton) {
             throw new Error('Could not find the Rumble action menu button.');
         }
+        await assertRumbleSession(data.rumbleSession);
         clickElement(menuButton);
         await sleep(500);
 
@@ -1068,6 +1093,7 @@
         if (!reportButton) {
             throw new Error('Could not find the Rumble report button.');
         }
+        await assertRumbleSession(data.rumbleSession);
         clickElement(reportButton);
         await sleep(700);
 
@@ -1076,6 +1102,7 @@
         if (!copyrightReason) {
             throw new Error('Could not find the copyright violation option.');
         }
+        await assertRumbleSession(data.rumbleSession);
         checkReactCheckbox(copyrightReason);
         await sleep(300);
 
@@ -1084,6 +1111,7 @@
         if (!submitButton) {
             throw new Error('Could not find the Rumble submit button.');
         }
+        await assertRumbleSession(data.rumbleSession);
         clickElement(submitButton);
 
         const submitted = await (async () => {
@@ -1113,8 +1141,10 @@
         }
 
         updateStatus('Opening next queued URL...', 'var(--brand-primary)');
+        await assertRumbleSession(data.rumbleSession);
         const response = await chrome.runtime.sendMessage({
             action: 'advanceRumbleQueue',
+            sessionId: data.rumbleSession.sessionId,
             currentUrl: window.location.href
         });
 

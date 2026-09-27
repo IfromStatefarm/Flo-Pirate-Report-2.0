@@ -1,4 +1,5 @@
 import { evidenceScope, belongsToScope } from '../utils/evidence_scope.js';
+import { withCartMutation } from '../utils/cart_mutation.js';
 import {
   detectPlatformDetails,
   extractHandleFromUrl,
@@ -110,11 +111,27 @@ export function createSheetScanner({
           new Promise((resolve) => {
             let attempts = 0;
 
+            // Descriptions, comments, and titles can quote removal notices. Only
+            // YouTube's player error UI is evidence that this video is unavailable.
+            const isYouTubeUnavailable = () => Array.from(document.querySelectorAll(
+              'yt-player-error-message-renderer, ytd-video-error-message-renderer, .ytp-error-content-wrap'
+            )).some((error) => {
+              const message = (error.innerText || '').toLowerCase();
+              return [
+                'video unavailable',
+                'video has been removed',
+                'video is private',
+                'this video is no longer available',
+                'account has been terminated',
+                'copyright claim'
+              ].some((phrase) => message.includes(phrase));
+            });
+
             const checkStatus = () => {
               const text = document.body.innerText.toLowerCase();
               const title = document.title.toLowerCase();
 
-              if (title.includes('404') || title.includes('not found') || title.includes('page not found')) {
+              if (targetPlatform !== 'youtube' && (title.includes('404') || title.includes('not found') || title.includes('page not found'))) {
                 return resolve(true);
               }
 
@@ -131,20 +148,7 @@ export function createSheetScanner({
               }
 
               if (targetPlatform === 'youtube') {
-                if (
-                  document.querySelector('yt-player-error-message-renderer') ||
-                  document.querySelector('ytd-video-error-message-renderer')
-                ) {
-                  return resolve(true);
-                }
-
-                if (text.includes('video unavailable')) return resolve(true);
-                if (text.includes('video has been removed')) return resolve(true);
-                if (text.includes('video is private')) return resolve(true);
-                if (text.includes('this video is no longer available')) return resolve(true);
-                if (text.includes('account has been terminated')) return resolve(true);
-                if (text.includes('copyright claim')) return resolve(true);
-                if (window.location.href === 'https://www.youtube.com/') return resolve(true);
+                if (isYouTubeUnavailable()) return resolve(true);
 
                 if (text.includes('before you continue to youtube')) return resolve(false);
 
@@ -153,20 +157,7 @@ export function createSheetScanner({
                   document.querySelector('ytd-video-primary-info-renderer')
                 ) {
                   setTimeout(() => {
-                    const doubleCheckText = document.body.innerText.toLowerCase();
-                    if (
-                      document.querySelector('yt-player-error-message-renderer') ||
-                      document.querySelector('ytd-video-error-message-renderer') ||
-                      doubleCheckText.includes('video unavailable') ||
-                      doubleCheckText.includes('video has been removed') ||
-                      doubleCheckText.includes('video is private') ||
-                      doubleCheckText.includes('this video is no longer available') ||
-                      doubleCheckText.includes('copyright claim')
-                    ) {
-                      resolve(true);
-                    } else {
-                      resolve(false);
-                    }
+                    resolve(isYouTubeUnavailable());
                   }, 2500);
                   return;
                 }
@@ -682,14 +673,16 @@ export function createSheetScanner({
       await Promise.all(activeWorkers);
 
       if (activeLinks.length > 0) {
-        const storage = await chrome.storage.local.get('piracy_cart');
-        const existingCart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
-        const uniqueCart = Array.from(
-          new Map([...existingCart, ...activeLinks.map(item => ({ ...item, ...evidenceScope(customerProfile) }))].map((item) => [item.url, item])).values()
-        );
+        await withCartMutation(async () => {
+          const storage = await chrome.storage.local.get('piracy_cart');
+          const existingCart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
+          const uniqueCart = Array.from(
+            new Map([...existingCart, ...activeLinks.map(item => ({ ...item, ...evidenceScope(customerProfile), captureId: crypto.randomUUID() }))].map((item) => [item.url, item])).values()
+          );
 
-        if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
-        await chrome.storage.local.set({ piracy_cart: uniqueCart });
+          if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
+          await chrome.storage.local.set({ piracy_cart: uniqueCart });
+        });
       }
 
       return { success: true, count: activeLinks.length };

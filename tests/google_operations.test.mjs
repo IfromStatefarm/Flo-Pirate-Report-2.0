@@ -40,6 +40,8 @@ test('gateway denies a folder outside the configured customer root before upload
 test('report policy checks catalog, whitelist, duplicate URLs and server expiry for Double XP',async()=>{
   const report={reportId:'r',eventId:'e',vertical:'Sports',eventName:'Final',handle:'pirate',items:[{url:'https://youtube.com/watch?v=1',views:'999999',screenshotLink:''}]};
   const adapter={fetchConfig:async()=>({verticals:[{name:'Sports',events:[{name:'Final',double_xp:true,double_xp_expires_at:'2000-01-01'}]}]}),getEventData:async()=>({eventMap:{final:{name:'Final'}}}),checkIfAuthorized:async()=>false};
+  adapter.resolveYoutubeTargetAccount=async()=>`UC${'a'.repeat(22)}`;
+  adapter.resolveYoutubeAccount=async()=>`UC${'a'.repeat(22)}`;
   const policy=await verifyReportPolicy(actor,report,adapter);
   const attributes=authoritativeReportAttributes(report,policy,{url_count:10000,scout_points:1000000,enforcer_points:1000000,outcome:'confirmed',pdf_url:'https://drive.google.com/file/d/x'});
   assert.equal(attributes.url_count,1);assert.equal(attributes.scout_points,50);assert.equal(attributes.enforcer_points,20);assert.equal(attributes.outcome,'operator_prepared');

@@ -64,6 +64,23 @@ export async function getImage(id, profile) {
 }
 
 /**
+ * Deletes only the specified screenshots in a verified account scope.
+ */
+export async function deleteImages(ids, profile) {
+  const keys = [...new Set(ids.filter(Boolean))].map(id => imageStorageKey(id, profile));
+  if (!keys.length) return;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    for (const key of keys) store.delete(key);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onerror = () => { db.close(); reject(transaction.error); };
+    transaction.onabort = () => { db.close(); reject(transaction.error); };
+  });
+}
+
+/**
  * Clears all screenshots from the store.
  */
 export async function clearImages(profile = null) {

@@ -3,12 +3,12 @@ import crypto from 'node:crypto';
 import { assert } from './api_error.js';
 import { requireUrlPlatforms } from './platform_policy.js';
 
-// Provider identifiers and view counts remain operator observations. This checks
-// the customer catalog and declared target; it does not prove copyright ownership.
+// YouTube ownership is resolved server-side. Other platforms and view counts
+// remain operator observations; this does not prove copyright ownership.
 export async function verifyReportPolicy(actor, report, adapter) {
   const platforms = requireUrlPlatforms(actor, report.items.map(item => item.url));
   assert(platforms.length === 1, 400, 'invalid_report', 'A report must contain one platform.');
-  assert(new Set(report.items.map(item => item.url)).size === report.items.length, 400, 'invalid_report', 'Duplicate evidence URLs are not allowed.');
+  assert(new Set(reportTargetKeys(report).map(item => item.targetKey)).size === report.items.length, 400, 'invalid_report', 'Duplicate evidence URLs are not allowed.');
   const config = await adapter.fetchConfig();
   const vertical = config.verticals?.find(item => item.name?.toLowerCase() === report.vertical.toLowerCase());
   assert(vertical, 403, 'rights_policy_denied', 'This vertical is not in the customer catalog.');
@@ -16,16 +16,33 @@ export async function verifyReportPolicy(actor, report, adapter) {
   const event = catalog.eventMap?.[report.eventName.toLowerCase()];
   assert(event, 403, 'rights_policy_denied', 'This event is not in the customer catalog.');
   assert(report.handle && !['unknown','n/a'].includes(report.handle.toLowerCase()), 400, 'invalid_report', 'A target account is required.');
-  const handles = new Set([report.handle]);
-  for (const item of report.items) {
-    const match = new URL(item.url).pathname.match(/^\/@([^/]+)/);
-    if (match) handles.add(decodeURIComponent(match[1]));
+  const targetAccountIds = [];
+  if (platforms[0] === 'youtube') {
+    assert(typeof adapter.resolveYoutubeTargetAccount === 'function' && typeof adapter.resolveYoutubeAccount === 'function',
+      403, 'target_account_unverified', 'YouTube account verification is unavailable.');
+    for (const item of report.items) {
+      const accountId = await adapter.resolveYoutubeTargetAccount(item.url);
+      assert(/^UC[A-Za-z0-9_-]{22}$/.test(accountId), 403, 'target_account_unverified', 'The target account could not be verified.');
+      if (!targetAccountIds.includes(accountId)) {
+        assert(!(await adapter.checkIfAuthorized('youtube', accountId)), 403, 'authorized_target', 'This account is on the customer authorized-account list.');
+      }
+      targetAccountIds.push(accountId);
+    }
+    const declaredId = await adapter.resolveYoutubeAccount(report.handle);
+    assert(targetAccountIds.every(id => id === declaredId), 403, 'target_account_mismatch', 'The supplied account does not own every target URL.');
+  } else {
+    const handles = new Set([report.handle]);
+    for (const item of report.items) {
+      const match = new URL(item.url).pathname.match(/^\/@([^/]+)/);
+      if (match) handles.add(decodeURIComponent(match[1]));
+    }
+    for (const handle of handles) assert(!(await adapter.checkIfAuthorized(platforms[0], handle)), 403, 'authorized_target', 'This account is on the customer authorized-handle list.');
   }
-  for (const handle of handles) assert(!(await adapter.checkIfAuthorized(platforms[0], handle)), 403, 'authorized_target', 'This account is on the customer authorized-handle list.');
   const xpEvent = vertical.events?.find(item => String(item.eventName || item.name).toLowerCase() === report.eventName.toLowerCase());
   const expires = Date.parse(xpEvent?.double_xp_expires_at);
   const multiplier = xpEvent?.double_xp === true && Number.isFinite(expires) && expires > Date.now() ? 2 : 1;
-  return { version: 1, platform: platforms[0], multiplier, checkedAt: Date.now(), eventName: event.name };
+  return { version: 1, platform: platforms[0], multiplier, checkedAt: Date.now(), eventName: event.name,
+    ...(targetAccountIds.length ? { targetAccountIds } : {}) };
 }
 
 export function authoritativeReportAttributes(report, policy, claimed, rewardContext={}) {
@@ -51,6 +68,11 @@ export function reportTargetKeys(report) {
   const workKey=digest(JSON.stringify([report.vertical.trim().toLowerCase(),report.eventName.trim().toLowerCase()]));
   return report.items.map(item=>{
     const url=new URL(item.url);url.hostname=url.hostname.toLowerCase().replace(/^www\./,'').replace(/\.$/,'');url.hash='';
+    // TikTok video identity is in the path; share/tracking parameters do not
+    // identify another video. Preserve query strings for other URL shapes.
+    if ((url.hostname === 'tiktok.com' || url.hostname.endsWith('.tiktok.com')) && /^\/@[^/]+\/video\/\d+\/?$/.test(url.pathname)) {
+      url.search = '';
+    }
     const youtubeId=url.hostname==='youtu.be'?url.pathname.slice(1):(url.hostname==='youtube.com'||url.hostname.endsWith('.youtube.com'))?(url.searchParams.get('v')||url.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)/)?.[1]):'';
     const key=youtubeId?`youtube:${youtubeId}`:`${url.origin}${url.pathname.replace(/\/$/,'')}${url.search}`;
     return {workKey,targetKey:digest(key)};

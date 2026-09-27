@@ -453,7 +453,7 @@
         evaluateState();
     });
 
-    window.addEventListener('rights-reporter-theme-changed', () => {
+    globalThis.RightsReporterTheme?.subscribe?.(() => {
         const img = clippyShadow?.getElementById('flo-clippy-img');
         if (img) {
             img.src = assistantImageForState();

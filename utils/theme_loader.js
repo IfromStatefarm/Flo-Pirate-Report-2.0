@@ -50,6 +50,7 @@
 
   let currentTheme = FALLBACK;
   let loadingPromise = null;
+  const listeners = new Set();
   const THEME_REQUEST_TIMEOUT_MS = 4000;
 
   function requestRuntimeTheme() {
@@ -89,13 +90,7 @@
       assistantName: theme.product.assistantName,
       tagline: theme.product.tagline,
       documentTitle: `${theme.product.displayName} Settings`,
-      logoAltText: theme.logoAltText,
-      legalOwnerName: theme.legal?.ownerName || 'Rights Owner',
-      legalCompanyName: theme.legal?.companyName || '',
-      reportingEmail: theme.legal?.reportingEmail || '',
-      secondaryEmail: theme.legal?.secondaryEmail || '',
-      reportingPhone: theme.legal?.phone || '',
-      originalWorkUrl: theme.legal?.originalWorkUrl || ''
+      logoAltText: theme.logoAltText
     };
     return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key] || '') : '';
   }
@@ -109,6 +104,27 @@
     });
     documentElement.style.setProperty('--surface-subtle', theme.colors.background);
     documentElement.style.setProperty('--border-strong', theme.colors.muted);
+
+    // Content scripts share the DOM with the host page. Its attributes are not
+    // an authority to receive extension data, even when they match our markup.
+    const isExtensionRoot = document.location?.protocol === 'chrome-extension:' &&
+      document.location?.hostname === chrome.runtime.id &&
+      (root === document || root.ownerDocument === document);
+    if (isExtensionRoot) renderExtensionTheme(theme, root, documentElement);
+
+    // Keep the full theme (including reporting contacts) inside the extension's
+    // isolated world. DOM events are observable and forgeable by the host page.
+    listeners.forEach((listener) => {
+      try {
+        listener(theme);
+      } catch (error) {
+        console.warn('Runtime theme listener failed.');
+      }
+    });
+    return theme;
+  }
+
+  function renderExtensionTheme(theme, root, documentElement) {
     documentElement.dataset.customerId = theme.customerId;
     documentElement.dataset.themeStatus = theme.status;
 
@@ -130,8 +146,6 @@
       element.setAttribute('src', easterEggImage);
       element.setAttribute('alt', `${theme.product.displayName} Easter egg`);
     });
-    globalThis.dispatchEvent?.(new CustomEvent('rights-reporter-theme-changed', { detail: theme }));
-    return theme;
   }
 
   async function loadTheme() {
@@ -158,7 +172,12 @@
     return textValue(key, currentTheme);
   }
 
-  globalThis.RightsReporterTheme = Object.freeze({ applyTheme, getTheme, loadTheme, value });
+  function subscribe(listener) {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }
+
+  globalThis.RightsReporterTheme = Object.freeze({ applyTheme, getTheme, loadTheme, value, subscribe });
   applyTheme(FALLBACK);
   void loadTheme();
 

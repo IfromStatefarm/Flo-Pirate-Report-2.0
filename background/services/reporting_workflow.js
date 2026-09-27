@@ -2,11 +2,21 @@ import { stableOperationId } from '../../services/google_operation_service.js';
 import { detectPlatformDetails } from '../../utils/platforms.js';
 import { getFreshTikTokViews } from './fresh_tiktok.js';
 import { captureForTab, evidenceScope, belongsToScope } from '../../utils/evidence_scope.js';
+import { captureKey, withCartMutation } from '../../utils/cart_mutation.js';
 
 function generateReportId() {
   const nums = Math.floor(10 + Math.random() * 90);
   const letters = Math.random().toString(36).substring(2, 8);
   return `${nums}${letters}`.toUpperCase();
+}
+
+function hasScreenshotLink(evidence) {
+  if (typeof evidence?.screenshotLink !== 'string') return false;
+  try {
+    return new URL(evidence.screenshotLink).protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 const PLATFORM_BATCH_LIMITS = Object.freeze({
@@ -82,7 +92,7 @@ function mergeScrapedTwitchData(item, scrapedData) {
 
 export function createReportingWorkflow({
   checkIfAuthorized,
-  clearImages,
+  deleteImages,
   ensureDailyScreenshotFolder,
   ensureYearlyReportFolder,
   generatePDF,
@@ -99,8 +109,9 @@ export function createReportingWorkflow({
   uploadToDrive,
   base64ToBlob
 }) {
-  async function writeScoped(profile,values) {
+  async function writeScoped(profile,values,assertActive = async () => {}) {
     if(!belongsToScope(await getCustomerProfile(),profile)) throw new Error('The account changed during this operation.');
+    await assertActive(profile);
     return chrome.storage.local.set(values);
   }
 
@@ -283,10 +294,7 @@ export function createReportingWorkflow({
     }
   }
 
-  async function refreshTwitchQueueMetadata(options = {}) {
-    const customerProfile = await getCustomerProfile();
-    const storage = await chrome.storage.local.get('piracy_cart');
-    const cart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
+  async function refreshTwitchQueueMetadata(cart, options = {}) {
     if (!cart.some((item) => isTwitchUrl(item.url))) return cart;
 
     const refreshedCart = [];
@@ -310,7 +318,6 @@ export function createReportingWorkflow({
       refreshedCart.push(mergeScrapedTwitchData(item, scrapedData));
     }
 
-    await writeScoped(customerProfile, { piracy_cart: refreshedCart });
     return refreshedCart;
   }
 
@@ -327,26 +334,29 @@ export function createReportingWorkflow({
       const newItem = {
         ...data,
         ...evidenceScope(customerProfile),
+        captureId: screenshotId,
         screenshotId: screenshotUrl ? screenshotId : null,
         timestamp: new Date().toISOString(),
         scoutedBy: scoutedByEmail
       };
 
-      const storage = await chrome.storage.local.get('piracy_cart');
-      const cart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
+      return await withCartMutation(async () => {
+        const storage = await chrome.storage.local.get('piracy_cart');
+        const cart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
 
-      if (!cart.some((item) => item.url === data.url)) {
-        await recordCustomerEvent(customerProfile, 'activity.item_added', {
-          platform: detectPlatformDetails(data.url).key,
-          target_url: data.url,
-          source_event_name: data.eventName || '',
-          vertical: data.vertical || ''
-        });
-        cart.push(newItem);
-        await writeScoped(customerProfile, { piracy_cart: cart });
-      }
+        if (!cart.some((item) => item.url === data.url)) {
+          await recordCustomerEvent(customerProfile, 'activity.item_added', {
+            platform: detectPlatformDetails(data.url).key,
+            target_url: data.url,
+            source_event_name: data.eventName || '',
+            vertical: data.vertical || ''
+          });
+          cart.push(newItem);
+          await writeScoped(customerProfile, { piracy_cart: cart });
+        }
 
-      return { success: true, count: cart.length };
+        return { success: true, count: cart.length };
+      });
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -388,50 +398,54 @@ export function createReportingWorkflow({
       const newItem = {
         ...data,
         ...evidenceScope(customerProfile),
+        captureId: screenshotId,
         screenshotId: screenshotUrl ? screenshotId : null,
         timestamp: new Date().toISOString(),
         scoutedBy: scoutedByEmail
       };
 
-      const storage = await chrome.storage.local.get('piracy_cart');
-      const cart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
-      if (!cart.some((item) => item.url === data.url)) {
-        await recordCustomerEvent(customerProfile, 'activity.item_added', {
-          platform: detectPlatformDetails(data.url).key,
-          target_url: data.url,
-          source_event_name: data.eventName || '',
-          vertical: data.vertical || ''
-        });
-        cart.push(newItem);
-        await writeScoped(customerProfile, { piracy_cart: cart });
-      }
+      return await withCartMutation(async () => {
+        const storage = await chrome.storage.local.get('piracy_cart');
+        const cart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
+        if (!cart.some((item) => item.url === data.url)) {
+          await recordCustomerEvent(customerProfile, 'activity.item_added', {
+            platform: detectPlatformDetails(data.url).key,
+            target_url: data.url,
+            source_event_name: data.eventName || '',
+            vertical: data.vertical || ''
+          });
+          cart.push(newItem);
+          await writeScoped(customerProfile, { piracy_cart: cart });
+        }
 
-      return { success: true, status: 'added', count: cart.length };
+        return { success: true, status: 'added', count: cart.length };
+      });
     } catch (error) {
       return { success: false, error: error.message };
     }
   }
 
-  async function handleBatchReport(formData) {
+  async function handleBatchReport(formData, { assertActive = async () => {} } = {}) {
     try {
       const customerProfile = await getCustomerProfile();
+      const writeReportState = values => writeScoped(customerProfile, values, assertActive);
+      await assertActive(customerProfile);
       const customerTheme = await getCustomerTheme();
       const storage = await chrome.storage.local.get(['piracy_cart', 'last_reporter']);
+      await assertActive(customerProfile);
       let cart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
       if (!cart.length) throw new Error('The queue is empty for this account. Capture evidence before reporting.');
       const savedName = storage.last_reporter || 'Unknown User';
       const finalReporterName = formData.reporterName || savedName;
 
-      if (cart.some((item) => isTwitchUrl(item.url))) {
-        cart = await refreshTwitchQueueMetadata(formData?.tabOptions || {});
-      }
-
-      let remainingCart = [];
       const primaryPlatformKey = cart.length > 0 ? detectPlatformDetails(cart[0].url).key : '';
       const batchLimit = PLATFORM_BATCH_LIMITS[primaryPlatformKey] || 100;
-      if (batchLimit && cart.length > batchLimit) {
-        remainingCart = cart.slice(batchLimit);
-        cart = cart.slice(0, batchLimit);
+      cart = cart.slice(0, batchLimit);
+      const submittedCaptureKeys = new Set(cart.map(captureKey));
+      const submittedScreenshotIds = cart.map(item => item.screenshotId).filter(Boolean);
+
+      if (cart.some((item) => isTwitchUrl(item.url))) {
+        cart = await refreshTwitchQueueMetadata(cart, formData?.tabOptions || {});
       }
 
       const updatedCart = [];
@@ -475,13 +489,15 @@ export function createReportingWorkflow({
       }
 
       cart = updatedCart;
-      await writeScoped(customerProfile, { piracy_cart: cart });
+      // Metadata refreshes belong to this snapshot; never replace the live queue.
 
       chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'Connecting to Google...', percent: 40 });
       const token = await getAuthToken();
       const currentYear = new Date().getFullYear();
       const dateStr = new Date().toISOString().split('T')[0];
+      await assertActive(customerProfile);
       const yearFolderId = await ensureYearlyReportFolder(token, currentYear, customerProfile.integrations);
+      await assertActive(customerProfile);
       const screenshotsFolderId = await ensureDailyScreenshotFolder(token, dateStr, customerProfile.integrations);
 
       const grouped = {};
@@ -507,6 +523,7 @@ export function createReportingWorkflow({
       const groups = Object.values(grouped);
       const recordedEventIds = [];
       const preparedReports = [];
+      const submittedOperationKeys = new Set();
       for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
         const group = groups[groupIndex];
         const handle = group.handle;
@@ -517,13 +534,25 @@ export function createReportingWorkflow({
         });
 
         if (!belongsToScope(await getCustomerProfile(), customerProfile)) throw new Error('Account changed during reporting.');
+        await assertActive(customerProfile);
         const operationKey=await stableOperationId(customerProfile.customerId,customerProfile.userId,formData.vertical,formData.eventName,group.handle,group.items.map(item=>item.url));
+        submittedOperationKeys.add(operationKey);
         const saved=(await chrome.storage.local.get('report_operation_v1')).report_operation_v1;
         const operations=belongsToScope(saved,customerProfile)?saved:{...evidenceScope(customerProfile),groups:{}};
-        const operation=operations.groups[operationKey] ||= {reportId:generateReportId(),eventId:crypto.randomUUID(),occurredAt:Date.now()};
+        let operation=operations.groups[operationKey];
+        const requiresScreenshot = item => formData.uploadScreenshots !== false && Boolean(item.screenshotId);
+        // Older attempts may have cached a PDF despite missing required evidence.
+        // Use new IDs when repairing those attempts because generated reports are immutable.
+        if (operation && (operation.evidenceLinks || operation.submission) && group.items.some((item, index) =>
+          requiresScreenshot(item) && (operation.evidenceLinks?.[index]?.url !== item.url || !hasScreenshotLink(operation.evidenceLinks?.[index]))
+        )) {
+          operation = undefined;
+        }
+        operation = operations.groups[operationKey] = operation || {reportId:generateReportId(),eventId:crypto.randomUUID(),occurredAt:Date.now()};
         const saveOperation=async()=>{
           if(!belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('Account changed during reporting.');
-          await writeScoped(customerProfile, {report_operation_v1:operations});
+          await assertActive(customerProfile);
+          await writeReportState( {report_operation_v1:operations});
         };
         await saveOperation();
         if(operation.submission) { preparedReports.push(operation.submission); continue; }
@@ -536,31 +565,32 @@ export function createReportingWorkflow({
           ? 'Live'
           : 'VOD');
 
-        const evidenceLinks = operation.evidenceLinks || await Promise.all(
+        const evidenceResults = operation.evidenceLinks ? null : await Promise.allSettled(
           items.map(async (item, index) => {
             let screenshotLink = '';
 
-            if (formData.uploadScreenshots !== false && item.screenshotId) {
+            if (requiresScreenshot(item)) {
               try {
                 const imageDataUrl = await getImage(item.screenshotId, customerProfile);
-                if (imageDataUrl) {
-                  const imageBlob = base64ToBlob(imageDataUrl);
-                  const upload = await uploadToDrive(
-                    token,
-                    screenshotsFolderId,
-                    `${reportId}_Evidence_${index + 1}_@${handle}.jpg`,
-                    imageBlob,
-                    'image/jpeg',
-                    {
-                      customerId: customerProfile.customerId,
-                      userId: customerProfile.userId,
-                      eventId: customerEventId
-                    }
-                  );
-                  screenshotLink = upload.webViewLink;
-                }
+                if (!imageDataUrl) throw new Error('The local screenshot is missing. Recapture it before retrying.');
+                const imageBlob = base64ToBlob(imageDataUrl);
+                await assertActive(customerProfile);
+                const upload = await uploadToDrive(
+                  token,
+                  screenshotsFolderId,
+                  `${reportId}_Evidence_${index + 1}_@${handle}.jpg`,
+                  imageBlob,
+                  'image/jpeg',
+                  {
+                    customerId: customerProfile.customerId,
+                    userId: customerProfile.userId,
+                    eventId: customerEventId
+                  }
+                );
+                screenshotLink = upload?.webViewLink;
+                if (!hasScreenshotLink({ screenshotLink })) throw new Error('The upload returned no usable screenshot link.');
               } catch (error) {
-                console.error(`Failed to upload screenshot for ${item.url}:`, error);
+                throw new Error(`Screenshot upload failed for ${item.url}. Your queue and local screenshots have been kept. ${error.message}`, { cause: error });
               }
             }
 
@@ -572,6 +602,11 @@ export function createReportingWorkflow({
             };
           })
         );
+
+        // Let all in-flight uploads settle before returning a failure or allowing a retry.
+        const failedEvidence = evidenceResults?.find(result => result.status === 'rejected');
+        if (failedEvidence) throw failedEvidence.reason;
+        const evidenceLinks = operation.evidenceLinks || evidenceResults.map(result => result.value);
 
         operation.evidenceLinks=evidenceLinks;
         await saveOperation();
@@ -590,6 +625,7 @@ export function createReportingWorkflow({
           }
         });
 
+        await assertActive(customerProfile);
         const pdfUpload = await uploadToDrive(
           token,
           yearFolderId,
@@ -611,20 +647,34 @@ export function createReportingWorkflow({
       }
 
       const batchId=await stableOperationId(customerProfile.customerId,customerProfile.userId,preparedReports.map(report=>report.reportId));
+      await assertActive(customerProfile);
       const accepted=await finalizeReportBatch(evidenceScope(customerProfile),batchId,preparedReports);
       recordedEventIds.push(...accepted.reports.map(report=>report.eventId));
-      await writeScoped(customerProfile,{
+      await assertActive(customerProfile);
+      await writeReportState({
         streak_count:accepted.streak.streakCount,
         last_report_date:accepted.streak.lastReportDate,
         streak_freezes:accepted.streak.freezes
       });
-      if (!belongsToScope(await getCustomerProfile(), customerProfile)) throw new Error('The account changed during reporting.');
-      if (remainingCart.length > 0) {
-        await writeScoped(customerProfile, { piracy_cart: remainingCart });
-      } else {
-        await chrome.storage.local.remove(['piracy_cart','report_operation_v1']);
-        await clearImages(customerProfile);
-      }
+      await withCartMutation(async () => {
+        if (!belongsToScope(await getCustomerProfile(), customerProfile)) throw new Error('The account changed during reporting.');
+        await assertActive(customerProfile);
+        const latest = await chrome.storage.local.get(['piracy_cart', 'report_operation_v1']);
+        const remainingCart = (latest.piracy_cart || []).filter(item => !submittedCaptureKeys.has(captureKey(item)));
+        await writeReportState({ piracy_cart: remainingCart });
+        if (!remainingCart.length) await chrome.storage.local.remove('piracy_cart');
+
+        const operations = latest.report_operation_v1;
+        if (belongsToScope(operations, customerProfile)) {
+          for (const key of submittedOperationKeys) delete operations.groups[key];
+          await writeReportState({ report_operation_v1: operations });
+          if (!Object.keys(operations.groups).length) await chrome.storage.local.remove('report_operation_v1');
+        }
+        const retainedScreenshotIds = new Set(remainingCart
+          .filter(item => belongsToScope(item, customerProfile)).map(item => item.screenshotId));
+        await assertActive(customerProfile);
+        await deleteImages(submittedScreenshotIds.filter(id => !retainedScreenshotIds.has(id)), customerProfile);
+      });
 
       return { success: true, eventIds: recordedEventIds };
     } catch (error) {
@@ -654,13 +704,15 @@ export function createReportingWorkflow({
 
   async function undoCart() {
     const customerProfile = await getCustomerProfile();
-    const storage = await chrome.storage.local.get('piracy_cart');
-    const cart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
-    if (cart.length > 0) {
-      cart.pop();
-    }
-    await writeScoped(customerProfile, { piracy_cart: cart });
-    return { success: true };
+    return withCartMutation(async () => {
+      const storage = await chrome.storage.local.get('piracy_cart');
+      const cart = (storage.piracy_cart || []).filter(item => belongsToScope(item, customerProfile));
+      if (cart.length > 0) {
+        cart.pop();
+      }
+      await writeScoped(customerProfile, { piracy_cart: cart });
+      return { success: true };
+    });
   }
 
   return {

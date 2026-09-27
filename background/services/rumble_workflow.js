@@ -1,102 +1,127 @@
+import { belongsToScope, evidenceScope } from '../../utils/evidence_scope.js';
+
+const STORAGE_KEY = 'rumble_report_session';
+
 function normalizeUrl(url) {
-  try {
-    const parsed = new URL(String(url || ''));
-    parsed.hash = '';
-    return parsed.toString();
-  } catch (error) {
-    return String(url || '').split('#')[0];
+  const parsed = new URL(String(url || ''));
+  if (parsed.protocol !== 'https:' || !/(^|\.)rumble\.com$/.test(parsed.hostname)) {
+    throw new Error('The Rumble queue must contain only Rumble URLs.');
   }
+  parsed.hash = '';
+  return parsed.toString();
 }
 
-export function createRumbleWorkflow({
-  handleBatchReport
-}) {
-  const STORAGE_KEY = 'rumble_report_session';
+export function createRumbleWorkflow({ handleBatchReport, getCustomerProfile }) {
+  let generation = 0;
+  let pending = Promise.resolve();
+  const serialize = (operation) => {
+    const result = pending.then(operation);
+    pending = result.catch(() => {});
+    return result;
+  };
+  const revoked = () => new Error('The Rumble reporting session expired or the account changed. Start a new queue.');
 
-  async function openRumbleTab(url) {
-    const tab = await chrome.tabs.create({ url, active: true });
-    return tab;
+  async function removeSession(sessionId) {
+    const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
+    if (stored?.sessionId === sessionId) await chrome.storage.local.remove(STORAGE_KEY);
   }
 
-  async function start(formData) {
-    const storage = await chrome.storage.local.get(['piracy_cart']);
-    const cart = storage.piracy_cart || [];
-    const urls = cart.map((item) => item.url).filter(Boolean);
-
-    if (urls.length === 0) {
-      throw new Error('Queue is empty. Use the Add buttons on Rumble pages first.');
-    }
-
-    const session = {
-      active: true,
-      startedAt: new Date().toISOString(),
-      currentIndex: 0,
-      urls: urls.map(normalizeUrl),
-      formData
-    };
-
-    await chrome.storage.local.set({ [STORAGE_KEY]: session });
-    await openRumbleTab(urls[0]);
-
-    return { success: true, total: urls.length, currentUrl: urls[0] };
+  // The persisted random ID is the session generation: old pages cannot adopt
+  // a replacement session, including after logging back into the same account.
+  async function assertSession(session, expectedGeneration, profile = null) {
+    if (generation !== expectedGeneration || !session?.sessionId) throw revoked();
+    const currentProfile = profile || await getCustomerProfile();
+    const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
+    if (generation !== expectedGeneration || !session?.sessionId || !stored?.active ||
+        stored.sessionId !== session.sessionId || !belongsToScope(session, currentProfile) ||
+        !belongsToScope(stored, currentProfile)) throw revoked();
   }
 
-  async function advance(currentUrl, senderTabId) {
-    const storage = await chrome.storage.local.get([STORAGE_KEY]);
-    const session = storage[STORAGE_KEY];
+  async function loadSession(currentUrl, sessionId) {
+    const expectedGeneration = generation;
+    const profile = await getCustomerProfile();
+    const session = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
+    await assertSession(session, expectedGeneration, profile);
+    if (!sessionId || session.sessionId !== sessionId ||
+        session.urls?.[session.currentIndex] !== normalizeUrl(currentUrl)) throw revoked();
+    return { session, expectedGeneration };
+  }
 
-    if (!session?.active || !Array.isArray(session.urls) || session.urls.length === 0) {
-      throw new Error('No active Rumble reporting session found.');
-    }
+  async function validate(currentUrl, sessionId) {
+    await loadSession(currentUrl, sessionId);
+    return { success: true };
+  }
 
-    const normalizedCurrentUrl = normalizeUrl(currentUrl);
-    const currentIndex = session.urls.findIndex((url) => url === normalizedCurrentUrl);
-    if (currentIndex < 0) {
-      throw new Error('Current Rumble page does not match the active queue item.');
-    }
-    const nextIndex = currentIndex + 1;
+  function start(formData) {
+    const requestedGeneration = generation;
+    return serialize(async () => {
+      const profile = await getCustomerProfile();
+      // A scope change during authorization invalidates this start request.
+      if (requestedGeneration !== generation) throw revoked();
+      const storage = await chrome.storage.local.get('piracy_cart');
+      const cart = storage.piracy_cart || [];
+      if (!cart.length) throw new Error('Queue is empty. Use the Add buttons on Rumble pages first.');
+      if (cart.some(item => !belongsToScope(item, profile))) throw revoked();
+      const session = {
+        ...evidenceScope(profile),
+        sessionId: crypto.randomUUID(),
+        active: true,
+        startedAt: new Date().toISOString(),
+        currentIndex: 0,
+        urls: cart.map(item => normalizeUrl(item.url)),
+        formData
+      };
+      if (requestedGeneration !== generation) throw revoked();
+      await chrome.storage.local.set({ [STORAGE_KEY]: session });
+      try {
+        await assertSession(session, requestedGeneration);
+        await chrome.tabs.create({ url: session.urls[0], active: true });
+        await assertSession(session, requestedGeneration);
+        return { success: true, total: session.urls.length, currentUrl: session.urls[0] };
+      } catch (error) {
+        await removeSession(session.sessionId);
+        throw error;
+      }
+    });
+  }
 
-    if (nextIndex < session.urls.length) {
-      const nextUrl = session.urls[nextIndex];
-      await chrome.storage.local.set({
-        [STORAGE_KEY]: {
-          ...session,
-          currentIndex: nextIndex
+  function advance(currentUrl, senderTabId, sessionId) {
+    return serialize(async () => {
+      const { session, expectedGeneration } = await loadSession(currentUrl, sessionId);
+      const nextIndex = session.currentIndex + 1;
+      if (nextIndex < session.urls.length) {
+        await chrome.storage.local.set({ [STORAGE_KEY]: { ...session, currentIndex: nextIndex } });
+        try {
+          await assertSession(session, expectedGeneration);
+          const nextUrl = session.urls[nextIndex];
+          await chrome.tabs.create({ url: nextUrl, active: true });
+          await assertSession(session, expectedGeneration);
+          if (senderTabId) chrome.tabs.remove(senderTabId).catch(() => {});
+          return { success: true, done: false, nextUrl, currentIndex: nextIndex, total: session.urls.length };
+        } catch (error) {
+          await removeSession(session.sessionId);
+          throw error;
         }
-      });
-
-      await openRumbleTab(nextUrl);
-      if (senderTabId) {
-        chrome.tabs.remove(senderTabId).catch(() => {});
       }
 
-      return {
-        success: true,
-        done: false,
-        nextUrl,
-        currentIndex: nextIndex,
-        total: session.urls.length
-      };
-    }
-
-    await chrome.storage.local.remove(STORAGE_KEY);
-    const response = await handleBatchReport(session.formData);
-    return {
-      success: !!response?.success,
-      done: true,
-      logged: !!response?.success,
-      error: response?.error || null
-    };
+      // Reporting rechecks the owning account after its own async profile load.
+      // Keep the session until logging ends so cancellation also revokes logging.
+      const response = await handleBatchReport(session.formData, {
+        assertActive: (profile) => assertSession(session, expectedGeneration, profile)
+      });
+      await assertSession(session, expectedGeneration);
+      await removeSession(session.sessionId);
+      return { success: !!response?.success, done: true, logged: !!response?.success, error: response?.error || null };
+    });
   }
 
   async function cancel() {
+    // Synchronous invalidation also stops pending reads/writes. Do not queue this
+    // behind work that may itself be refreshing (and revoking) customer access.
+    generation += 1;
     await chrome.storage.local.remove(STORAGE_KEY);
     return { success: true };
   }
 
-  return {
-    start,
-    advance,
-    cancel
-  };
+  return { start, advance, validate, cancel };
 }

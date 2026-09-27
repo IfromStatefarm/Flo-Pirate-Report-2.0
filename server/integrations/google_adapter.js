@@ -1,12 +1,15 @@
 import { requireUrlPlatforms } from '../platform_policy.js';
 import { aggregateIntelligenceData } from '../../utils/intel_aggregator.js';
+import { createYoutubeAccountResolver, protectedYoutubeChannelId } from './youtube_accounts.js';
 // Provider implementation moved from the extension. Never expose arbitrary URLs/methods.
 export function createGoogleAdapter({ token, integrations, defaults, actor, resourceGuard, fetchImpl = globalThis.fetch }) {
+const youtubeAccounts = createYoutubeAccountResolver({ token, fetchImpl });
 const getAuthToken = async () => token;
 const escapeDrive = value => String(value).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
-const fetch = async (url, options = {}) => {
+const fetch = async (url, options = {}, beforeSend) => {
   if (!resourceGuard) throw new Error('A server Google resource guard is required.');
   await resourceGuard.authorizeRequest(url, options);
+  await beforeSend?.();
   return fetchImpl(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(20000) });
 };
 
@@ -16,13 +19,13 @@ const TARGET_TAB_NAME = 'Report Submissions and status';
 // --- HELPER: SAFE FETCH ---
 // This catches HTML 400/404/500 pages from Google and throws a readable error
 // instead of letting `.json()` crash with "Unexpected token '<'".
-async function safeFetchJson(url, options, retries = 2, delay = 250) {
-    const res = await fetch(url, options);
+async function safeFetchJson(url, options, { retries = 2, delay = 250, beforeSend } = {}) {
+    const res = await fetch(url, options, beforeSend);
 
     // Exponential backoff for 429 Too Many Requests
     if (res.status === 429 && retries > 0 && (!options?.method || options.method === 'GET')) {
         await new Promise(resolve => setTimeout(resolve, delay));
-        return safeFetchJson(url, options, retries - 1, delay * 2);
+        return safeFetchJson(url, options, { retries: retries - 1, delay: delay * 2, beforeSend });
     }
 
     const text = await res.text();
@@ -353,6 +356,15 @@ async function checkIfAuthorized(platform, handle, integrations = null) {
 
     if (!data.values || data.values.length === 0) return false;
 
+    if (platform?.toLowerCase() === 'youtube') {
+      const targetId = /^UC[A-Za-z0-9_-]{22}$/.test(handle) ? handle : await youtubeAccounts.resolveAccount(handle);
+      // Validate the entire list before deciding: one unresolved entry means
+      // that exclusion protection cannot be established for this request.
+      const protectedIds = data.values.map(row => row[targetIndex])
+        .filter(value => value != null && String(value).trim())
+        .map(protectedYoutubeChannelId);
+      return protectedIds.includes(targetId);
+    }
     const targetHandle = normalizeHandle(handle);
     return data.values.some(row => {
       if (row.length <= targetIndex) return false;
@@ -362,6 +374,7 @@ async function checkIfAuthorized(platform, handle, integrations = null) {
     });
 
   } catch (e) {
+    if (e.code === 'authorized_accounts_unverified') throw e;
     console.error("❌ Error checking whitelist:", e);
     throw new Error('Authorized-handle policy is unavailable. Retry before reporting.', { cause: e });
   }
@@ -672,7 +685,7 @@ async function updateConfigSections(sectionUpdates, retryCount = 0, { interactiv
 /**
  * Appends a row and automatically formats URLs in Column H as hyperlinks.
  */
-async function appendToSheet(token, logData) {
+async function appendToSheet(token, logData, { beforeAppend } = {}) {
   const { reportSheetId } = await getOptions();
   const { sheetName } = await getTargetSheetInfo(token, reportSheetId);
   
@@ -706,7 +719,7 @@ async function appendToSheet(token, logData) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
-  });
+  }, { beforeSend: beforeAppend });
 
   // --- AUTOMATED HYPERLINKING FOR COLUMN H ---
   const updatedRange = appendData?.updates?.updatedRange;
@@ -1214,7 +1227,7 @@ function filterLegacyRows(rows) {
   });
 }
 
-async function projectReport(report, {reconcileOnly=false}={}) {
+async function projectReport(report, {reconcileOnly=false,beforeAppend}={}) {
   const {reportSheetId}=await getOptions();
   const {sheetName}=await getTargetSheetInfo(token,reportSheetId);
   const range=`'${sheetName.replaceAll("'","''")}'!W:W`;
@@ -1225,12 +1238,13 @@ async function projectReport(report, {reconcileOnly=false}={}) {
   const existing=rows.findIndex((row,index)=>index>0 && row[0]===report.reportId);
   if(existing>=0) { await setColumnHLinks(token,existing,report.attributes.urls.join('\n')); return {row:existing+1}; }
   if(reconcileOnly) throw new Error('The previous append is uncertain. Reconcile Google writes before retrying.');
+  if(typeof beforeAppend!=='function') throw new Error('A durable projection append claim is required.');
   if(!rows[0]?.[0]) await safeFetchJson(url.replace(encodeURIComponent(range),encodeURIComponent(`'${sheetName.replaceAll("'","''")}'!W1`))+'?valueInputOption=RAW',{
     method:'PUT',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({values:[['Rights Reporter ID']]})});
   const a=report.attributes;
   const values=[new Date(report.createdAt).toLocaleDateString('en-US',{timeZone:'America/Chicago'}),a.vertical,a.source_event_name,a.platform,a.content_type,'N/A',report.reporterName,a.urls.join('\n'),'Evidence report prepared','Open',`${report.reportId} ${a.pdf_url}`,report.email,report.email,'','','','','','',a.scout_points,a.enforcer_points,'',report.reportId];
   // W contains identity; V remains available for the legacy resolution date.
-  return appendToSheet(token,{values});
+  return appendToSheet(token,{values},{beforeAppend});
 }
-return { projectReport, getEventData, checkIfAuthorized, updateEventUrl, addNewEventToSheet, ensureRogueScreenshotFolder, ensureYearlyReportFolder, ensureDailyScreenshotFolder, uploadToDrive, fetchConfig, patchConfigSelector, updateConfigSections, getColumnHDataWithFormatting, getRecommendedStartRow, updateRowStatus, addEnforcerBonusPoints, updateCellWithRichText, submitSuggestionToSheet, findOrCreateFolder, appendToSheet, fetchLeaderboardData, fetchIntelligenceData };
+return { resolveYoutubeTargetAccount: youtubeAccounts.resolveTargetAccount, resolveYoutubeAccount: youtubeAccounts.resolveAccount, projectReport, getEventData, checkIfAuthorized, updateEventUrl, addNewEventToSheet, ensureRogueScreenshotFolder, ensureYearlyReportFolder, ensureDailyScreenshotFolder, uploadToDrive, fetchConfig, patchConfigSelector, updateConfigSections, getColumnHDataWithFormatting, getRecommendedStartRow, updateRowStatus, addEnforcerBonusPoints, updateCellWithRichText, submitSuggestionToSheet, findOrCreateFolder, appendToSheet, fetchLeaderboardData, fetchIntelligenceData };
 }

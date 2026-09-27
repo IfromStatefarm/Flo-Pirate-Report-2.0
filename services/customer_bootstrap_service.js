@@ -16,6 +16,7 @@ const LEGACY_LOCAL_KEYS = Object.freeze(['tiered_access_profile']);
 const LEGACY_SESSION_KEYS = Object.freeze(['tiered_access_session']);
 const CUSTOMER_SCOPED_LOCAL_KEYS = Object.freeze([
   'piracy_cart',
+  'rumble_report_session',
   'rogue_target_data',
   'reporterInfo',
   'gamification_stats_cache', 'last_reporter', 'streak_count', 'last_report_date',

@@ -46,9 +46,17 @@ test('architecture controls against isolated Postgres',{skip:!process.env.TEST_D
     await assert.rejects(repo.recordEvent(actor,{...event,event_id:duplicate.eventId,attributes:{...event.attributes,report_id:duplicate.reportId,urls:[duplicate.items[0].url],pdf_url:url}},Date.now()),{code:'duplicate_report_target'});
     assert.equal((await pool.query('SELECT event_id FROM customer_events WHERE customer_id=$1 AND event_id=$2',[f.id,duplicate.eventId])).rows.length,0);
   });
+  await t.test('projection preflight failures leave accepted work pending and retryable',async()=>{
+    await assert.rejects(repo.projectReport(actor,report.reportId,async(_value,options)=>{
+      assert.equal(options.reconcileOnly,false);
+      throw Error('Google metadata unavailable');
+    }),/Google metadata unavailable/);
+    const job=(await pool.query('SELECT status,attempts FROM report_projection_jobs WHERE customer_id=$1 AND report_id=$2',[f.id,report.reportId])).rows[0];
+    assert.equal(job.status,'pending');assert.equal(job.attempts,1);
+  });
   await t.test('uncertain projection reconciles without granting permission to append twice',async()=>{
     let attempts=0;
-    await assert.rejects(repo.projectReport(actor,report.reportId,async(value,options)=>{attempts++;assert.equal(options.reconcileOnly,false);assert.equal(value.attributes.url_count,1);throw Error('Response lost after append');}),/Response lost/);
+    await assert.rejects(repo.projectReport(actor,report.reportId,async(value,options)=>{attempts++;assert.equal(options.reconcileOnly,false);assert.equal(value.attributes.url_count,1);await options.beforeAppend();throw Error('Response lost after append');}),/Response lost/);
     await repo.projectReport(actor,report.reportId,async(value,options)=>{attempts++;assert.equal(options.reconcileOnly,true);assert.equal(value.reportId,report.reportId);});
     await repo.projectReport(actor,report.reportId,async()=>{throw Error('Must not project a completed job');});
     assert.equal(attempts,2);
@@ -82,6 +90,22 @@ test('architecture controls against isolated Postgres',{skip:!process.env.TEST_D
     assert.equal((await pool.query('SELECT streak_count FROM customer_reward_state WHERE customer_id=$1',[bf.id])).rows[0].streak_count,2);
     const accepted=await repo.finalizeReportBatch(ba,batch,now);
     assert.equal(accepted.streak.streakCount,3);assert.equal(accepted.reports[0].scoutPoints,520);assert.equal(accepted.reports[0].enforcerPoints,1298);assert.equal(accepted.reports[1].enforcerPoints,674);
+    // Both attempts may finish their reads while pending; only one may append.
+    let entered=0,appends=0,release;
+    const ready=new Promise(resolve=>{release=resolve;});
+    const work=async(_value,options)=>{
+      if(++entered===2) release();
+      await ready;
+      assert.equal(options.reconcileOnly,false);
+      await options.beforeAppend();
+      appends++;
+      throw Error('Append response lost');
+    };
+    const attempts=await Promise.allSettled([repo.projectReport(ba,submissions[0].reportId,work),repo.projectReport(ba,submissions[0].reportId,work)]);
+    assert.equal(appends,1);
+    assert.equal(attempts.filter(result=>result.status==='rejected' && result.reason.code==='projection_uncertain').length,1);
+    assert.equal(attempts.filter(result=>result.status==='rejected' && result.reason.message==='Append response lost').length,1);
+    await repo.projectReport(ba,submissions[0].reportId,async(_value,options)=>{assert.equal(options.reconcileOnly,true);});
     assert.deepEqual(await repo.finalizeReportBatch(ba,batch,now+86400000),accepted);
     assert.equal((await pool.query('SELECT event_id FROM customer_events WHERE customer_id=$1',[bf.id])).rows.length,2);
     await assert.rejects(repo.finalizeReportBatch(ba,{...batch,batchId:'new-batch-id'},now),{code:'report_already_accepted'});

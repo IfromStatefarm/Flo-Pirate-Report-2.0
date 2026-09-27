@@ -196,31 +196,6 @@ function refreshGamificationStats() {
   });
 }
 
-function isApprovedEnforcerPlatformUrl(url, accessConfig = getEnforcerAccessConfig()) {
-  const normalizedUrl = String(url || '').toLowerCase();
-  if (!normalizedUrl) return false;
-
-  const youtubeHandles = (accessConfig.youtube?.authorizedHandles || []).map((handle) => String(handle).toLowerCase());
-  const youtubeChannelIds = (accessConfig.youtube?.authorizedChannelIds || []).map((channelId) => String(channelId).toLowerCase());
-  const youtubeStudioIds = (accessConfig.youtube?.authorizedStudioManagerIds || []).map((managerId) => String(managerId).toLowerCase());
-  const tiktokHandles = (accessConfig.tiktok?.authorizedHandles || []).map((handle) => String(handle).toLowerCase());
-
-  const hasApprovedYouTubeHandle = youtubeHandles.some((handle) => normalizedUrl.includes(handle));
-  const hasApprovedChannelId = youtubeChannelIds.some((channelId) => normalizedUrl.includes(channelId));
-  const hasApprovedStudioId = youtubeStudioIds.some((managerId) => normalizedUrl.includes(managerId));
-  const hasApprovedTikTokHandle = tiktokHandles.some((handle) => normalizedUrl.includes(handle));
-
-  const isApprovedYouTube =
-    (normalizedUrl.includes('youtube.com') || normalizedUrl.includes('youtu.be') || normalizedUrl.includes('studio.youtube.com')) &&
-    (hasApprovedYouTubeHandle || hasApprovedChannelId || hasApprovedStudioId);
-
-  const isApprovedTikTok =
-    normalizedUrl.includes('tiktok.com') &&
-    hasApprovedTikTokHandle;
-
-  return isApprovedYouTube || isApprovedTikTok;
-}
-
 function isEnforcerPlatformTabUrl(url) {
   const normalizedUrl = String(url || '').toLowerCase();
   return normalizedUrl.includes('youtube.com') ||
@@ -366,7 +341,8 @@ async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAc
 }
 
 async function canUseEnforcerMode() {
-  if (hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_REPORT)) return true;
+  // Reporting permission is required, but does not authorize a platform account.
+  if (!hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_REPORT)) return false;
 
   const accessConfig = getEnforcerAccessConfig();
   const tabs = await chrome.tabs.query({});
@@ -383,7 +359,6 @@ async function canUseEnforcerMode() {
     });
 
   for (const tab of candidateTabs) {
-    if (isApprovedEnforcerPlatformUrl(tab.url, accessConfig)) return true;
     if (tab.id && await tabHasApprovedEnforcerSession(tab.id, accessConfig)) return true;
   }
 
