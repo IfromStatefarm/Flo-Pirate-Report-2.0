@@ -5,8 +5,8 @@ import { ApiError, assert } from './api_error.js';
 import { withCustomerTransaction } from './tenant_transaction.js';
 import { validateCustomerConfig } from '../utils/customer_config.js';
 import { domainAllowed, identityRows, resolveInside, utilization, reauthorizeActor } from './customer_authorization.js';
-import { EVENT_PERMISSIONS } from './access_policy.js';
-import { validateGoogleCommand } from './integrations/google_command_policy.js';
+import { EVENT_PERMISSIONS, requireReportMode } from './access_policy.js';
+import { createIntegrationJournal } from './integration_journal.js';
 import { createTeamManagement } from './team_management.js';
 import { authorizeEventPlatforms, requireUrlPlatforms, requirePlatforms, statisticsPlatforms } from './platform_policy.js';
 
@@ -157,6 +157,7 @@ function intelligence(events, query) {
 }
 
 async function acceptPreparedReport(client,actor,event,rewardContext) {
+  requireReportMode(actor, event.attributes.mode);
   const stored=(await client.query('SELECT user_id,report_data,pdf FROM generated_reports WHERE customer_id=$1 AND report_id=$2 FOR UPDATE',[actor.customerId,event.attributes.report_id])).rows[0];
   assert(stored?.user_id===actor.memberId && stored.report_data?.eventId===event.event_id,409,'report_required','Generate this report before recording it.');
   const report=stored.report_data;
@@ -176,6 +177,14 @@ async function advanceRewardState(client,actor,acceptedAt) {
   await client.query(`INSERT INTO customer_reward_state(customer_id,user_id,last_report_date,streak_count,freezes) VALUES($1,$2,$3,$4,$5)
     ON CONFLICT(customer_id,user_id) DO UPDATE SET last_report_date=EXCLUDED.last_report_date,streak_count=EXCLUDED.streak_count,freezes=EXCLUDED.freezes,updated_at=now()`,[actor.customerId,actor.memberId,state.lastReportDate,state.streakCount,state.freezes]);
   return state;
+}
+
+async function recordUploadedFileInside(client, actor, eventId, mimeType, file, contentHash) {
+  assert(file?.id && typeof file.webViewLink === 'string', 502, 'upload_failed', 'Google did not return an evidence file.');
+  const url = new URL(file.webViewLink);
+  assert(url.protocol === 'https:' && ['drive.google.com', 'docs.google.com'].includes(url.hostname), 502, 'upload_failed', 'Invalid Google file URL.');
+  return client.query('INSERT INTO integration_uploaded_files(customer_id,file_id,user_id,event_id,mime_type,web_url,content_sha256) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',
+    [actor.customerId, file.id, actor.memberId, eventId, mimeType, file.webViewLink, contentHash]);
 }
 
 export function createPostgresRepository({ pool } = {}) {
@@ -219,38 +228,7 @@ export function createPostgresRepository({ pool } = {}) {
         assert(issued.rows.length === 1, 403, 'scope_mismatch', 'The Google resource is unavailable in this customer scope.');
       });
     },
-    async runIntegrationOperation(actor, command, work) {
-      const hash = crypto.createHash('sha256').update(JSON.stringify([command.name,command.args])).digest('hex');
-      const prior = await transact(async client => {
-        const current = await reauthorizeActor(client, actor);
-        validateGoogleCommand(current, command);
-        const stored = (await client.query('SELECT * FROM integration_operations WHERE customer_id=$1 AND operation_id=$2 FOR UPDATE', [actor.customerId,command.requestId])).rows[0];
-        if (stored) {
-          assert(stored.user_id === actor.memberId && stored.request_hash === hash,409,'operation_conflict','This operation ID has already been used.');
-          assert(stored.status === 'completed',409,'operation_uncertain','This operation needs reconciliation before retrying.');
-          return { found:true,result:stored.result };
-        }
-        const count = (await client.query("SELECT count(*)::int AS used FROM integration_operations WHERE customer_id=$1 AND created_at>now()-interval '1 hour'",[actor.customerId])).rows[0].used;
-        assert(count<5000,429,'rate_limited','Customer operation budget exceeded. Try again later.');
-        await client.query("INSERT INTO integration_operations(customer_id,operation_id,user_id,name,request_hash,status) VALUES($1,$2,$3,$4,$5,'started')",[actor.customerId,command.requestId,actor.memberId,command.name,hash]);
-        return {found:false,actor:current};
-      }, {isolation:'SERIALIZABLE'});
-      if (prior.found) return prior.result;
-      try {
-        const result = await work(prior.actor);
-        await transact(async client => {
-          await reauthorizeActor(client, actor);
-          await client.query("UPDATE integration_operations SET status='completed',result=$3,completed_at=now() WHERE customer_id=$1 AND operation_id=$2",[actor.customerId,command.requestId,JSON.stringify(result)]);
-        });
-        return result;
-      } catch(error) {
-        await transact(async client => {
-          await reauthorizeActor(client, actor);
-          await client.query("UPDATE integration_operations SET status='uncertain' WHERE customer_id=$1 AND operation_id=$2",[actor.customerId,command.requestId]);
-        }).catch(()=>{});
-        throw error;
-      }
-    },
+    ...createIntegrationJournal({ transact, recordUpload: recordUploadedFileInside }),
     async recordScannerResolutions(actor,rowKey,urls) {
       return transact(async client=>{
         actor = await reauthorizeActor(client, actor, 'sidepanel.automate');
@@ -294,6 +272,7 @@ export function createPostgresRepository({ pool } = {}) {
       const requestHash=crypto.createHash('sha256').update(JSON.stringify(batch)).digest('hex');
       return transact(async client=>{
         const current = await reauthorizeActor(client, actor, 'sidepanel.report');
+        for (const report of batch.reports) requireReportMode(current, report.mode);
         const prior=(await client.query('SELECT * FROM report_batches WHERE customer_id=$1 AND batch_id=$2 FOR UPDATE',[actor.customerId,batch.batchId])).rows[0];
         if(prior) {
           assert(prior.user_id===actor.memberId && prior.request_hash===requestHash,409,'batch_conflict','This batch ID was already used.');
@@ -362,12 +341,9 @@ export function createPostgresRepository({ pool } = {}) {
       });
     },
     async recordUploadedFile(actor,eventId,mimeType,file,contentHash) {
-      assert(file?.id && typeof file.webViewLink==='string',502,'upload_failed','Google did not return an evidence file.');
-      const url=new URL(file.webViewLink);
-      assert(url.protocol==='https:' && ['drive.google.com','docs.google.com'].includes(url.hostname),502,'upload_failed','Invalid Google file URL.');
-      return transact(async client=> {
+      return transact(async client => {
         actor = await reauthorizeActor(client, actor, 'sidepanel.report');
-        return client.query('INSERT INTO integration_uploaded_files(customer_id,file_id,user_id,event_id,mime_type,web_url,content_sha256) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',[actor.customerId,file.id,actor.memberId,eventId,mimeType,file.webViewLink,contentHash]);
+        return recordUploadedFileInside(client, actor, eventId, mimeType, file, contentHash);
       });
     },
     async generateReport(actor, report, render, policy) {
@@ -483,6 +459,7 @@ export function createPostgresRepository({ pool } = {}) {
         assert(EVENT_PERMISSIONS[event.event_type], 400, 'invalid_event', 'Unsupported event type.');
         assert(event.customer_id===actor.customerId && event.user_id===actor.memberId,403,'scope_mismatch','Event scope does not match the verified actor.');
         authorizeEventPlatforms(refreshed, event);
+        if (event.event_type === 'report.submitted') requireReportMode(refreshed, event.attributes.mode);
         const existing = await client.query('SELECT payload_hash FROM customer_events WHERE customer_id = $1 AND event_id = $2 FOR UPDATE', [actor.customerId, event.event_id]);
         if (existing.rows.length) assert(existing.rows[0].payload_hash === payloadHash, 409, 'event_conflict', 'The event ID was already used with different contents.');
         else {

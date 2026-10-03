@@ -1,16 +1,26 @@
 import { requireUrlPlatforms } from '../platform_policy.js';
+import { assert } from '../api_error.js';
 import { aggregateIntelligenceData } from '../../utils/intel_aggregator.js';
 import { createYoutubeAccountResolver, protectedYoutubeChannelId } from './youtube_accounts.js';
+import { createTiktokTargetResolver } from './tiktok_targets.js';
 // Provider implementation moved from the extension. Never expose arbitrary URLs/methods.
-export function createGoogleAdapter({ token, integrations, defaults, actor, resourceGuard, fetchImpl = globalThis.fetch }) {
+export function createGoogleAdapter({ token, integrations, defaults, actor, resourceGuard, writeJournal, fetchImpl = globalThis.fetch }) {
 const youtubeAccounts = createYoutubeAccountResolver({ token, fetchImpl });
+const resolveTiktokVideoUrl = createTiktokTargetResolver({ fetchImpl });
 const getAuthToken = async () => token;
 const escapeDrive = value => String(value).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
 const fetch = async (url, options = {}, beforeSend) => {
   if (!resourceGuard) throw new Error('A server Google resource guard is required.');
   await resourceGuard.authorizeRequest(url, options);
   await beforeSend?.();
-  return fetchImpl(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(20000) });
+  const request = { ...options, redirect: 'error' };
+  const write = !['GET', 'HEAD'].includes(String(options.method || 'GET').toUpperCase());
+  const rejected = write ? await writeJournal?.beforeWrite() : null;
+  const response = await fetchImpl(url, {...request, signal: AbortSignal.timeout(20000)});
+  // Explicit rejections establish that this request did not write. Timeouts,
+  // 5xx, 408/409 and malformed successful responses remain ambiguous.
+  if (write && [400, 401, 403, 404, 405, 412, 413, 415, 422, 429].includes(response.status)) await rejected?.();
+  return response;
 };
 
 const WHITELIST_TAB = 'Handles White List';
@@ -398,16 +408,14 @@ async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tik
   const token = await getAuthToken();
   const { eventSheetId } = await getOptions(integrations);
   
-  // 1. Find the true last row by fetching Column A
-  const getRange = `'${String(vertical).replaceAll("'", "''")}'!A:A`;
-  const getData = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(getRange)}`, {
+  // Resolve only the tab identity. Google must allocate the row at write time;
+  // reading a last-row index here races with other requests and server instances.
+  const metadata = await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}?fields=sheets.properties`, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  
-  // Calculate the next empty row (1-indexed for Sheets)
-  const nextRow = (getData.values ? getData.values.length : 0) + 1;
+  const sheetId = metadata.sheets?.find(sheet => sheet.properties?.title === vertical)?.properties?.sheetId;
+  assert(Number.isSafeInteger(sheetId) && sheetId >= 0, 409, 'resource_unavailable', 'The configured event tab is missing. Review the workbook mapping.');
 
-  // 2. Prepare the row data
   const row = new Array(9).fill("");
   row[0] = eventName;
 
@@ -419,12 +427,17 @@ async function addNewEventToSheet(vertical, eventName, eventUrl, platform = 'tik
   const targetIndex = colMap[platform?.toLowerCase()] || 1;
   row[targetIndex] = eventUrl;
   
-  const body = { values: [row] };
-
-  // 3. Force a precise PUT request to bypass table detection
-  const putRange = `'${String(vertical).replaceAll("'", "''")}'!A${nextRow}:I${nextRow}`;
-  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}/values/${encodeURIComponent(putRange)}?valueInputOption=RAW`, {
-    method: 'PUT',
+  // appendCells avoids values.append's table detection and atomically appends
+  // after the tab's last data row. Explicit strings preserve RAW input semantics.
+  // The operation journal fences retries before dispatch: completed IDs replay,
+  // and ambiguous writes stay uncertain instead of sending another append.
+  const body = { requests: [{ appendCells: {
+    sheetId,
+    rows: [{ values: row.map(stringValue => ({ userEnteredValue: { stringValue } })) }],
+    fields: 'userEnteredValue'
+  } }] };
+  await safeFetchJson(`https://sheets.googleapis.com/v4/spreadsheets/${eventSheetId}:batchUpdate`, {
+    method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
@@ -488,6 +501,7 @@ async function uploadToDrive(token, folderId, name, blob, mimeType, dataScope = 
       user_id: String(dataScope.userId),
       event_id: String(dataScope.eventId)
     };
+    if (dataScope.operationKey) metadata.appProperties.operation_key = dataScope.operationKey;
   }
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -507,6 +521,39 @@ async function uploadToDrive(token, folderId, name, blob, mimeType, dataScope = 
 // ==========================================
 // 4. CONFIG & REPORT LOGGING
 // ==========================================
+
+async function reconcileUpload(folderId, name, mimeType, scope, contentHash, size, {legacy = false} = {}) {
+  const properties = {customer_id: scope.customerId, user_id: scope.userId, event_id: scope.eventId};
+  if (!legacy) properties.operation_key = scope.operationKey;
+  const query = [`'${escapeDrive(folderId)}' in parents`, 'trashed=false',
+    ...Object.entries(properties).map(([key, value]) => `appProperties has { key='${key}' and value='${escapeDrive(value)}' }`)].join(' and ');
+  const fields = 'id,name,mimeType,parents,trashed,appProperties,sha256Checksum,size,webViewLink';
+  const matches = [];
+  let pageToken;
+  const seen = new Set();
+  const matchesReceipt = file => file.name === name && file.mimeType === mimeType && file.trashed === false &&
+    file.parents?.length === 1 && file.parents[0] === folderId && file.sha256Checksum === contentHash && String(file.size) === String(size) &&
+    Object.entries(properties).every(([key, value]) => file.appProperties?.[key] === value) &&
+    (!legacy || !file.appProperties?.operation_key);
+  do {
+    const params = new URLSearchParams({q: query, fields: `nextPageToken,incompleteSearch,files(${fields})`, pageSize: '100', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true'});
+    if (pageToken) params.set('pageToken', pageToken);
+    const page = await safeFetchJson(`https://www.googleapis.com/drive/v3/files?${params}`, {headers: {Authorization: `Bearer ${token}`}});
+    assert(!page.incompleteSearch && Array.isArray(page.files), 409, 'operation_uncertain', 'Google could not verify the upload receipt.');
+    matches.push(...page.files.filter(matchesReceipt));
+    pageToken = page.nextPageToken;
+    assert(!pageToken || (!seen.has(pageToken) && seen.size < 100), 409, 'operation_uncertain', 'Google could not verify the complete upload search.');
+    seen.add(pageToken);
+  } while (pageToken);
+  assert(matches.length === 1, 409, 'operation_uncertain', 'The upload is still uncertain. Exactly one matching Google file is required for reconciliation.');
+  const file = matches[0];
+  await resourceGuard.assertFile(file.id, mimeType);
+  // Re-read after the ancestry check; never trust a stale search result alone.
+  const verified = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${file.id}?fields=${fields}&supportsAllDrives=true`, {headers: {Authorization: `Bearer ${token}`}});
+  assert(verified.id === file.id && matchesReceipt(verified), 409, 'operation_uncertain', 'The matching upload changed during reconciliation.');
+  const folder = await safeFetchJson(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=webViewLink`, {headers: {Authorization: `Bearer ${token}`}});
+  return {id: verified.id, webViewLink: verified.webViewLink, folderWebViewLink: folder.webViewLink};
+}
 
 async function fetchConfig({ interactive = true } = {}) {
   const { driveRootId } = await getOptions();
@@ -1246,5 +1293,5 @@ async function projectReport(report, {reconcileOnly=false,beforeAppend}={}) {
   // W contains identity; V remains available for the legacy resolution date.
   return appendToSheet(token,{values},{beforeAppend});
 }
-return { resolveYoutubeTargetAccount: youtubeAccounts.resolveTargetAccount, resolveYoutubeAccount: youtubeAccounts.resolveAccount, projectReport, getEventData, checkIfAuthorized, updateEventUrl, addNewEventToSheet, ensureRogueScreenshotFolder, ensureYearlyReportFolder, ensureDailyScreenshotFolder, uploadToDrive, fetchConfig, patchConfigSelector, updateConfigSections, getColumnHDataWithFormatting, getRecommendedStartRow, updateRowStatus, addEnforcerBonusPoints, updateCellWithRichText, submitSuggestionToSheet, findOrCreateFolder, appendToSheet, fetchLeaderboardData, fetchIntelligenceData };
+return { reconcileUpload, resolveTiktokVideoUrl, resolveYoutubeTargetAccount: youtubeAccounts.resolveTargetAccount, resolveYoutubeAccount: youtubeAccounts.resolveAccount, projectReport, getEventData, checkIfAuthorized, updateEventUrl, addNewEventToSheet, ensureRogueScreenshotFolder, ensureYearlyReportFolder, ensureDailyScreenshotFolder, uploadToDrive, fetchConfig, patchConfigSelector, updateConfigSections, getColumnHDataWithFormatting, getRecommendedStartRow, updateRowStatus, addEnforcerBonusPoints, updateCellWithRichText, submitSuggestionToSheet, findOrCreateFolder, appendToSheet, fetchLeaderboardData, fetchIntelligenceData };
 }

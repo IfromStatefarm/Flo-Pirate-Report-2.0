@@ -91,11 +91,31 @@ const CUSTOMER_DIRECTORY_QUERY = `
   LEFT JOIN customer_memberships m ON m.customer_id = c.customer_id
 `;
 
-export async function listCustomers(pool) {
-  const result = await pool.query(`${CUSTOMER_DIRECTORY_QUERY}
+export async function listCustomers(pool, search = '') {
+  const term = String(search).trim();
+  const where = term ? `
+    WHERE strpos(lower(c.customer_id), lower($1)) > 0
+       OR strpos(lower(coalesce(c.config->'product'->>'displayName', '')), lower($1)) > 0
+       OR strpos(lower(coalesce(c.config->'product'->>'productName', '')), lower($1)) > 0
+       OR EXISTS (
+         SELECT 1 FROM billing_order_links b
+         WHERE b.customer_id = c.customer_id AND strpos(lower(b.account_id), lower($1)) > 0
+       )
+       OR EXISTS (
+         SELECT 1 FROM jsonb_array_elements_text(
+           CASE WHEN jsonb_typeof(c.config #> '{access,allowedEmailDomains}') = 'array'
+             THEN c.config #> '{access,allowedEmailDomains}' ELSE '[]'::jsonb END
+         ) AS domain(value)
+         WHERE strpos(lower('@' || domain.value), lower($1)) > 0
+       )
+       OR EXISTS (
+         SELECT 1 FROM customer_memberships member
+         WHERE member.customer_id = c.customer_id AND strpos(lower(member.email), lower($1)) > 0
+       )` : '';
+  const result = await pool.query(`${CUSTOMER_DIRECTORY_QUERY}${where}
     GROUP BY c.customer_id
     ORDER BY lower(coalesce(c.config->'product'->>'displayName', c.customer_id)), c.customer_id
-  `);
+  `, term ? [term] : []);
   return Object.freeze(result.rows.map(configurationSummary));
 }
 

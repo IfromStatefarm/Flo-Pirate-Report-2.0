@@ -23,6 +23,7 @@ export const ACCESS_ROLE_SHEET_VALUES = Object.freeze({
 
 export const PERMISSIONS = Object.freeze({
   SIDEPANEL_REPORT: 'sidepanel.report',
+  SIDEPANEL_ENFORCE: 'sidepanel.enforce',
   SIDEPANEL_SCOREBOARD: 'sidepanel.scoreboard',
   SIDEPANEL_AUTOMATE: 'sidepanel.automate',
   SIDEPANEL_INTEL: 'sidepanel.intel',
@@ -47,6 +48,7 @@ const EMPLOYEE_PERMISSIONS = Object.freeze([
 
 const MANAGER_PERMISSIONS = Object.freeze([
   ...EMPLOYEE_PERMISSIONS,
+  PERMISSIONS.SIDEPANEL_ENFORCE,
   PERMISSIONS.SIDEPANEL_AUTOMATE,
   PERMISSIONS.SIDEPANEL_INTEL,
   PERMISSIONS.SETTINGS_OPEN_LOCKER,
@@ -70,7 +72,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
 
 // Feature entitlements narrow role grants; they never grant a role new powers.
 export const FEATURE_PERMISSIONS = Object.freeze(Object.fromEntries(Object.entries({
-  report: ['sidepanel.report', 'settings.coreConnectivity'],
+  report: ['sidepanel.report', 'sidepanel.enforce', 'settings.coreConnectivity'],
   scoreboard: ['sidepanel.scoreboard'],
   automate: ['sidepanel.automate', 'settings.openLocker'],
   intel: ['sidepanel.intel', 'settings.intelligenceTools'],

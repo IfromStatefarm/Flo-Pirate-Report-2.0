@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   CUSTOMER_ACCESS_PROFILE_CACHE_KEY,
+  CUSTOMER_OPERATION_SESSION_KEY,
   PERMISSIONS,
   hasPermission,
   validateCustomerAccessProfile
@@ -174,6 +175,7 @@ test('bootstrap sends the Google token, stores only the validated profile, and m
     extension: { id: 'extension-id', version: '3.3.1' }
   });
   assert.equal(harness.localStorageArea.state[CUSTOMER_ACCESS_PROFILE_CACHE_KEY].customerId, 'acme-sports');
+  assert.equal(typeof harness.localStorageArea.state[CUSTOMER_OPERATION_SESSION_KEY], 'string');
   assert.equal(harness.sessionStorageArea.state.tiered_access_session, undefined);
   assert.equal(harness.syncStorageArea.state.piracy_folder_id, 'driveRoot_12345');
 });
@@ -181,9 +183,11 @@ test('bootstrap sends the Google token, stores only the validated profile, and m
 test('an unexpired last-known-good profile serves without another API request', async () => {
   const harness = createHarness();
   await harness.service.bootstrap();
+  const session = harness.localStorageArea.state[CUSTOMER_OPERATION_SESSION_KEY];
   const cached = await harness.service.getCurrentProfile();
   assert.equal(cached.status, 'ready');
   assert.equal(harness.requests.length, 1);
+  assert.equal(harness.localStorageArea.state[CUSTOMER_OPERATION_SESSION_KEY], session);
 });
 
 test('browser storage cannot supply tenant authority after a service restart or failed bootstrap', async () => {
@@ -206,12 +210,14 @@ test('clears customer-scoped local activity when the verified customer or user c
   });
 
   await harness.service.bootstrap();
+  const firstSession = harness.localStorageArea.state[CUSTOMER_OPERATION_SESSION_KEY];
   await harness.localStorageArea.set({ piracy_cart: [{ url: 'https://example.com/private' }] });
   customerId = 'other-customer';
   await harness.service.bootstrap();
 
   assert.equal(harness.localStorageArea.state.piracy_cart, undefined);
   assert.equal(harness.localStorageArea.state[CUSTOMER_ACCESS_PROFILE_CACHE_KEY].customerId, 'other-customer');
+  assert.notEqual(harness.localStorageArea.state[CUSTOMER_OPERATION_SESSION_KEY], firstSession);
 });
 
 test('expired last-known-good profile remains displayable but cannot authorize protected work', async () => {
@@ -365,6 +371,19 @@ test('logout cannot be undone by a late successful or failed bootstrap',async()=
     assert.equal((await pending).status,'logged_out');
     assert.equal(h.localStorageArea.state[CUSTOMER_ACCESS_PROFILE_CACHE_KEY],undefined);
   }
+});
+
+test('logout and access cache invalidation revoke the Google operation session', async () => {
+  const h = createHarness();
+  await h.service.bootstrap();
+  const first = h.localStorageArea.state[CUSTOMER_OPERATION_SESSION_KEY];
+  await h.service.clearProfileCache();
+  const second = h.localStorageArea.state[CUSTOMER_OPERATION_SESSION_KEY];
+  assert.notEqual(second, first);
+  await h.service.bootstrap();
+  await h.service.logout();
+  assert.notEqual(h.localStorageArea.state[CUSTOMER_OPERATION_SESSION_KEY], second);
+  assert.equal(h.localStorageArea.state[CUSTOMER_ACCESS_PROFILE_CACHE_KEY], undefined);
 });
 
 for (const transition of ['logout', 'customer', 'user']) {

@@ -2,13 +2,26 @@ import { observedViews, reportReward } from './reward_policy.js';
 import crypto from 'node:crypto';
 import { assert } from './api_error.js';
 import { requireUrlPlatforms } from './platform_policy.js';
+import { isTiktokUrl, tiktokVideoId, requireTiktokVideoId } from './integrations/tiktok_targets.js';
 
 // YouTube ownership is resolved server-side. Other platforms and view counts
 // remain operator observations; this does not prove copyright ownership.
 export async function verifyReportPolicy(actor, report, adapter) {
   const platforms = requireUrlPlatforms(actor, report.items.map(item => item.url));
   assert(platforms.length === 1, 400, 'invalid_report', 'A report must contain one platform.');
-  assert(new Set(reportTargetKeys(report).map(item => item.targetKey)).size === report.items.length, 400, 'invalid_report', 'Duplicate evidence URLs are not allowed.');
+  const tiktokTargets = [];
+  if (platforms[0] === 'tiktok') {
+    for (const item of report.items) {
+      let resolvedUrl = item.url;
+      if (!tiktokVideoId(item.url)) {
+        assert(typeof adapter.resolveTiktokVideoUrl === 'function', 400, 'target_identity_unverified', 'TikTok share resolution is unavailable.');
+        resolvedUrl = await adapter.resolveTiktokVideoUrl(item.url);
+      }
+      requireTiktokVideoId(resolvedUrl);
+      tiktokTargets.push({ sourceUrl: item.url, resolvedUrl });
+    }
+  }
+  assert(new Set(reportTargetKeys(report, { tiktokTargets }).map(item => item.targetKey)).size === report.items.length, 400, 'invalid_report', 'Duplicate evidence URLs are not allowed.');
   const config = await adapter.fetchConfig();
   const vertical = config.verticals?.find(item => item.name?.toLowerCase() === report.vertical.toLowerCase());
   assert(vertical, 403, 'rights_policy_denied', 'This vertical is not in the customer catalog.');
@@ -32,8 +45,8 @@ export async function verifyReportPolicy(actor, report, adapter) {
     assert(targetAccountIds.every(id => id === declaredId), 403, 'target_account_mismatch', 'The supplied account does not own every target URL.');
   } else {
     const handles = new Set([report.handle]);
-    for (const item of report.items) {
-      const match = new URL(item.url).pathname.match(/^\/@([^/]+)/);
+    for (const url of [...report.items.map(item => item.url), ...tiktokTargets.map(item => item.resolvedUrl)]) {
+      const match = new URL(url).pathname.match(/^\/@([^/]+)/);
       if (match) handles.add(decodeURIComponent(match[1]));
     }
     for (const handle of handles) assert(!(await adapter.checkIfAuthorized(platforms[0], handle)), 403, 'authorized_target', 'This account is on the customer authorized-handle list.');
@@ -42,6 +55,7 @@ export async function verifyReportPolicy(actor, report, adapter) {
   const expires = Date.parse(xpEvent?.double_xp_expires_at);
   const multiplier = xpEvent?.double_xp === true && Number.isFinite(expires) && expires > Date.now() ? 2 : 1;
   return { version: 1, platform: platforms[0], multiplier, checkedAt: Date.now(), eventName: event.name,
+    ...(tiktokTargets.length ? { tiktokTargets } : {}),
     ...(targetAccountIds.length ? { targetAccountIds } : {}) };
 }
 
@@ -63,15 +77,20 @@ export function authoritativeReportAttributes(report, policy, claimed, rewardCon
   };
 }
 
-export function reportTargetKeys(report) {
+export function reportTargetKeys(report, policy = report.policy) {
   const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
   const workKey=digest(JSON.stringify([report.vertical.trim().toLowerCase(),report.eventName.trim().toLowerCase()]));
-  return report.items.map(item=>{
+  return report.items.map((item,index)=>{
     const url=new URL(item.url);url.hostname=url.hostname.toLowerCase().replace(/^www\./,'').replace(/\.$/,'');url.hash='';
-    // TikTok video identity is in the path; share/tracking parameters do not
-    // identify another video. Preserve query strings for other URL shapes.
-    if ((url.hostname === 'tiktok.com' || url.hostname.endsWith('.tiktok.com')) && /^\/@[^/]+\/video\/\d+\/?$/.test(url.pathname)) {
-      url.search = '';
+    if (isTiktokUrl(url)) {
+      let id = tiktokVideoId(item.url);
+      if (!id) {
+        // Only the server policy snapshot can supply a resolved share identity.
+        const target = policy?.tiktokTargets?.[index];
+        assert(target?.sourceUrl === item.url, 400, 'target_identity_unverified', 'Resolve the TikTok share link before recording it.');
+        id = requireTiktokVideoId(target.resolvedUrl);
+      }
+      return {workKey,targetKey:digest(`tiktok:${id}`)};
     }
     const youtubeId=url.hostname==='youtu.be'?url.pathname.slice(1):(url.hostname==='youtube.com'||url.hostname.endsWith('.youtube.com'))?(url.searchParams.get('v')||url.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)/)?.[1]):'';
     const key=youtubeId?`youtube:${youtubeId}`:`${url.origin}${url.pathname.replace(/\/$/,'')}${url.search}`;

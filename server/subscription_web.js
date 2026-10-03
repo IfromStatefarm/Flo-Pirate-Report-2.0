@@ -45,7 +45,7 @@ export function renderSubscription(csrf, customer, details) {
   const path = `/customers/${encodeURIComponent(customer.customerId)}/subscription`;
   const hidden = (name, value) => input(name, '', value, 'hidden');
   const fields = customer.config;
-  return `<h2>${escape(customer.displayName)} · Subscription</h2>
+  return `<div class="subscription-heading"><h2>${escape(customer.displayName)} · Subscription</h2><a class="button secondary" href="/customers/${encodeURIComponent(customer.customerId)}/edit">Back to edit customer</a></div>
     <p>${sub ? `Paid through ${escape(new Date(sub.paid_through).toISOString())}. Revision ${sub.revision}.` : 'No subscription: protected API access is locked until terms are saved.'}</p>
     ${details.billingLink ? '<section class="notice">Billing manages this subscription. Update paid terms through your payment provider.</section>' : ''}
     <form method="post" action="/customers/${encodeURIComponent(customer.customerId)}/status">

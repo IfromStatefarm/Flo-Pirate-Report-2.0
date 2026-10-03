@@ -4,6 +4,8 @@ import { validateTeamRequest, isTeamPageSender } from '../utils/team_access.js';
 import { projectTeamChanges } from '../server/team_management.js';
 import { createCustomerApiService } from '../server/customer_api_service.js';
 import { createCustomerMembershipService } from '../services/customer_membership_service.js';
+import { handleCustomerApi } from '../server/http.js';
+import { ApiError } from '../server/api_error.js';
 
 const config = { access: { totalUserCap: 3, roleSeatCaps: { employee: 1, manager: 1, admin: 1 }, enabledRoles: ['employee','manager','admin'], allowedEmailDomains: ['example.test'] } };
 const rows = ['admin','employee','manager'].map((role,i) => ({ member_id: `m${i}`, email: `${role}@example.test`, name: role, role, status: 'active', version: 1 }));
@@ -54,4 +56,40 @@ test('client preserves safe team errors and rejects another customer response', 
   await assert.rejects(wrong.teamRequest(profile,call),{code:'invalid_response'});
   const conflict=createCustomerMembershipService({...options,fetchImpl:async()=>new Response(JSON.stringify({error:{code:'stale_review',message:'ignored',utilization:null}}),{status:409})});
   await assert.rejects(conflict.teamRequest(profile,call),{code:'stale_review'});
+});
+
+test('team validation identifies fields without echoing submitted values', () => {
+  const list = {protocolVersion:1,operation:'team_list',query:'',role:'',status:'',cursor:''};
+  const { cursor, ...missing } = list;
+  assert.throws(() => validateTeamRequest(missing), {message:'request.cursor is required.'});
+  assert.throws(() => validateTeamRequest({...list, query:'<private@example.test>'}), {message:'request.query contains invalid text.'});
+  assert.throws(() => validateTeamRequest({...list, 'private@example.test':'secret'}), {message:'request contains unsupported fields.'});
+  assert.throws(() => validateTeamRequest({protocolVersion:1,operation:'team_history',cursor:'private@example.test'}), {message:'Invalid history cursor.'});
+  assert.throws(() => validateTeamRequest(request([{action:'add',email:'a@example.test',role:'admin'}])), {message:'request.changes.0.name is required.'});
+});
+
+test('all client team envelopes reach the HTTP handler unchanged and remain subject to authorization', async () => {
+  const identity = {email:'admin@example.test',subject:'verified-sub'};
+  const profile = {schemaVersion:1,expiresAt:Date.now()+600000,permissions:['settings.adminAccess'],status:'ready',verification:'verified',role:'admin',customerId:'test',email:identity.email};
+  let received;
+  const server = createCustomerApiService({verifyIdentity:async()=>identity,repository:{teamOperation:async(actor, body)=> {
+    assert.equal(actor,identity); received=body;
+    throw new ApiError(403,'not_authorized','Administrator required.');
+  }}});
+  const client = createCustomerMembershipService({getAuthToken:async()=> 'fixture',
+    loadSettings:async()=>({schemaVersion:1,membershipEndpoint:'https://example.test/memberships'}),
+    fetchImpl:(url, options)=>handleCustomerApi('memberships',new Request(url,options),{service:server})});
+  for (const payload of [
+    {operation:'team_list',query:'',role:'',status:'',cursor:''},
+    {operation:'team_history',cursor:''},
+    {operation:'team_preview',requestId:'review',changes:[{action:'add',email:'a@example.test',name:'A',role:'employee'}]},
+    {operation:'team_commit',requestId:'review'}
+  ]) {
+    await assert.rejects(client.teamRequest(profile,payload), error => {
+      assert.equal(error.code,'not_authorized');
+      assert.equal(error.diagnostics.teamCapability,'supported');
+      return true;
+    });
+    assert.deepEqual(received,{protocolVersion:1,...payload});
+  }
 });

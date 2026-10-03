@@ -19,6 +19,7 @@ Effective permissions are the intersection of the role grants and customer featu
 | Permission | Employee | Manager | Admin | Feature |
 | --- | --- | --- | --- | --- |
 | `sidepanel.report` | Yes | Yes | Yes | report |
+| `sidepanel.enforce` | No | Yes | Yes | report |
 | `sidepanel.scoreboard` | Yes | Yes | Yes | scoreboard or gamification |
 | `sidepanel.automate` | No | Yes | Yes | automate |
 | `sidepanel.intel` | No | Yes | Yes | intel |
@@ -43,10 +44,10 @@ Custom role creation is not implemented. The shared role resolver is the extensi
 | --- | --- |
 | Bootstrap | Verified identity and eligible unique active membership; returns effective grants |
 | Membership list/mutation; Team & Access list/history/preview/commit | `settings.adminAccess`, plus subscription/recovery rules |
-| Generate/finalize/project reports | `sidepanel.report` |
+| Generate/finalize/project reports | `sidepanel.report`; finalizing Enforcer reports also requires `sidepanel.enforce` |
 | Scoreboard statistics (database or legacy) | `sidepanel.scoreboard` |
 | Intelligence statistics (database or legacy) | `sidepanel.intel` |
-| Reporting/activity/evidence/outcome events | `sidepanel.report` |
+| Reporting/activity/evidence/outcome events | `sidepanel.report`; Enforcer `report.submitted` events also require `sidepanel.enforce` |
 | Intelligence-generated events | `sidepanel.intel` |
 | Automation scan/outcome/row-status events | `sidepanel.automate` |
 | Google config/catalog/whitelist reads; event edits; evidence folders/uploads | `sidepanel.report` |

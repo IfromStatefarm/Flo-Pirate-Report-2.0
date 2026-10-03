@@ -6,7 +6,7 @@ Production-readiness review: [architecture audit and prioritized roadmap](docs/a
 
 ## Commercial subscriptions
 
-Version 3.4.0 adds seller sign-in, subscription dates, monthly/yearly manual renewals, purchased seats, a signed Wix billing bridge, and server-generated report PDFs. Follow [Commercial licensing setup](docs/white-label/COMMERCIAL_LICENSING_SETUP.md) before deploying the API or distributing the new extension. Existing customers need explicit subscription terms; missing terms lock paid API access.
+Version 3.4.0 adds seller sign-in, subscription dates, monthly/yearly manual renewals, purchased seats, a signed Wix billing bridge, and server-generated report PDFs. The production customer API is active; the extension remains on release hold. Follow [Commercial licensing setup](docs/white-label/COMMERCIAL_LICENSING_SETUP.md) for new deployments and the [current release checklist](docs/white-label/CUSTOMER_API_DEPLOYMENT.md#current-production-release-checklist) before distributing the extension. Existing customers need explicit subscription terms; missing terms lock paid API access.
 
 ## Customer access setup
 
@@ -15,6 +15,12 @@ The extension now uses verified Google identity and an API-backed customer boots
 Set the deployment's credential-free HTTPS bootstrap URL in `config/customer_bootstrap.json`. The API must validate the bearer Google OAuth token, resolve the identity to exactly one active customer, and return the fixed short-lived profile described in [ACCESS_CONTROL_OUTLINE.md](ACCESS_CONTROL_OUTLINE.md).
 
 Membership, roles, seat enforcement, and OAuth secrets belong in the server-side control plane. Do not put authentication secrets, OAuth client secrets, tokens, or login data in Google Sheets. An unconfigured endpoint, ambiguous membership, invalid response, or expired profile locks all protected background actions.
+
+### Google sign-in troubleshooting
+
+Reload the extension after updating it, reopen Settings, and click **Sign in with Google**. Only that button requests interactive consent; background token requests are noninteractive, following [Chrome's Identity API guidance](https://developer.chrome.com/docs/extensions/reference/api/identity#method-getAuthToken). Successful sign-in refreshes customer access and reloads Settings.
+
+If sign-in fails, Settings displays the error message and `utils/auth.js` logs `Auth Error:` followed by Chrome's `runtime.lastError.message`. Use that exact message to diagnose the failure; `[object Object]` alone does not identify a cause. If the message indicates cancelled consent, retry the button and complete consent. If it indicates a sign-in requirement, sign in with the approved Google account. If it indicates an OAuth client/configuration error, verify the manifest's client ID and scopes against the Google Cloud configuration and confirm that the Chrome Extension client is registered for extension ID `akgajganockbkkegachkcamnfnbpccnh` (derived from the manifest public key). These are conditional checks, not confirmed causes. Never include access tokens in diagnostic reports.
 
 ## Membership administration
 

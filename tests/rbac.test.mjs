@@ -13,9 +13,9 @@ const command = (name, args) => ({ name, args, requestId: 'rbac-operation' });
 const expected = {
   employee: ['sidepanel.report', 'sidepanel.scoreboard', 'settings.coreConnectivity', 'settings.feedbackComms'],
   manager: ['sidepanel.report', 'sidepanel.scoreboard', 'settings.coreConnectivity', 'settings.feedbackComms',
-    'sidepanel.automate', 'sidepanel.intel', 'settings.openLocker', 'settings.intelligenceTools', 'settings.briefingStats', 'settings.briefingContent'],
+    'sidepanel.enforce', 'sidepanel.automate', 'sidepanel.intel', 'settings.openLocker', 'settings.intelligenceTools', 'settings.briefingStats', 'settings.briefingContent'],
   admin: ['sidepanel.report', 'sidepanel.scoreboard', 'settings.coreConnectivity', 'settings.feedbackComms',
-    'sidepanel.automate', 'sidepanel.intel', 'settings.openLocker', 'settings.intelligenceTools', 'settings.briefingStats', 'settings.briefingContent',
+    'sidepanel.enforce', 'sidepanel.automate', 'sidepanel.intel', 'settings.openLocker', 'settings.intelligenceTools', 'settings.briefingStats', 'settings.briefingContent',
     'sidepanel.repair', 'settings.selectorPaths', 'settings.gamification', 'settings.adminAccess']
 };
 

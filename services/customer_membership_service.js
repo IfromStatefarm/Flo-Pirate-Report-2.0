@@ -1,5 +1,5 @@
 import { hasPermission, PERMISSIONS } from '../utils/access_control.js';
-import { validateTeamRequest } from '../utils/team_access.js';
+import { TEAM_API_CAPABILITY, TEAM_OPERATIONS, validateTeamRequest } from '../utils/team_access.js';
 export const CUSTOMER_MEMBERSHIP_PROTOCOL_VERSION = 1;
 export const CUSTOMER_MEMBERSHIP_SETTINGS_PATH = 'config/customer_bootstrap.json';
 
@@ -48,6 +48,28 @@ const CUSTOMER_ID_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UNSAFE_TEXT_PATTERN = /[<>\u0000-\u001F\u007F]/;
 const MAX_RESPONSE_BYTES = 256 * 1024;
+
+// Retain validation rules, never arbitrary server text (which could echo tokens,
+// email addresses, request values, HTML, or a database/provider error).
+const VALIDATION_MESSAGES = new Set([
+  'Unsupported membership protocol.', 'Unsupported membership operation.',
+  'Unsupported membership action.', 'Unsupported membership role.',
+  'Invalid member ID.', 'Invalid membership version.',
+  'Unsupported team request.', 'Expected an object.', 'Unexpected or missing fields.',
+  'Invalid text.', 'Invalid identifier.', 'Invalid role filter.', 'Invalid status filter.',
+  'Invalid history cursor.', 'Choose between 1 and 50 people.', 'Unsupported change.',
+  'Enter a valid email address.', 'A name cannot start with = or +.',
+  'Invalid member version.', 'Choose Employee, Manager, or Admin.',
+  'Each person can appear only once in a batch.',
+  'Content-Type must be application/json.', 'The request body is empty.',
+  'The request body is oversized.', 'The request body is not valid JSON.'
+]);
+const VALIDATION_PATH = /^(?:(?:request|mutation)(?:\.(?:protocolVersion|operation|query|role|status|cursor|requestId|mutation|action|memberId|expectedVersion|email|name|changes|customerId|actorEmail))?(?:\.[0-4]?\d(?:\.(?:action|email|name|role|memberId|expectedVersion))?)?|query) (?:is required|is not supported|must be an object|must be text|is unsafe or oversized|contains invalid text|contains unsupported fields)\.$/;
+
+function safeValidationDetail(message) {
+  if (typeof message !== 'string' || message.length > 240 || UNSAFE_TEXT_PATTERN.test(message)) return null;
+  return VALIDATION_MESSAGES.has(message) || VALIDATION_PATH.test(message) ? message : null;
+}
 
 export class MembershipApiError extends Error {
   constructor(message, code = 'membership_api_error', utilization = null) {
@@ -310,11 +332,13 @@ function parseErrorEnvelope(value, status) {
     const code = readText(error.code, 'error.code', { maxLength: 64 });
     const safeCode = ERROR_CODES.has(code) ? code : 'conflict';
     const utilization = error.utilization ? validateMembershipUtilization(error.utilization) : null;
-    return new MembershipApiError(
-      MEMBERSHIP_ERROR_MESSAGES[safeCode] || readText(error.message, 'error.message', { maxLength: 240 }),
+    const result = new MembershipApiError(
+      MEMBERSHIP_ERROR_MESSAGES[safeCode],
       safeCode,
       utilization
     );
+    result.validationDetail = safeCode === 'invalid_request' ? safeValidationDetail(error.message) : null;
+    return result;
   } catch (error) {
     if (error instanceof MembershipApiError && ERROR_CODES.has(error.code)) return error;
     const code = status === 401 ? 'identity_error' : status === 403 ? 'not_authorized' : 'conflict';
@@ -359,7 +383,21 @@ export function createCustomerMembershipService({
       referrerPolicy: 'no-referrer'
     });
     const body = await parseResponse(response);
-    if (!response.ok) throw parseErrorEnvelope(body, response.status);
+    if (!response.ok) {
+      const error = parseErrorEnvelope(body, response.status);
+      const team = TEAM_OPERATIONS.includes(payload.operation);
+      const capability = response.headers.get('X-Rights-Reporter-Team');
+      // The background error logger retains this object. Do not include the
+      // endpoint, bearer token, actor identity, payload, or raw response body.
+      error.diagnostics = Object.freeze({
+        httpStatus: response.status,
+        operation: payload.operation,
+        protocolVersion: payload.protocolVersion,
+        validationDetail: error.validationDetail || null,
+        ...(team ? { teamCapability: capability === TEAM_API_CAPABILITY ? 'supported' : capability ? 'mismatch' : 'unadvertised' } : {})
+      });
+      throw error;
+    }
     return validate(body, actor.customerId, actor.email);
   }
 

@@ -1,3 +1,4 @@
+import { enforcerPlatform, tabHasApprovedEnforcerSession } from '../utils/enforcer_session.js';
 import { getUserEmail } from '../utils/auth.js';
 import { SIDEPANEL_CLIPPY_PHRASES } from '../utils/extension_constants.js';
 import { renderGamificationStats } from '../utils/gamification_ui.js';
@@ -44,45 +45,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 const ENFORCER_PLATFORM_ACCESS_MESSAGE = "Access Denied: Enforcer mode is not enabled for this verified customer profile or platform session.";
-const ENFORCER_SESSION_SELECTOR_DEFAULTS = Object.freeze({
-  youtube: {
-    channelHandle: [
-      'yt-formatted-string#channel-handle',
-      'ytd-active-account-header-renderer yt-formatted-string#channel-handle'
-    ],
-    accountMenuTrigger: [
-      'button#avatar-btn',
-      '#avatar-btn',
-      'button[aria-label*="account" i]',
-      'button[aria-label*="channel" i]'
-    ],
-    candidateAnchors: [
-      'ytd-guide-renderer a[href]',
-      'ytd-mini-guide-renderer a[href]',
-      'ytd-popup-container a[href]',
-      'ytd-masthead a[href]',
-      'tp-yt-paper-dialog a[href]'
-    ]
-  },
-  tiktok: {
-    accountHandle: [
-      'a[data-e2e="nav-profile"]',
-      '[data-e2e="nav-profile"] a[href]',
-      'header a[href^="/@"]',
-      'nav a[href^="/@"]',
-      '[data-e2e*="profile"] a[href^="/@"]'
-    ]
-  }
-});
-
-function toSelectorList(value, fallback = []) {
-  const values = Array.isArray(value) ? value : value ? [value] : [];
-  const selectors = values
-    .map((entry) => (typeof entry === 'string' ? entry : entry?.selector))
-    .filter(Boolean);
-  return selectors.length > 0 ? selectors : fallback;
-}
-
 function toValueList(value, fallback = []) {
   const values = Array.isArray(value) ? value : value ? [value] : [];
   const parsedValues = values
@@ -112,28 +74,12 @@ function getEnforcerAccessConfig() {
       authorizedStudioManagerIds: toValueList(
         youtubeSession.authorized_studio_manager_ids || youtubeSession.approved_studio_manager_ids || youtubeSession.authorized_studio_ids,
         ENFORCER_PLATFORM_DEFAULTS.youtube.authorizedStudioManagerIds
-      ),
-      channelHandle: toSelectorList(
-        youtubeSession.channel_handle || youtubeSession.account_handle || youtubeSession.handle,
-        ENFORCER_SESSION_SELECTOR_DEFAULTS.youtube.channelHandle
-      ),
-      accountMenuTrigger: toSelectorList(
-        youtubeSession.account_menu_trigger || youtubeSession.menu_trigger,
-        ENFORCER_SESSION_SELECTOR_DEFAULTS.youtube.accountMenuTrigger
-      ),
-      candidateAnchors: toSelectorList(
-        youtubeSession.candidate_anchors || youtubeSession.anchor_selectors,
-        ENFORCER_SESSION_SELECTOR_DEFAULTS.youtube.candidateAnchors
       )
     },
     tiktok: {
       authorizedHandles: toValueList(
         tiktokSession.authorized_handles || tiktokSession.approved_handles,
         ENFORCER_PLATFORM_DEFAULTS.tiktok.authorizedHandles
-      ),
-      accountHandle: toSelectorList(
-        tiktokSession.account_handle || tiktokSession.handle,
-        ENFORCER_SESSION_SELECTOR_DEFAULTS.tiktok.accountHandle
       )
     }
   };
@@ -197,16 +143,12 @@ function refreshGamificationStats() {
 }
 
 function isEnforcerPlatformTabUrl(url) {
-  const normalizedUrl = String(url || '').toLowerCase();
-  return normalizedUrl.includes('youtube.com') ||
-    normalizedUrl.includes('youtu.be') ||
-    normalizedUrl.includes('studio.youtube.com') ||
-    normalizedUrl.includes('tiktok.com');
+  return enforcerPlatform(url) !== null;
 }
 
 function isEnforcerAllowlistExemptPlatform(platformKey) {
   const normalizedPlatform = String(platformKey || '').toLowerCase();
-  return normalizedPlatform === 'tiktok' || normalizedPlatform === 'instagram';
+  return normalizedPlatform === 'instagram';
 }
 
 function getManualReportingMessage(platformDetails) {
@@ -217,132 +159,11 @@ function getManualReportingMessage(platformDetails) {
   return 'Auto-reporting is currently optimized for TikTok, X (Twitter), and YouTube. Please manually report other platforms.';
 }
 
-async function tabHasApprovedEnforcerSession(tabId, accessConfig = getEnforcerAccessConfig()) {
-  try {
-    const [injected] = await chrome.scripting.executeScript({
-      target: { tabId, allFrames: false },
-      func: async (sessionAccessConfig) => {
-        const normalize = (value) => String(value || '').trim().toLowerCase();
-        const currentUrl = normalize(window.location.href);
-        const isYouTube = currentUrl.includes('youtube.com') || currentUrl.includes('youtu.be') || currentUrl.includes('studio.youtube.com');
-        const isTikTok = currentUrl.includes('tiktok.com');
-        const platformConfig = sessionAccessConfig || {};
-        const approvedYouTubeHandles = (platformConfig.youtube?.authorizedHandles || []).map(normalize).filter(Boolean);
-        const approvedChannelIds = (platformConfig.youtube?.authorizedChannelIds || []).map(normalize).filter(Boolean);
-        const approvedStudioIds = (platformConfig.youtube?.authorizedStudioManagerIds || []).map(normalize).filter(Boolean);
-        const approvedTikTokHandles = (platformConfig.tiktok?.authorizedHandles || []).map(normalize).filter(Boolean);
-
-        const candidateStrings = [];
-        const pushCandidate = (value) => {
-          if (value == null) return;
-          if (Array.isArray(value)) {
-            value.forEach(pushCandidate);
-            return;
-          }
-
-          if (typeof value === 'object') {
-            try {
-              candidateStrings.push(JSON.stringify(value));
-            } catch (error) {
-              // Ignore unserializable values from page globals.
-            }
-            return;
-          }
-
-          candidateStrings.push(String(value));
-        };
-
-        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const selectorList = (selectors) => Array.isArray(selectors) ? selectors.filter(Boolean) : [];
-        const findFirstElement = (selectors) => {
-          for (const selector of selectorList(selectors)) {
-            try {
-              const element = document.querySelector(selector);
-              if (element) return element;
-            } catch (error) {
-              // Ignore invalid selectors from remote config.
-            }
-          }
-          return null;
-        };
-        const scanSelectors = (selectors) => {
-          selectorList(selectors).forEach((selector) => {
-            let elements = [];
-            try {
-              elements = Array.from(document.querySelectorAll(selector));
-            } catch (error) {
-              return;
-            }
-            elements.forEach((el) => {
-              pushCandidate(el.href || el.getAttribute?.('href'));
-              pushCandidate(el.getAttribute?.('title'));
-              pushCandidate(el.getAttribute?.('aria-label'));
-              pushCandidate(el.getAttribute?.('alt'));
-              pushCandidate(el.dataset);
-              pushCandidate(el.textContent?.trim());
-            });
-          });
-        };
-
-        if (isYouTube) {
-          const ytcfgGet = typeof window.ytcfg?.get === 'function' ? (key) => window.ytcfg.get(key) : () => undefined;
-          const isLoggedIn = Boolean(ytcfgGet('LOGGED_IN') ?? window.ytcfg?.data_?.LOGGED_IN);
-          if (!isLoggedIn) return false;
-
-          pushCandidate(ytcfgGet('DELEGATED_SESSION_ID'));
-          pushCandidate(window.ytcfg?.data_?.DELEGATED_SESSION_ID);
-          scanSelectors(platformConfig.youtube?.channelHandle);
-          scanSelectors(platformConfig.youtube?.candidateAnchors);
-
-          const hasApprovedHandleBeforeMenu = candidateStrings
-            .map(normalize)
-            .filter(Boolean)
-            .some((candidate) => approvedYouTubeHandles.some((handle) => candidate.includes(handle)));
-
-          if (!hasApprovedHandleBeforeMenu) {
-            const trigger = findFirstElement(platformConfig.youtube?.accountMenuTrigger);
-            if (trigger) {
-              trigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-              await wait(250);
-              scanSelectors(platformConfig.youtube?.channelHandle);
-              scanSelectors(platformConfig.youtube?.candidateAnchors);
-              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-            }
-          }
-        }
-
-        if (isTikTok) {
-          scanSelectors(platformConfig.tiktok?.accountHandle);
-        }
-
-        const normalizedCandidates = candidateStrings
-          .map(normalize)
-          .filter(Boolean);
-
-        const hasApprovedYouTubeHandle = normalizedCandidates.some((candidate) => approvedYouTubeHandles.some((handle) => candidate.includes(handle)));
-        const hasApprovedTikTokHandle = normalizedCandidates.some((candidate) => approvedTikTokHandles.some((handle) => candidate.includes(handle)));
-        const hasApprovedYouTubeId = normalizedCandidates.some((candidate) =>
-          approvedChannelIds.some((channelId) => candidate.includes(channelId)) ||
-          approvedStudioIds.some((managerId) => candidate.includes(managerId))
-        );
-
-        if (isYouTube) return hasApprovedYouTubeHandle || hasApprovedYouTubeId;
-        if (isTikTok) return hasApprovedTikTokHandle;
-        return false;
-      },
-      args: [accessConfig]
-    });
-
-    return !!injected?.result;
-  } catch (error) {
-    console.warn('Unable to inspect platform session for enforcer access.', error);
-    return false;
-  }
-}
-
-async function canUseEnforcerMode() {
-  // Reporting permission is required, but does not authorize a platform account.
-  if (!hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_REPORT)) return false;
+async function canUseEnforcerMode(platformKey) {
+  // Server-issued capability is authority; page inspection is only an operator aid.
+  if (!hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_REPORT) ||
+      !hasPermission(currentAccessProfile, PERMISSIONS.SIDEPANEL_ENFORCE)) return false;
+  if (isEnforcerAllowlistExemptPlatform(platformKey)) return true;
 
   const accessConfig = getEnforcerAccessConfig();
   const tabs = await chrome.tabs.query({});
@@ -832,18 +653,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     shell.style.display = urls.length > 0 ? 'block' : 'none';
     heading.textContent = `${urls.length} queued URL${urls.length === 1 ? '' : 's'}`;
     list.replaceChildren();
-    urls.slice(0, 6).forEach((url) => {
+    urls.forEach((url) => {
       const row = document.createElement('div');
       row.textContent = url;
       list.appendChild(row);
     });
-    if (urls.length > 6) {
-      const more = document.createElement('div');
-      more.textContent = `...and ${urls.length - 6} more`;
-      more.style.marginTop = '4px';
-      more.style.fontWeight = '700';
-      list.appendChild(more);
-    }
   }
 
   function showRumbleConfirmDialog(cart) {
@@ -852,7 +666,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const count = cart.length;
       modal.querySelector('#rumble-workflow-title').textContent = 'Confirm Rumble Report';
       modal.querySelector('#rumble-workflow-copy').textContent =
-        `You are about to report ${count} Rumble URL${count === 1 ? '' : 's'}. Pirate AI will run the queue in background tabs so you can stay on this page.`;
+        `Review every URL below before confirming. Pirate AI will submit ${count} Rumble report${count === 1 ? '' : 's'} in background tabs after you confirm.`;
       modal.querySelector('#rumble-workflow-progress-shell').style.display = 'none';
       modal.querySelector('#rumble-workflow-actions').style.display = 'flex';
       modal.querySelector('#rumble-workflow-confirm').textContent = `Report ${count} URL${count === 1 ? '' : 's'}`;
@@ -1167,7 +981,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (msg.action === 'closerProgress') {
         if (closerStatusEl) {
             closerStatusEl.style.display = 'block';
-            closerStatusEl.innerHTML = `<strong>${msg.status}</strong><br>${msg.details || ''}`;
+            const statusLabel = document.createElement('strong');
+            statusLabel.textContent = msg.status || '';
+            closerStatusEl.replaceChildren(statusLabel, document.createElement('br'), document.createTextNode(msg.details || ''));
             
             // If stopped, finished, or failed, toggle the switch off automatically
             if (msg.status.includes("Complete") || msg.status.includes("Stop") || msg.status.includes("Failed")) {
@@ -1212,11 +1028,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const showInitError = (msg) => {
       if (loadingEl) {
           loadingEl.classList.add('init-error');
-          loadingEl.innerHTML = `⚠️ <strong>Connection Failed</strong><br>${msg}<br>
+          loadingEl.innerHTML = `⚠️ <strong>Connection Failed</strong><br><span id="initErrorDetails"></span><br>
           <div class="flex-row" style="justify-content:center; margin-top:10px;">
             <button id="retryInitBtn" class="btn btn-info" style="width:auto; padding:5px 15px;">Retry</button>
             <button id="openOptionsBtn" class="btn btn-warning" style="width:auto; padding:5px 15px;">Settings</button>
           </div>`;
+          document.getElementById('initErrorDetails').textContent = msg;
           loadingEl.style.color = "red";
           document.getElementById('retryInitBtn')?.addEventListener('click', () => window.location.reload());
           document.getElementById('openOptionsBtn')?.addEventListener('click', () => void openSettingsWithAccessRefresh());
@@ -1496,16 +1313,20 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
 
           // Send the scraped DOM data to background to merge with sniffed network URLs
-          chrome.runtime.sendMessage({ action: 'initRogueTakedown', data: results[0].result }, () => {
-              btn.innerText = originalText;
-              btn.disabled = false;
-              if (nukeStatus) nukeStatus.innerText = "Data captured! See Rogue Walkthrough.";
-              setTimeout(() => { if (nukeStatus) nukeStatus.innerText = ""; }, 3000);
+          const response = await chrome.runtime.sendMessage({
+              action: 'captureRogueFromSidepanel', tabId: tab.id, data: results[0]?.result
           });
+          if (response?.success !== true) {
+              throw new Error(response?.error || 'Capture failed. Please try again.');
+          }
+          btn.innerText = originalText;
+          btn.disabled = false;
+          if (nukeStatus) nukeStatus.innerText = "Data captured! See Rogue Walkthrough.";
+          setTimeout(() => { if (nukeStatus) nukeStatus.innerText = ""; }, 3000);
       } catch (e) {
           console.error(e);
           btn.innerText = "Error - Refresh Page";
-          if (nukeStatus) nukeStatus.innerText = "Failed.";
+          if (nukeStatus) nukeStatus.innerText = e.message || "Capture failed. Please try again.";
           setTimeout(() => { btn.innerText = originalText; btn.disabled = false; if (nukeStatus) nukeStatus.innerText = ""; }, 2000);
       }
   };
@@ -1597,14 +1418,15 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
 
-          if (!isScout && !isEnforcerAllowlistExemptPlatform(platformDetails.key) && !(await canUseEnforcerMode())) {
+          if (!isScout && !(await canUseEnforcerMode(platformDetails.key))) {
               alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
               startBtn.disabled = false;
               startBtn.innerText = defaultBtnText;
               return;
           }
 
-          if (!reportUrl && platformDetails.key !== 'rumble') {
+          // Scout only logs the queue; a report form is required for form-based enforcement.
+          if (!isScout && !reportUrl && platformDetails.key !== 'rumble') {
               alert(getManualReportingMessage(platformDetails));
               startBtn.disabled = false;
               startBtn.innerText = defaultBtnText; // PATCHED
@@ -1739,19 +1561,27 @@ document.addEventListener('DOMContentLoaded', async () => {
               bountyContainer.style.display = 'none';
               return;
           }
-          bountyList.innerHTML = '';
+          bountyList.replaceChildren();
           let foundBounties = false;
-          if (configData && configData.verticals) {
+          if (Array.isArray(configData?.verticals)) {
               configData.verticals.forEach(v => {
-                  (v.events || []).forEach(e => {
-                      if (e.double_xp) {
+                  (Array.isArray(v?.events) ? v.events : []).forEach(e => {
+                      if (e?.double_xp === true) {
                           foundBounties = true;
-                          bountyList.innerHTML += `<li><strong>${v.name}:</strong> ${e.eventName || e.name}</li>`;
+                          const item = document.createElement('li');
+                          const verticalName = document.createElement('strong');
+                          verticalName.textContent = `${v.name}:`;
+                          item.append(verticalName, document.createTextNode(` ${e.eventName || e.name || ''}`));
+                          bountyList.appendChild(item);
                       }
                   });
               });
           }
-          if (!foundBounties) bountyList.innerHTML = '<li>No active bounties right now.</li>';
+          if (!foundBounties) {
+              const item = document.createElement('li');
+              item.textContent = 'No active bounties right now.';
+              bountyList.appendChild(item);
+          }
           bountyContainer.style.display = 'block';
       });
   }
@@ -1895,7 +1725,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               return;
           }
                 // --- BULK ENFORCER ACCESS FILTER ---
-                  if (!isEnforcerAllowlistExemptPlatform(platform) && !(await canUseEnforcerMode())) {
+                  if (!(await canUseEnforcerMode(platform))) {
                       alert(ENFORCER_PLATFORM_ACCESS_MESSAGE);
                       return;
                   }

@@ -10,15 +10,16 @@ import { assert, ApiError } from '../api_error.js';
 import { validateGoogleCommand, GOOGLE_OPERATION_PERMISSIONS } from './google_command_policy.js';
 export { validateGoogleCommand } from './google_command_policy.js';
 import { requirePlatforms, requireUrlPlatforms } from '../platform_policy.js';
+import { uploadOperationKey } from '../integration_journal.js';
 
 const READS = new Set(['fetchConfig','getEventData','checkIfAuthorized','getColumnHDataWithFormatting','getRecommendedStartRow']);
 export function createGoogleOperations({ repository, fetchImpl = fetch, tokenProvider = googleConnectorToken } = {}) {
-  async function adapterFor(actor, delegatedToken, {permission = 'sidepanel.report'} = {}) {
+  async function adapterFor(actor, delegatedToken, {permission = 'sidepanel.report', writeJournal} = {}) {
     const token = await tokenProvider(actor.customerId,{delegatedToken,fetchImpl});
     const integrations = actor.customerConfig.destinations;
     const resourceGuard = createGoogleResourceGuard({actor, token, permission, repository, fetchImpl});
     await resourceGuard.verifyConfigured();
-    const adapter = createGoogleAdapter({token,integrations,actor,resourceGuard,fetchImpl,defaults: actor.customerId === 'flosports' ? defaults : neutralEventConfig(defaults)});
+    const adapter = createGoogleAdapter({token,integrations,actor,resourceGuard,writeJournal,fetchImpl,defaults: actor.customerId === 'flosports' ? defaults : neutralEventConfig(defaults)});
     return {adapter,token,integrations,resourceGuard};
   }
 
@@ -30,7 +31,12 @@ export function createGoogleOperations({ repository, fetchImpl = fetch, tokenPro
     // Reject guessed folders from our scoped journal before any Google metadata
     // request, so foreign and nonexistent IDs cannot act as an existence probe.
     if (command.name === 'uploadToDrive') await repository.requireUploadFolder(actor, command.args[0]);
-    const {adapter,token,integrations,resourceGuard}=await adapterFor(actor,delegatedToken,{permission:GOOGLE_OPERATION_PERMISSIONS[command.name]});
+    let journal;
+    const writeJournal = {beforeWrite: () => {
+      assert(journal, 500, 'configuration_error', 'A journal is required before a provider write.');
+      return journal.beforeWrite();
+    }};
+    const {adapter,token,integrations,resourceGuard}=await adapterFor(actor,delegatedToken,{permission:GOOGLE_OPERATION_PERMISSIONS[command.name],writeJournal});
     const args=command.args;
     if (command.name === 'uploadToDrive') await resourceGuard.assertFolder(args[0], true);
     if(['getEventData','updateEventUrl','addNewEventToSheet'].includes(command.name)) {
@@ -48,8 +54,9 @@ export function createGoogleOperations({ repository, fetchImpl = fetch, tokenPro
       if(!bonus) return {customerId:actor.customerId,userId:actor.memberId,requestId:responseRequestId,result:0};
       command={...command,requestId:bonus.awardId};
     }
-    const work=async(admittedActor=actor)=>{
+    const work=async(admittedActor=actor, admittedJournal)=>{
       actor=admittedActor;
+      journal=admittedJournal;
       let result;
       switch(command.name) {
         case 'addEnforcerBonusPoints':
@@ -64,7 +71,7 @@ export function createGoogleOperations({ repository, fetchImpl = fetch, tokenPro
           const bytes=Buffer.from(args[2],'base64');
           const valid=args[3]==='application/pdf' ? bytes.subarray(0,5).toString()==='%PDF-' : args[3]==='image/png' ? bytes.subarray(0,8).toString('hex')==='89504e470d0a1a0a' : bytes[0]===255 && bytes[1]===216;
           assert(valid && bytes.length>0 && bytes.length<=4*1024*1024,400,'invalid_operation','The file content does not match its type.');
-          result=await adapter.uploadToDrive(token,args[0],args[1],new Blob([bytes],{type:args[3]}),args[3],{customerId:actor.customerId,userId:actor.memberId,eventId:args[4]});
+          result=await adapter.uploadToDrive(token,args[0],args[1],new Blob([bytes],{type:args[3]}),args[3],{customerId:actor.customerId,userId:actor.memberId,eventId:args[4],operationKey:uploadOperationKey(actor,command)});
           await repository.recordUploadedFile(actor,args[4],args[3],result,crypto.createHash('sha256').update(bytes).digest('hex')); break;
         }
         case 'getEventData': {
@@ -118,5 +125,25 @@ export function createGoogleOperations({ repository, fetchImpl = fetch, tokenPro
     }
     return {customerId:actor.customerId,userId:actor.memberId,requestId:responseRequestId,result};
   }
-  return {execute,adapterFor};
+  async function reconcileUpload(actor, candidate, delegatedToken) {
+    const command = validateGoogleCommand(actor, candidate);
+    assert(command.name === 'uploadToDrive', 400, 'invalid_operation', 'Only evidence uploads support receipt reconciliation.');
+    let resourceGuard;
+    const result = await repository.reconcileIntegrationUpload(actor, command, async (current, options) => {
+      actor = await repository.claimIntegrationResources(current);
+      const args = command.args;
+      await repository.requireUploadFolder(actor, args[0]);
+      const connection = await adapterFor(actor, delegatedToken);
+      resourceGuard = connection.resourceGuard;
+      const bytes = Buffer.from(args[2], 'base64');
+      return connection.adapter.reconcileUpload(args[0], args[1], args[3],
+        {customerId: actor.customerId, userId: actor.memberId, eventId: args[4], operationKey: uploadOperationKey(actor, command)},
+        crypto.createHash('sha256').update(bytes).digest('hex'), bytes.length, options);
+    });
+    // Completed receipts must also pass today's resource authorization checks.
+    if (!resourceGuard) ({resourceGuard} = await adapterFor(actor, delegatedToken));
+    await resourceGuard.assertFile(result?.id, command.args[3]);
+    return {customerId: actor.customerId, userId: actor.memberId, requestId: command.requestId, result};
+  }
+  return {execute,adapterFor,reconcileUpload};
 }

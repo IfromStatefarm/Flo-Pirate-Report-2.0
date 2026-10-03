@@ -22,7 +22,7 @@ export default defineConfig({
         source: 'api/v1/billing/wix.js',
         env: billingEnvironment,
       },
-      'billing-process': {
+      billingprocess: {
         name: 'Rights Reporter billing worker',
         source: 'api/v1/billing/process.js',
         env: billingEnvironment,
@@ -40,7 +40,10 @@ export default defineConfig({
       data: {
         name: "Rights Reporter customer data",
         source: "api/v1/extension/data.js",
-        env: customerApiEnvironment,
+        env: {
+          ...customerApiEnvironment,
+          ...(process.env.YOUTUBE_DATA_API_KEY ? { YOUTUBE_DATA_API_KEY: process.env.YOUTUBE_DATA_API_KEY } : {}),
+        },
       },
       health: {
         name: "Rights Reporter API health",

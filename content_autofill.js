@@ -17,7 +17,13 @@
       var AUTOFILL_CONFIG = {};
     }
 
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const sleep = (ms) => {
+        const generation = wizardGeneration;
+        return new Promise((resolve, reject) => setTimeout(() => {
+            if (generation !== wizardGeneration) reject(new Error('Reporting stopped because access changed.'));
+            else resolve();
+        }, ms));
+    };
     let COPYRIGHT_OWNER_NAME = 'Rights Owner';
     const INSTAGRAM_BATCH_LIMIT = 30;
     const RUMBLE_REPORT_SESSION_KEY = 'rumble_report_session';
@@ -36,8 +42,113 @@
     let hasRunAutomatedFill = false; // Prevents Youtube/Twitter loops on SPA wake-up
     let hasRunRumbleAutomation = false;
     const revokedRumbleSessions = new Set();
+    const ACCESS_PROFILE_KEY = 'customer_access_profile_v1';
+    const OPERATION_SESSION_KEY = 'customer_operation_session_v1';
+    const wizardScopes = new WeakMap();
+    let wizardScope = null;
+    let wizardGeneration = 0;
+
+    function clearWizard() {
+        wizardGeneration += 1;
+        wizardScope = null;
+        lastReportData = null;
+        applyCustomerCopy({ legal: {} });
+        cachedOverlay?.remove();
+        cachedOverlay = null;
+        for (const id of ['flo-upload-overlay', 'flo-twitter-overlay', 'flo-instagram-overlay',
+            'flo-twitch-overlay', 'flo-wiz-launcher', 'flo-kick-overlay']) {
+            document.getElementById(id)?.remove();
+        }
+        hasRunAutomatedFill = false;
+    }
+
+    function sameWizardScope(left, right) {
+        return Boolean(left && right && left.customerId === right.customerId &&
+            left.userId === right.userId && left.session === right.session);
+    }
+
+    function verifiedScope(profile, session) {
+        if (profile?.status !== 'ready' || profile?.verification !== 'verified' ||
+            !profile.customerId || !profile.userId || !session ||
+            !profile.permissions?.includes('sidepanel.enforce')) return null;
+        return { customerId: profile.customerId, userId: profile.userId, session };
+    }
+
+    async function bindWizardData(data, profile, requireStoredReport = false) {
+        const generation = wizardGeneration;
+        const stored = await chrome.storage.local.get([
+            OPERATION_SESSION_KEY, ACCESS_PROFILE_KEY, 'reporterInfo', 'piracy_cart'
+        ]);
+        const scope = verifiedScope(profile, stored[OPERATION_SESSION_KEY]);
+        const cached = stored[ACCESS_PROFILE_KEY];
+        const reportFingerprint = requireStoredReport
+            ? JSON.stringify([data.cart, data.fullName]) : null;
+        if (!scope || !cached || cached.customerId !== scope.customerId || cached.userId !== scope.userId ||
+            !cached.permissions?.includes('sidepanel.enforce') || generation !== wizardGeneration ||
+            (requireStoredReport && (!data.cart?.length || !data.fullName ||
+                reportFingerprint !== JSON.stringify([stored.piracy_cart, stored.reporterInfo?.name]))) ||
+            (wizardScope && !sameWizardScope(wizardScope, scope))) return false;
+        wizardScope = scope;
+        wizardScopes.set(data, { ...scope, reportFingerprint });
+        applyCustomerCopy({ legal: profile.legal });
+        return true;
+    }
+
+    async function assertWizardAccess(data) {
+        const bound = data && wizardScopes.get(data);
+        const generation = wizardGeneration;
+        if (!bound || !sameWizardScope(wizardScope, bound)) throw new Error('Reporting stopped because access changed.');
+        const response = await getAutofillAccess(data.platform, window.location.href);
+        const stored = await chrome.storage.local.get([
+            OPERATION_SESSION_KEY, ACCESS_PROFILE_KEY, 'reporterInfo', 'piracy_cart'
+        ]);
+        const current = verifiedScope(response?.profile, stored[OPERATION_SESSION_KEY]);
+        const cached = stored[ACCESS_PROFILE_KEY];
+        if (generation !== wizardGeneration || !response?.allowed || !sameWizardScope(bound, current) ||
+            cached?.customerId !== bound.customerId || cached?.userId !== bound.userId ||
+            !cached?.permissions?.includes('sidepanel.enforce') ||
+            (bound.reportFingerprint && bound.reportFingerprint !==
+                JSON.stringify([stored.piracy_cart, stored.reporterInfo?.name]))) {
+            clearWizard();
+            throw new Error('Reporting stopped because access changed.');
+        }
+        applyCustomerCopy({ legal: response.profile.legal });
+        for (const url of data.urls || []) {
+            const target = await getAutofillAccess(data.platform, url);
+            if (generation !== wizardGeneration || !target?.allowed ||
+                !sameWizardScope(bound, verifiedScope(target.profile, stored[OPERATION_SESSION_KEY]))) {
+                clearWizard();
+                throw new Error('Reporting stopped because access changed.');
+            }
+        }
+    }
+
+    async function canRunWizardAction(data) {
+        try {
+            await assertWizardAccess(data);
+            return true;
+        } catch (error) {
+            console.warn(error?.message || error);
+            return false;
+        }
+    }
+
     chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== 'local' || !changes[RUMBLE_REPORT_SESSION_KEY]) return;
+        if (area !== 'local') return;
+        const profileChange = changes[ACCESS_PROFILE_KEY];
+        if (wizardScope && (changes[OPERATION_SESSION_KEY] || changes.reporterInfo || changes.piracy_cart ||
+            (profileChange && wizardScope && (
+                profileChange.newValue?.customerId !== wizardScope.customerId ||
+                profileChange.newValue?.userId !== wizardScope.userId ||
+                (profileChange.newValue?.status && profileChange.newValue.status !== 'ready') ||
+                (profileChange.newValue?.verification && profileChange.newValue.verification !== 'verified') ||
+                !profileChange.newValue?.permissions?.includes('sidepanel.enforce') ||
+                profileChange.newValue?.role !== profileChange.oldValue?.role ||
+                JSON.stringify(profileChange.newValue?.permissions) !== JSON.stringify(profileChange.oldValue?.permissions) ||
+                JSON.stringify(profileChange.newValue?.platforms) !== JSON.stringify(profileChange.oldValue?.platforms) ||
+                JSON.stringify(profileChange.newValue?.legal) !== JSON.stringify(profileChange.oldValue?.legal)
+            )))) clearWizard();
+        if (!changes[RUMBLE_REPORT_SESSION_KEY]) return;
         const { oldValue, newValue } = changes[RUMBLE_REPORT_SESSION_KEY];
         if (oldValue?.sessionId && (!newValue?.active || oldValue.sessionId !== newValue.sessionId)) {
             revokedRumbleSessions.add(oldValue.sessionId);
@@ -74,34 +185,44 @@
     applyCustomerCopy();
     globalThis.RightsReporterTheme?.subscribe?.(applyCustomerCopy);
 
-    async function hasAutofillAccess(platform = '', url = window.location.href) {
+    async function getAutofillAccess(platform = '', url = window.location.href) {
       try {
         const response = await chrome.runtime.sendMessage({
           action: 'checkAccess',
-          permission: 'sidepanel.report',
+          permission: 'sidepanel.enforce',
           platform,
           url
         });
-        return Boolean(response?.success && response.allowed);
+        return response?.success && response.allowed ? response : null;
       } catch (error) {
-        return false;
+        return null;
       }
+    }
+
+    async function hasAutofillAccess(platform = '', url = window.location.href) {
+        return Boolean(await getAutofillAccess(platform, url));
     }
 
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'showKickDmcaComposer') {
             void (async () => {
               const requestedUrls = Array.isArray(request.data?.urls) ? request.data.urls : [];
-              const pageAllowed = await hasAutofillAccess(request.data?.platform || 'kick');
+              const pageAccess = await getAutofillAccess(request.data?.platform || 'kick');
               const urlsAllowed = requestedUrls.length === 0 || (await Promise.all(
                 requestedUrls.map((url) => hasAutofillAccess(request.data?.platform || 'kick', url))
               )).every(Boolean);
-              if (!pageAllowed || !urlsAllowed) {
+              if (!pageAccess || !urlsAllowed || !request.data ||
+                  !(await bindWizardData(request.data, pageAccess.profile))) {
                 sendResponse?.({ success: false, error: 'Access denied for this platform.' });
                 return;
               }
-              lastReportData = request.data || lastReportData;
-              createKickOverlay(lastReportData || {});
+              if (typeof createKickOverlay !== 'function') {
+                clearWizard();
+                sendResponse?.({ success: false, error: 'The Kick composer is unavailable.' });
+                return;
+              }
+              lastReportData = request.data;
+              createKickOverlay(lastReportData);
               sendResponse?.({ success: true });
             })();
             return true;
@@ -128,7 +249,8 @@
             await new Promise(r => document.addEventListener('DOMContentLoaded', r));
         }
 
-        if (!(await hasAutofillAccess())) return;
+        const pageAccess = await getAutofillAccess();
+        if (!pageAccess) return;
 
         try {
             const host = window.location.hostname;
@@ -161,10 +283,11 @@
                 rumbleSession
             };
 
+            if (!isRumble && !(await bindWizardData(data, pageAccess.profile, true))) return;
             lastReportData = data; // Save for SPA wake-up
 
-            // 🔹 Always create the Launcher Tab fallback on TikTok
-            if (isTikTok) {
+            // The launcher is usable only with a complete scoped report.
+            if (isTikTok && cart.length && info.name) {
                 createLauncherTab(data);
             }
 
@@ -178,7 +301,7 @@
             while (!configLoaded && retries < 20) { await sleep(100); retries++; }
 
             await sleep(500);
-            routeAutofill(data);
+            await routeAutofill(data);
         } catch(e) { console.warn("Autofill Init Error:", e); }
     }
 
@@ -187,6 +310,9 @@
         isAutofilling = true;
 
     try {
+        const rumbleHost = window.location.hostname === 'rumble.com' ||
+            window.location.hostname.endsWith('.rumble.com');
+        if (!rumbleHost) await assertWizardAccess(data);
         const autofillModule = globalThis.__floPlatformRegistry?.findAutofillByContext?.(window.location.href, data);
         if (autofillModule?.run) {
             await autofillModule.run(data);
@@ -864,6 +990,7 @@
     }
 
     async function runStep1(data) {
+        if (!(await canRunWizardAction(data))) return;
         console.log("🔹 Step 1: Init Form & Email Verification");
 
         async function selectTuxDropdown(searchText) {
@@ -917,8 +1044,10 @@
     }
 
     async function runStep2(data) {
+        if (!(await canRunWizardAction(data))) return;
         const platform = "tiktok";
         const reporterFullName = await resolveReporterFullName(data);
+        if (!(await canRunWizardAction(data))) return;
         const defaults = {
             company: COPYRIGHT_OWNER_NAME,
             phone: TWITCH_CONTACT_PHONE,
@@ -947,8 +1076,10 @@
     }
 
     async function runStep3(data) {
+        if (!(await canRunWizardAction(data))) return;
         console.log("🔹 Step 3: Infringement Details & Sign");
         const defaults = { name: await resolveReporterFullName(data) };
+        if (!(await canRunWizardAction(data))) return;
 
         fillByLabel('signature', defaults.name);
 
@@ -1180,20 +1311,27 @@
         launcher.innerText = "Wizard ✥";
 
         launcher.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             // Fetch fresh data in case the user added things while the wizard was closed
             const res = await chrome.storage.local.get(['piracy_cart', 'reporterInfo']);
             const cart = res.piracy_cart || [];
             const info = res.reporterInfo || {};
+            if (!cart.length || !info.name) { clearWizard(); return; }
             const freshData = {
-                fullName: info.name || data?.fullName || "",
-                email: info.email || data?.email || TIKTOK_VERIFICATION_EMAIL,
+                fullName: info.name,
+                email: info.email || TIKTOK_VERIFICATION_EMAIL,
+                cart,
                 urls: cart.map(c => c.url),
-                platform: cart[0]?.platform || data?.platform || "TikTok",
-                eventName: info.eventName || data?.eventName || "",
-                vertical: info.vertical || data?.vertical || "",
-                eventConfig: info.eventConfig || data?.eventConfig || null,
-                sourceUrl: info.sourceUrl || data?.sourceUrl || ""
+                platform: cart[0]?.platform || "TikTok",
+                eventName: info.eventName || "",
+                vertical: info.vertical || "",
+                eventConfig: info.eventConfig || null,
+                sourceUrl: info.sourceUrl || ""
             };
+            const access = await getAutofillAccess(freshData.platform);
+            if (!access || !(await bindWizardData(freshData, access.profile, true)) ||
+                !(await canRunWizardAction(freshData))) { clearWizard(); return; }
+            lastReportData = freshData;
             createTikTokOverlay(freshData);
         });
         document.body.appendChild(launcher);
@@ -1298,6 +1436,7 @@
         const logContainer = document.getElementById('flo-x-log-container');
 
         btn1.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn1.innerText = 'Running...';
             await runTwitterStep1(data);
             btn1.innerText = 'Step 1: Done';
@@ -1308,6 +1447,7 @@
         });
 
         btn2.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn2.innerText = 'Running...';
             await runTwitterStep2(data);
             btn2.innerText = 'Step 2: Done';
@@ -1318,6 +1458,7 @@
         });
 
         btn3.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn3.innerText = 'Running...';
             await runTwitterStep3(data);
             btn3.innerText = 'Step 3: Done';
@@ -1328,10 +1469,12 @@
         });
 
         document.getElementById('flo-x-log-btn').addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
             const status = document.getElementById('flo-x-log-status');
             status.innerText = 'Logging...';
             const freshData = await getFreshTwitterReportData(data);
+            if (!(await canRunWizardAction(data))) return;
             chrome.runtime.sendMessage({ action: 'logToSheet', data: freshData }, (response) => {
                 if (response && response.success) {
                     successAudio.play().catch(() => {});
@@ -1448,6 +1591,7 @@
         const logContainer = document.getElementById('flo-ig-log-container');
 
         btn1.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn1.innerText = 'Running...';
             await runIgStep1(data);
             btn1.innerText = 'Step 1: Done';
@@ -1458,6 +1602,7 @@
         });
 
         btn2.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn2.innerText = 'Running...';
             await runIgStep2(data);
             btn2.innerText = 'Step 2: Done';
@@ -1468,6 +1613,7 @@
         });
 
         btn3.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn3.innerText = 'Running...';
             await runIgStep3(data);
             btn3.innerText = 'Step 3: Done';
@@ -1476,7 +1622,8 @@
             logContainer.style.display = 'block';
         });
 
-        document.getElementById('flo-ig-log-btn').addEventListener('click', () => {
+        document.getElementById('flo-ig-log-btn').addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
             const status = document.getElementById('flo-ig-log-status');
             status.innerText = 'Logging...';
@@ -1656,6 +1803,7 @@
         const logContainer = document.getElementById('flo-log-container');
 
         btn1.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn1.innerText = "Running...";
             const transitioned = await runStep1(data);
 
@@ -1677,6 +1825,7 @@
         });
 
         btn2.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn2.innerText = "Running...";
             const transitioned = await runStep2(data);
 
@@ -1698,6 +1847,7 @@
         });
 
         btn3.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn3.innerText = "Running...";
             await runStep3(data);
             btn3.innerText = "Step 3: Done";
@@ -1709,7 +1859,8 @@
             overlay.style.borderColor = "var(--brand-primary)";
         });
 
-        document.getElementById("flo-log-btn").addEventListener("click", () => {
+        document.getElementById("flo-log-btn").addEventListener("click", async () => {
+            if (!(await canRunWizardAction(data))) return;
         // Unlock audio context instantly on click
         const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
         successAudio.play().then(() => successAudio.pause()).catch(()=>{});
@@ -1822,7 +1973,8 @@
           overlay.remove();
       });
 
-      document.getElementById("flo-log-btn").addEventListener("click", () => {
+      document.getElementById("flo-log-btn").addEventListener("click", async () => {
+            if (!(await canRunWizardAction(data))) return;
         const status = document.getElementById("flo-log-status");
         status.innerText = "Logging...";
         chrome.runtime.sendMessage({ action: "logToSheet", data: data }, (response) => {
@@ -1938,6 +2090,7 @@
         const logContainer = document.getElementById('flo-log-container');
 
         btn1.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn1.innerText = "Running...";
             await runYtStep1(data);
             btn1.innerText = "Step 1: Done";
@@ -1946,6 +2099,7 @@
         });
 
         btn2.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn2.innerText = "Running...";
             await runYtStep2(data);
             btn2.innerText = "Step 2: Done";
@@ -1954,6 +2108,7 @@
         });
 
         btn3.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
             btn3.innerText = "Running...";
             await runYtStep3(data);
             btn3.innerText = "Step 3: Done";
@@ -1961,7 +2116,8 @@
             logContainer.style.display = "block";
         });
 
-    document.getElementById("flo-log-btn").addEventListener("click", (e) => {
+    document.getElementById("flo-log-btn").addEventListener("click", async (e) => {
+            if (!(await canRunWizardAction(data))) return;
         // 1. Create the audio object IMMEDIATELY on click to capture user permission
         const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
 
@@ -2069,6 +2225,7 @@ function createTwitchOverlay(data) {
     const logContainer = document.getElementById('flo-log-container');
 
     btn1.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
         btn1.innerText = "Running...";
         await runTwitchStep1(data);
         btn1.innerText = "Step 1: Done";
@@ -2077,6 +2234,7 @@ function createTwitchOverlay(data) {
     });
 
     btn2.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
         btn2.innerText = "Running...";
         await runTwitchStep2(data);
         btn2.innerText = "Step 2: Done";
@@ -2085,6 +2243,7 @@ function createTwitchOverlay(data) {
     });
 
     btn3.addEventListener('click', async () => {
+            if (!(await canRunWizardAction(data))) return;
         btn3.innerText = "Running...";
         await runTwitchStep3(data);
         btn3.innerText = "Step 3: Done";
@@ -2092,7 +2251,8 @@ function createTwitchOverlay(data) {
         logContainer.style.display = "block";
     });
 
-    document.getElementById("flo-log-btn").addEventListener("click", (event) => {
+    document.getElementById("flo-log-btn").addEventListener("click", async (event) => {
+            if (!(await canRunWizardAction(data))) return;
         const successAudio = new Audio(chrome.runtime.getURL('jingle.mp3'));
         if (event.target) event.target.disabled = true;
         const status = document.getElementById("flo-log-status");
@@ -2119,6 +2279,7 @@ function createTwitchOverlay(data) {
 }
 
 async function runTwitchStep1(data) {
+        if (!(await canRunWizardAction(data))) return;
     fillFieldWithFallback(
         ['textarea[name="copyrightWorkAllegedlyInfringed"]'],
         ['Describe the copyrighted work'],
@@ -2148,6 +2309,7 @@ async function addTwitchUrlToList(type, url) {
 }
 
 async function runTwitchStep2(data) {
+        if (!(await canRunWizardAction(data))) return;
     const buckets = getTwitchReportBuckets(data);
     const orderedEntries = [
         ['live', buckets.live],
@@ -2163,7 +2325,9 @@ async function runTwitchStep2(data) {
 }
 
 async function runTwitchStep3(data) {
+        if (!(await canRunWizardAction(data))) return;
     const reporterFullName = await resolveReporterFullName(data);
+    if (!(await canRunWizardAction(data))) return;
     const contactEmail = TWITCH_CONTACT_EMAIL;
 
     fillFieldWithFallback(['input[name="claimantName"]'], ['Your name or organization'], reporterFullName);
@@ -2221,6 +2385,7 @@ function setupDrag(overlay) {
     // 4. STRATEGY LOGIC (YOUTUBE, ETC)
     // ==========================================
     async function runYtStep1(data) {
+        if (!(await canRunWizardAction(data))) return;
         console.log("📝 Running YouTube Step 1: Videos...");
         const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
         const defaults = conf.defaults || {};
@@ -2371,6 +2536,7 @@ function setupDrag(overlay) {
     }
 
     async function runYtStep2(data) {
+        if (!(await canRunWizardAction(data))) return;
         console.log("📝 Running YouTube Step 2: Copyright owner...");
         const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
         const defaults = conf.defaults || {};
@@ -2436,11 +2602,13 @@ function setupDrag(overlay) {
     }
 
     async function runIgStep1(data) {
+        if (!(await canRunWizardAction(data))) return;
         console.log("📝 Running Instagram Step 1: Contact information...");
         const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
         const fields = conf.fields || {};
         const defaults = conf.defaults || {};
         const reporterFullName = await resolveReporterFullName(data);
+        if (!(await canRunWizardAction(data))) return;
         const contactEmail = TIKTOK_VERIFICATION_EMAIL;
 
         checkChoiceField(
@@ -2480,6 +2648,7 @@ function setupDrag(overlay) {
     }
 
     async function runIgStep2(data) {
+        if (!(await canRunWizardAction(data))) return;
         console.log("📝 Running Instagram Step 2: Copyrighted work details...");
         const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
         const fields = conf.fields || {};
@@ -2516,10 +2685,12 @@ function setupDrag(overlay) {
     }
 
     async function runIgStep3(data) {
+        if (!(await canRunWizardAction(data))) return;
         console.log("📝 Running Instagram Step 3: Report links & declaration...");
         const conf = AUTOFILL_CONFIG.instagram?.autofill || {};
         const fields = conf.fields || {};
         const reporterFullName = await resolveReporterFullName(data);
+        if (!(await canRunWizardAction(data))) return;
         const urls = Array.isArray(data.urls) ? data.urls.filter(Boolean) : [];
         const urlsToReport = urls.slice(0, INSTAGRAM_BATCH_LIMIT);
         const contentUrlSelectors = mergeSelectorFallbacks(fields.content_urls, [
@@ -2569,11 +2740,13 @@ function setupDrag(overlay) {
     }
 
     async function fillInstagram(data) {
+        if (!(await canRunWizardAction(data))) return;
         await runIgStep1(data);
         await runIgStep2(data);
         await runIgStep3(data);
     }
     async function runYtStep3(data) {
+        if (!(await canRunWizardAction(data))) return;
         console.log("📝 Running YouTube Step 3: Legal agreements...");
         const conf = AUTOFILL_CONFIG.youtube?.autofill || {};
         const ownerInputs = conf.inputs || {};
@@ -2631,6 +2804,7 @@ function setupDrag(overlay) {
         console.log("✅ YouTube Step 3 Complete!");
     }
     async function fillTwitter(data) {
+        if (!(await canRunWizardAction(data))) return;
         const conf = AUTOFILL_CONFIG.twitter?.autofill || {};
         if(conf.name) {
             const el = document.querySelector(`[name="${conf.name}"]`);
@@ -2640,7 +2814,7 @@ function setupDrag(overlay) {
 
     // 5. SPA WAKE-UP LISTENER
     // Automatically re-injects the widget or toggles the launcher tab if TikTok's React routing destroys the DOM node.
-    setInterval(() => {
+    setInterval(async () => {
         const isReportPage = window.location.href.toLowerCase().includes('tiktok.com/legal/report') || window.location.href.toLowerCase().includes('ipr.tiktokforbusiness');
         const launcher = document.getElementById('flo-wiz-launcher');
         const wiz = document.getElementById('flo-upload-overlay');
@@ -2653,7 +2827,8 @@ function setupDrag(overlay) {
                 launcher.style.right = '0px';
             }
         } else if (isReportPage && !wiz && lastReportData) {
-            createLauncherTab(lastReportData);
+            const data = lastReportData;
+            if (await canRunWizardAction(data) && data === lastReportData) createLauncherTab(data);
         }
     }, 1000);
 

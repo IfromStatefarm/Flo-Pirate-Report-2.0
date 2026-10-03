@@ -661,19 +661,25 @@ export function createReportingWorkflow({
         await assertActive(customerProfile);
         const latest = await chrome.storage.local.get(['piracy_cart', 'report_operation_v1']);
         const remainingCart = (latest.piracy_cart || []).filter(item => !submittedCaptureKeys.has(captureKey(item)));
-        await writeReportState({ piracy_cart: remainingCart });
-        if (!remainingCart.length) await chrome.storage.local.remove('piracy_cart');
-
-        const operations = latest.report_operation_v1;
-        if (belongsToScope(operations, customerProfile)) {
-          for (const key of submittedOperationKeys) delete operations.groups[key];
-          await writeReportState({ report_operation_v1: operations });
-          if (!Object.keys(operations.groups).length) await chrome.storage.local.remove('report_operation_v1');
-        }
         const retainedScreenshotIds = new Set(remainingCart
           .filter(item => belongsToScope(item, customerProfile)).map(item => item.screenshotId));
         await assertActive(customerProfile);
         await deleteImages(submittedScreenshotIds.filter(id => !retainedScreenshotIds.has(id)), customerProfile);
+
+        // Keep the queued capture and its cached submission until image cleanup
+        // succeeds. A restarted worker can replay finalization and finish cleanup.
+        const operations = latest.report_operation_v1;
+        if (belongsToScope(operations, customerProfile)) {
+          for (const key of submittedOperationKeys) delete operations.groups[key];
+        }
+        await writeReportState({
+          piracy_cart: remainingCart,
+          ...(belongsToScope(operations, customerProfile) ? { report_operation_v1: operations } : {})
+        });
+        if (!remainingCart.length) await chrome.storage.local.remove('piracy_cart');
+        if (belongsToScope(operations, customerProfile) && !Object.keys(operations.groups).length) {
+          await chrome.storage.local.remove('report_operation_v1');
+        }
       });
 
       return { success: true, eventIds: recordedEventIds };

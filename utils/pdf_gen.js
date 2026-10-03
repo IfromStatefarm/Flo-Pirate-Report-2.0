@@ -1,4 +1,5 @@
 import { resolvePdfTheme, hexToRgb, applyDataScopeMetadata, getJsPdfConstructor } from './pdf_common.js';
+import { validatePdfLogo } from './pdf_logo.js';
 export { resolvePdfTheme } from './pdf_common.js';
 export { generatePDF } from '../services/report_service.js';
 
@@ -315,7 +316,7 @@ export async function generateIntelligencePDF(stats, customerContext, dataScope 
     doc.setFontSize(22);
     doc.text(`${pdfTheme.product.displayName.toUpperCase()} INTELLIGENCE BRIEFING`, pageWidth / 2, 22, { align: "center" });
     if (pdfTheme.logoDataUrl) {
-      try { doc.addImage(pdfTheme.logoDataUrl, 12, 9, 26, 26); } catch (error) { console.warn('Briefing logo skipped:', error.message); }
+      try { doc.addImage(validatePdfLogo(pdfTheme.logoDataUrl).dataUrl, 12, 9, 26, 26); } catch (error) { console.warn('Briefing logo skipped:', error.message); }
     }
 
     doc.setTextColor(255, 255, 255);

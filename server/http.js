@@ -2,6 +2,8 @@ import { ApiError } from './api_error.js';
 import { verifyGoogleIdentity } from './google_identity.js';
 import { createCustomerApiService } from './customer_api_service.js';
 import { createPostgresRepository } from './postgres_repository.js';
+import { CUSTOMER_API_CAPABILITY } from './protocol.js';
+import { TEAM_API_CAPABILITY } from '../utils/team_access.js';
 
 let service;
 
@@ -25,6 +27,9 @@ function responseHeaders(request) {
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
+    'X-Rights-Reporter-API': CUSTOMER_API_CAPABILITY,
+    'X-Rights-Reporter-Team': TEAM_API_CAPABILITY,
+    'Access-Control-Expose-Headers': 'X-Rights-Reporter-API, X-Rights-Reporter-Team',
     ...(allowedOrigin ? {
       'Access-Control-Allow-Origin': allowedOrigin,
       Vary: 'Origin'

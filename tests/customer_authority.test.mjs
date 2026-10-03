@@ -7,7 +7,7 @@ import { requirePermission } from '../server/access_policy.js';
 import { GOOGLE_OPERATION_PERMISSIONS } from '../server/integrations/google_command_policy.js';
 
 const config = JSON.parse(await fs.readFile(new URL('../migrations/flosports/customer.json', import.meta.url)));
-const dataOperations = ['record_event', 'query_statistics', 'query_legacy_statistics', 'generate_report', 'finalize_report_batch', 'google_operation'];
+const dataOperations = ['record_event', 'query_statistics', 'query_legacy_statistics', 'generate_report', 'finalize_report_batch', 'google_operation', 'reconcile_google_upload'];
 const memberOperations = ['list_members', 'mutate_membership', 'team_list', 'team_history', 'team_preview', 'team_commit'];
 
 test('every extension operation verifies the bearer identity before reaching persistence', async () => {
@@ -26,7 +26,7 @@ test('every extension operation verifies the bearer identity before reaching per
       }
     }
   }
-  assert.equal(providerCalls, 13);
+  assert.equal(providerCalls, 14);
 });
 
 test('forged extension authority is rejected, and accepted scope comes from the resolved member', async () => {

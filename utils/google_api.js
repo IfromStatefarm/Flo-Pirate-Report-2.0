@@ -24,5 +24,12 @@ export async function uploadToDrive(_token,folderId,name,blob,mimeType,scope) {
   for(let offset=0;offset<bytes.length;offset+=32768) binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
   const base64=btoa(binary);
   const requestId=await stableOperationId(scope?.customerId,scope?.userId,scope?.eventId,name,base64);
-  return googleOperation('uploadToDrive',[folderId,name,base64,mimeType,scope?.eventId],{requestId,expectedScope:scope});
+  const args = [folderId,name,base64,mimeType,scope?.eventId];
+  try {
+    return await googleOperation('uploadToDrive',args,{requestId,expectedScope:scope});
+  } catch (error) {
+    if (error.code !== 'operation_uncertain') throw error;
+    // Reconciliation only reads provider evidence; it never issues another upload.
+    return googleOperation('uploadToDrive',args,{requestId,expectedScope:scope,reconcile:true});
+  }
 }

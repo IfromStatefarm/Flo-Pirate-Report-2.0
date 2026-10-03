@@ -26,3 +26,9 @@ export function requirePermission(actor, permission) {
   assert(canPerform(actor, permission), 403, 'not_authorized',
     'The verified member is not authorized for this customer operation.');
 }
+
+export function requireReportMode(actor, mode) {
+  assert(['scout', 'enforcer'].includes(mode), 400, 'invalid_report', 'Unsupported report mode.');
+  requirePermission(actor, 'sidepanel.report');
+  if (mode === 'enforcer') requirePermission(actor, 'sidepanel.enforce');
+}

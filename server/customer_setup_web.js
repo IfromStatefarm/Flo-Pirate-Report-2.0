@@ -110,6 +110,11 @@ code { background: #e2e8f0; border-radius: 5px; padding: 2px 5px; }
 .directory-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .directory-heading h2 { margin: 0 0 5px; }
 .directory-heading p { margin: 0; color: #64748b; }
+.customer-search { display: flex; align-items: end; gap: 10px; margin-bottom: 18px; }
+.customer-search label { flex: 1; max-width: 640px; }
+.customer-search .button { margin: 0; }
+.subscription-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.subscription-heading h2 { margin: 0; }
 .customer-grid { display: grid; gap: 14px; }
 .customer-card { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(110px, 0.55fr)) auto; gap: 16px; align-items: center; padding: 17px; border: 1px solid #cbd5e1; border-radius: 12px; background: white; }
 .customer-name { min-width: 0; }
@@ -189,6 +194,7 @@ code { background: #e2e8f0; border-radius: 5px; padding: 2px 5px; }
   .image-thumbnail-button { min-height: 96px; }
   .mock-settings-header { grid-template-columns: 1fr; }
   .header-row, .directory-heading { display: grid; }
+  .customer-search, .subscription-heading { flex-wrap: wrap; }
   .customer-card { grid-template-columns: 1fr 1fr; }
   .customer-name, .customer-card .actions { grid-column: 1 / -1; }
 }
@@ -1028,7 +1034,7 @@ function displayTimestamp(value) {
   });
 }
 
-function renderCustomerDirectory(customers) {
+function renderCustomerDirectory(customers, search = '') {
   const cards = customers.map((customer) => {
     const customerPath = encodeURIComponent(customer.customerId);
     const statusClass = customer.configurationValid ? (customer.active ? '' : 'inactive') : 'invalid';
@@ -1045,7 +1051,13 @@ function renderCustomerDirectory(customers) {
   }).join('');
   return page('Customers', `
     <div class="directory-heading"><div><h2>Customers</h2><p>Authoritative customer profiles stored in Lakebase Postgres.</p></div><a class="button" href="/">Create customer</a></div>
-    ${customers.length ? `<div class="customer-grid">${cards}</div>` : '<div class="empty-state">No customer profiles have been created yet.</div>'}
+    <form class="customer-search" method="get" action="/customers" role="search">
+      <label for="customer-search">Search customers by name, Wix site / account ID, authorized domain, or user email
+        <input id="customer-search" name="q" type="search" value="${escapeHtml(search)}" maxlength="254" autocomplete="off">
+      </label>
+      <button type="submit">Search</button>${search ? '<a class="button secondary" href="/customers">Clear</a>' : ''}
+    </form>
+    ${customers.length ? `<div class="customer-grid">${cards}</div>` : `<div class="empty-state">${search ? 'No customers match your search.' : 'No customer profiles have been created yet.'}</div>`}
   `);
 }
 
@@ -1263,8 +1275,10 @@ export async function startCustomerSetupServer({
         return;
       }
       if (request.method === 'GET' && url.pathname === '/customers') {
-        const customers = await list(pool);
-        send(response, 200, renderCustomerDirectory(customers), 'text/html; charset=utf-8', csrfCookie);
+        const search = String(url.searchParams.get('q') || '').trim();
+        if (search.length > 254) throw new ApiError(400, 'invalid_search', 'Search terms must be 254 characters or fewer.');
+        const customers = await list(pool, search);
+        send(response, 200, renderCustomerDirectory(customers, search), 'text/html; charset=utf-8', csrfCookie);
         return;
       }
       const statusCustomerId = customerRouteId(url.pathname, 'status');

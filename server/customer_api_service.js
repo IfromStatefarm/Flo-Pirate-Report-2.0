@@ -1,5 +1,5 @@
 import { verifyReportPolicy } from './report_policy.js';
-import { permissionsFor, requirePermission, EVENT_PERMISSIONS } from './access_policy.js';
+import { permissionsFor, requirePermission, requireReportMode, EVENT_PERMISSIONS } from './access_policy.js';
 import { TEAM_OPERATIONS, validateTeamRequest } from '../utils/team_access.js';
 import { validateCustomerAccessProfile } from '../utils/access_control.js';
 import { validateCustomerConfig } from '../utils/customer_config.js';
@@ -250,11 +250,17 @@ export function createCustomerApiService({
 
   async function data(request, body) {
     const identity = await verifyIdentity(request);
-    if (body?.operation === 'google_operation') {
-      exactObject(body, ['protocol_version','operation','command']);
+    if (['google_operation', 'reconcile_google_upload'].includes(body?.operation)) {
+      exactObject(body, ['protocol_version','operation','intended_scope','command']);
       assert(body.protocol_version === 1,400,'invalid_request','Unsupported operation protocol.');
+      exactObject(body.intended_scope, ['customer_id','user_id'], 'intended_scope');
       const actor = await repository.requireActiveMember(identity);
-      return createGoogleOperations({repository}).execute(actor,body.command,readBearerToken(request));
+      assert(body.intended_scope.customer_id === actor.customerId && body.intended_scope.user_id === actor.memberId,
+        403, 'scope_mismatch', 'Request scope does not match the verified identity.');
+      const google = createGoogleOperations({repository});
+      return body.operation === 'reconcile_google_upload'
+        ? google.reconcileUpload(actor, body.command, readBearerToken(request))
+        : google.execute(actor,body.command,readBearerToken(request));
     }
     if(body?.operation==='finalize_report_batch') {
       exactObject(body,['protocol_version','operation','batch']);
@@ -274,6 +280,7 @@ export function createCustomerApiService({
       }
       const actor=await repository.requireActiveMember(identity);
       requirePermission(actor,'sidepanel.report');
+      for (const report of batch.reports) requireReportMode(actor, report.mode);
       const result=await repository.finalizeReportBatch(actor,batch,now());
       await repository.claimIntegrationResources(actor);
       const {adapter}=await createGoogleOperations({repository}).adapterFor(actor,readBearerToken(request));
@@ -318,6 +325,7 @@ export function createCustomerApiService({
       parsed.event.user_id = actor.memberId;
       requirePermission(actor, EVENT_PERMISSIONS[parsed.event.event_type]);
       authorizeEventPlatforms(actor, parsed.event);
+      if (parsed.event.event_type === 'report.submitted') requireReportMode(actor, parsed.event.attributes.mode);
       const accepted=await repository.recordEvent(actor, parsed.event, now());
       if(parsed.event.event_type==='report.submitted') {
         await repository.claimIntegrationResources(actor);

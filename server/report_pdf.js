@@ -1,4 +1,5 @@
 import { resolvePdfTheme, hexToRgb, applyDataScopeMetadata, getJsPdfConstructor } from '../utils/pdf_common.js';
+import { validatePdfLogo } from '../utils/pdf_logo.js';
 
 export async function generatePDF(data) {
   const pdfTheme = resolvePdfTheme(data?.customerContext);
@@ -34,9 +35,13 @@ export async function generatePDF(data) {
         const lines = doc.splitTextToSize(text, maxWidth);
         const lineHeight = doc.getFontSize() * 0.4; 
         const textBlockHeight = lines.length * lineHeight;
-        ensureSpace(textBlockHeight);
-        doc.text(lines, x, y);
-        y += textBlockHeight + paddingBottom;
+        ensureSpace(Math.min(textBlockHeight, pageHeight - 2 * margin - 5));
+        for (const line of lines) {
+            ensureSpace(lineHeight);
+            doc.text(line, x, y);
+            y += lineHeight;
+        }
+        y += paddingBottom;
     };
 
     const drawTableHeader = () => {
@@ -57,15 +62,14 @@ export async function generatePDF(data) {
     doc.setTextColor(...brandRgb);
     doc.text(`${pdfTheme.product.displayName.toUpperCase()} REPORT`, pageWidth / 2, y, { align: "center" });
     if (pdfTheme.logoDataUrl) {
-      try { doc.addImage(pdfTheme.logoDataUrl, 15, 10, 18, 18); } catch (error) { console.warn('PDF logo skipped:', error.message); }
+      try { doc.addImage(validatePdfLogo(pdfTheme.logoDataUrl).dataUrl, 15, 10, 18, 18); } catch (error) { console.warn('PDF logo skipped:', error.message); }
     }
     y += 15;
 
     // --- HEADER INFO ---
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(18);
-    doc.text(`INFRINGER: @${data.handle}`, margin, y);
-    y += 10;
+    drawWrappedText(`INFRINGER: @${data.handle}`, margin, pageWidth - 2 * margin, 3);
 
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
@@ -103,7 +107,7 @@ export async function generatePDF(data) {
     let totalViews = 0;
 
     if (data.items && Array.isArray(data.items)) {
-        data.items.forEach((item, index) => {
+        data.items.forEach((item) => {
             let viewCount = 0;
             if (item.views && item.views !== "N/A" && item.views !== "PENDING" && item.views !== "DELETED") {
                 const v = String(item.views).toLowerCase();
@@ -113,24 +117,38 @@ export async function generatePDF(data) {
             }
             totalViews += viewCount;
 
-            let displayUrl = item.url.length > 55 ? item.url.substring(0, 52) + "..." : item.url;
+            const urlLines = doc.splitTextToSize(item.url, 104);
+            const lineHeight = 5;
+            const rowPadding = 2;
+            const rowHeight = urlLines.length * lineHeight + rowPadding;
+            // Keep ordinary rows together; exceptionally long URLs can span pages.
+            const fullPageRowHeight = pageHeight - 2 * margin - 5 - 8;
+            if (ensureSpace(Math.min(rowHeight, fullPageRowHeight))) drawTableHeader();
 
-            if (ensureSpace(10)) drawTableHeader();
-
-            doc.text(displayUrl, margin + 2, y);
-            doc.text(String(item.views || "N/A"), margin + 110, y);
-            
-            if (item.screenshotLink && item.screenshotLink.startsWith('http')) {
-                doc.setTextColor(0, 0, 255);
-                doc.textWithLink("View Evidence", margin + 140, y, { url: item.screenshotLink });
+            const drawRowDetails = () => {
+                doc.text(String(item.views || "N/A"), margin + 110, y);
+                if (item.screenshotLink && item.screenshotLink.startsWith('http')) {
+                    doc.setTextColor(0, 0, 255);
+                    doc.textWithLink("View Evidence", margin + 140, y, { url: item.screenshotLink });
+                } else {
+                    doc.setTextColor(150);
+                    doc.text("No Image", margin + 140, y);
+                }
                 doc.setTextColor(0, 0, 0);
-            } else {
-                doc.setTextColor(150);
-                doc.text("No Image", margin + 140, y);
-                doc.setTextColor(0);
+            };
+
+            drawRowDetails();
+            for (const line of urlLines) {
+                if (ensureSpace(lineHeight)) {
+                    drawTableHeader();
+                    drawRowDetails();
+                }
+                doc.setTextColor(0, 0, 255);
+                doc.textWithLink(line, margin + 2, y, { url: item.url });
+                doc.setTextColor(0, 0, 0);
+                y += lineHeight;
             }
-            
-            y += 7;
+            y += rowPadding;
         });
     }
 
@@ -155,7 +173,7 @@ export async function generatePDF(data) {
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
-    doc.text(`TO: @${data.handle}`, margin, y); y += 5;
+    drawWrappedText(`TO: @${data.handle}`, margin, pageWidth - 2 * margin, 1);
     doc.text(`DATE: ${fullDate}`, margin, y); y += 5;
     doc.text(`NOTICE ID: ${reportId}`, margin, y); y += 10;
 
@@ -252,4 +270,3 @@ export async function generatePDF(data) {
      return new Blob([textContent], { type: 'text/plain' });
   }
 }
-

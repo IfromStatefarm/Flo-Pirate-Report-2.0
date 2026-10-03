@@ -111,6 +111,22 @@ test('customer directory returns safe validated summaries', async () => {
   assert.equal(customers[1].totalUserCap, null);
 });
 
+test('customer directory search checks names, Wix accounts, allowed domains, and member emails', async () => {
+  let statement;
+  const customers = await listCustomers({
+    query: async (sql, parameters) => {
+      statement = { sql, parameters };
+      return { rows: [] };
+    }
+  }, '  ivan.mcclay@flosports.tv  ');
+  assert.deepEqual(customers, []);
+  assert.deepEqual(statement.parameters, ['ivan.mcclay@flosports.tv']);
+  for (const field of ["c.customer_id", "displayName", "productName", "billing_order_links", "b.account_id", "allowedEmailDomains", "customer_memberships member", "member.email"]) {
+    assert.ok(statement.sql.includes(field), `missing searchable field: ${field}`);
+  }
+  assert.match(statement.sql, /lower\(\$1\)/);
+});
+
 test('customer updates require the fixed contract and exactly one new version', () => {
   assert.equal(validateCustomerUpdateRequest(updateRequest()).valid, true);
 

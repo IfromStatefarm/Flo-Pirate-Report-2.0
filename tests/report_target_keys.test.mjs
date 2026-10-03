@@ -10,9 +10,9 @@ const report = urls => ({
 });
 const targetKey = url => reportTargetKeys(report([url]))[0].targetKey;
 
-test('TikTok tracking and share parameters use the existing clean video key', () => {
+test('TikTok tracking and share parameters use a stable video ID key', () => {
   const expected = crypto.createHash('sha256')
-    .update('https://tiktok.com/@pirate/video/7420000000000000001').digest('hex');
+    .update('tiktok:7420000000000000001').digest('hex');
   for (const suffix of [
     '', '?utm_source=copy&utm_medium=share', '?utm_source=other',
     '?_t=abc&_r=1', '?is_from_webapp=1&sender_device=pc&web_id=123',
@@ -20,6 +20,16 @@ test('TikTok tracking and share parameters use the existing clean video key', ()
     '?_r=1&_t=abc&_t=def#comments', '/?utm_campaign=event'
   ]) {
     assert.equal(targetKey(video + suffix), expected, suffix);
+  }
+});
+
+test('TikTok handles, accepted hosts, protocols and supported video routes share one key', () => {
+  for (const host of ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com', 'M.TIKTOK.COM.']) {
+    for (const path of ['@renamed/video', '@another/video', 'share/video', 'embed/v2', 'player/v1']) {
+      for (const protocol of ['http', 'https']) {
+        assert.equal(targetKey(`${protocol}://${host}/${path}/7420000000000000001/?_r=2#comments`), targetKey(video));
+      }
+    }
   }
 });
 
@@ -32,12 +42,26 @@ test('different TikTok videos and different works remain distinct', () => {
   assert.equal(original.targetKey, otherWork.targetKey);
 });
 
-test('query identity is preserved outside TikTok video paths and domains', () => {
+test('unsupported TikTok routes and invalid IDs fail closed', () => {
   for (const base of [
     'https://tiktok.com/search',
     'https://tiktok.com/@pirate',
     'https://tiktok.com/@pirate/video/not-an-id',
     'https://tiktok.com/@pirate/video/7420000000000000001/other',
+    'https://tiktok.com/@pirate/video/0',
+    'https://tiktok.com/@pirate/video/07420000000000000001',
+    'https://tiktok.com/@pirate/video/18446744073709551616',
+    'https://tiktok.com/@pirate/video/7420000000000000001e0',
+    'https://tiktok.com/@pirate/video/%37' + '420000000000000001',
+    'https://tiktok.com:8443/@pirate/video/7420000000000000001',
+    'https://user@tiktok.com/@pirate/video/7420000000000000001',
+    'https://arbitrary.tiktok.com/@pirate/video/7420000000000000001',
+    'https://vm.tiktok.com/ShortCode/'
+  ]) assert.throws(() => targetKey(base), { code: 'target_identity_unverified' }, base);
+});
+
+test('query identity is preserved for other domains', () => {
+  for (const base of [
     'https://tiktok.com.example.org/@pirate/video/7420000000000000001',
     'https://nottiktok.com/@pirate/video/7420000000000000001',
     'https://example.org/watch'
@@ -50,7 +74,8 @@ test('query identity is preserved outside TikTok video paths and domains', () =>
 
 test('report policy rejects tracked copies before provider calls', async () => {
   const actor = { platforms: ['tiktok'] };
-  for (const urls of [[video, video], [video, video + '?_t=abc'], [video + '?_r=1', video + '?_r=2']]) {
+  for (const urls of [[video, video], [video, video + '?_t=abc'], [video + '?_r=1', video + '?_r=2'],
+    [video, video.replace('@pirate', '@renamed')], [video, video.replace('www.', 'm.').replace('@pirate', '@other')]]) {
     await assert.rejects(verifyReportPolicy(actor, report(urls), {}), { code: 'invalid_report' });
   }
 });

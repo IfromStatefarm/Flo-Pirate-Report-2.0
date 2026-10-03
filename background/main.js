@@ -160,6 +160,7 @@ const ACTION_ACCESS_POLICIES = Object.freeze({
   clearCart: { permission: PERMISSIONS.SIDEPANEL_REPORT },
   undoCart: { permission: PERMISSIONS.SIDEPANEL_REPORT },
   initRogueTakedown: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
+  captureRogueFromSidepanel: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
   logRogueToSheet: { permission: PERMISSIONS.SIDEPANEL_REPORT, platformScoped: true },
   getGamificationStats: { permission: PERMISSIONS.SIDEPANEL_SCOREBOARD },
   getRecommendedStartRow: { permission: PERMISSIONS.SIDEPANEL_AUTOMATE },
@@ -233,6 +234,10 @@ async function authorizeAction(action, request) {
   }
 
   const profile = await accessRegistry.requirePermission(policy.permission);
+  if ((action === 'processQueue' && request.data?.mode !== 'scout') ||
+      ['startRumbleQueue', 'validateRumbleSession', 'advanceRumbleQueue'].includes(action)) {
+    await accessRegistry.requirePermission(PERMISSIONS.SIDEPANEL_ENFORCE);
+  }
   if (policy.platformScoped) {
     const requestedPlatforms = await getRequestPlatforms(request, policy);
     if (requestedPlatforms.length === 0) {
@@ -955,6 +960,25 @@ function createActionHandlers() {
 
     async initRogueTakedown(request, sender) {
       return rogueWorkflow.capture(request.data, sender.tab);
+    },
+
+    async captureRogueFromSidepanel(request) {
+      // Extension-page senders have no source web tab. Resolve the explicit
+      // selection here; never fall back to an unrelated active tab.
+      if (!Number.isInteger(request.tabId) || request.tabId < 0) {
+        throw new Error('Select a web tab before capturing.');
+      }
+      const tab = await chrome.tabs.get(request.tabId);
+      if (!tab.active || !Number.isInteger(tab.windowId) ||
+          !/^https?:\/\//i.test(tab.url || '') || tab.url !== request.data?.url ||
+          (tab.pendingUrl && tab.pendingUrl !== tab.url)) {
+        throw new Error('The selected page changed. Select it and capture again.');
+      }
+      const [activeTab] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+      if (activeTab?.id !== tab.id || activeTab.url !== tab.url) {
+        throw new Error('The selected page changed. Select it and capture again.');
+      }
+      return rogueWorkflow.capture(request.data, tab);
     },
 
     async logRogueToSheet(request) {

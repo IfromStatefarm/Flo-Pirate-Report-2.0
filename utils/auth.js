@@ -1,11 +1,14 @@
 // utils/auth.js
 
-export function getAuthToken({ interactive = true } = {}) {
+// Only an explicit sign-in action in an extension page should opt into prompts.
+export function getAuthToken({ interactive = false } = {}) {
   return new Promise((resolve, reject) => {
     chrome.identity.getAuthToken({ interactive }, (token) => {
-      if (chrome.runtime.lastError) {
-        console.error("Auth Error:", chrome.runtime.lastError);
-        reject(chrome.runtime.lastError);
+      const lastError = chrome.runtime.lastError;
+      if (lastError || !token) {
+        const message = lastError?.message || 'Chrome did not return a Google OAuth token.';
+        console.error("Auth Error:", message);
+        reject(new Error(message));
       } else {
         resolve(token);
       }

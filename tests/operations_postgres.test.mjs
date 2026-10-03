@@ -15,7 +15,7 @@ test('architecture controls against isolated Postgres',{skip:!process.env.TEST_D
   const report={reportId:'report-1',eventId:'event-1',eventName:'Final',vertical:'Sports',handle:'pirate',items:[{url:'https://youtube.com/watch?v=one',screenshotLink:'',views:'123'}]};
   const policy={version:1,platform:'youtube',multiplier:1};
   const render=async()=>new Blob(['%PDF-fixture'],{type:'application/pdf'});
-  const event={customer_id:f.id,user_id:actor.memberId,event_id:report.eventId,event_type:'report.submitted',occurred_at:Date.now()-100000,attributes:{report_id:report.reportId,platform:'youtube',urls:[report.items[0].url],url_count:9999,scout_points:999999,enforcer_points:999999,pdf_url:'https://drive.google.com/file/d/pdf-one/view'}};
+  const event={customer_id:f.id,user_id:actor.memberId,event_id:report.eventId,event_type:'report.submitted',occurred_at:Date.now()-100000,attributes:{mode:'enforcer',report_id:report.reportId,platform:'youtube',urls:[report.items[0].url],url_count:9999,scout_points:999999,enforcer_points:999999,pdf_url:'https://drive.google.com/file/d/pdf-one/view'}};
   await t.test('destination reservation rejects sharing across tenants',async()=>{
     await assert.rejects(pool.query("UPDATE customers SET config=jsonb_set(config,'{destinations,driveRootFolderId}',to_jsonb($2::text)) WHERE customer_id=$1",[other.id,actor.customerConfig.destinations.driveRootFolderId]),{code:'23514'});
     assert.equal((await pool.query("SELECT customer_id FROM customer_integration_resources WHERE resource_id=$1",[actor.customerConfig.destinations.driveRootFolderId])).rows[0].customer_id,f.id);
@@ -69,8 +69,40 @@ test('architecture controls against isolated Postgres',{skip:!process.env.TEST_D
     assert.deepEqual(await repo.runIntegrationOperation(actor,command,work),{ok:true});assert.equal(calls,1);
     await assert.rejects(repo.runIntegrationOperation(actor,{...command,args:[3,'Resolved']},work),{code:'operation_conflict'});
     const uncertain={...command,requestId:'uncertain'};
-    await assert.rejects(repo.runIntegrationOperation(actor,uncertain,async()=>{throw Error('Provider timeout');}),/Provider timeout/);
+    await assert.rejects(repo.runIntegrationOperation(actor,uncertain,async(_actor,journal)=>{await journal.beforeWrite();throw Error('Provider timeout');}),/Provider timeout/);
     await assert.rejects(repo.runIntegrationOperation(actor,uncertain,work),{code:'operation_uncertain'});assert.equal(calls,1);
+  });
+  await t.test('pre-write retry, fencing and upload reconciliation use the real tenant journal', async () => {
+    const bytes = Buffer.from('%PDF-journal');
+    const command = {name:'uploadToDrive',args:[actor.customerConfig.destinations.driveRootFolderId,'journal.pdf',bytes.toString('base64'),'application/pdf','journal-event'],requestId:'journal-retry'};
+    await assert.rejects(repo.runIntegrationOperation(actor,command,async()=>{throw Error('Guard unavailable');}),/Guard unavailable/);
+    const status = async () => (await pool.query('SELECT status FROM integration_operations WHERE customer_id=$1 AND operation_id=$2',[f.id,command.requestId])).rows[0].status;
+    assert.equal(await status(),'retryable');
+    await assert.rejects(repo.runIntegrationOperation(actor,command,async(_actor,journal)=>{
+      const rejected = await journal.beforeWrite();
+      assert.equal(await status(),'uncertain');
+      await rejected(); throw Error('Provider rejected');
+    }),/Provider rejected/);
+    assert.equal(await status(),'retryable');
+    await assert.rejects(repo.runIntegrationOperation(actor,command,async(_actor,journal)=>{await journal.beforeWrite();throw Error('Response lost');}),/Response lost/);
+    await assert.rejects(repo.reconcileIntegrationUpload(foreign,command,()=>assert.fail('Foreign receipt lookup')),{code:'operation_unavailable'});
+    const receipt={id:'journal-upload-file',webViewLink:'https://drive.google.com/file/d/journal-upload-file/view'};
+    const reconcile=()=>repo.reconcileIntegrationUpload(actor,command,async()=>receipt);
+    assert.deepEqual(await Promise.all([reconcile(),reconcile()]),[receipt,receipt]);
+    assert.equal(await status(),'completed');
+    assert.deepEqual(await repo.runIntegrationOperation(actor,command,()=>assert.fail('Duplicate upload')),receipt);
+    assert.equal((await pool.query('SELECT content_sha256 FROM integration_uploaded_files WHERE customer_id=$1 AND file_id=$2',[f.id,receipt.id])).rows[0].content_sha256,crypto.createHash('sha256').update(bytes).digest('hex'));
+
+    const staleCommand={...command,requestId:'journal-expired'};
+    let entered, resume;
+    const ready=new Promise(resolve=>{entered=resolve;});
+    const gate=new Promise(resolve=>{resume=resolve;});
+    const stale=repo.runIntegrationOperation(actor,staleCommand,async(_actor,journal)=>{entered();await gate;await journal.beforeWrite();assert.fail('Stale attempt wrote');});
+    await ready;
+    await assert.rejects(repo.runIntegrationOperation(actor,staleCommand,()=>assert.fail('Concurrent callback')),{code:'operation_in_progress'});
+    await pool.query("UPDATE integration_operations SET lease_expires_at=now()-interval '1 second' WHERE customer_id=$1 AND operation_id=$2",[f.id,staleCommand.requestId]);
+    await repo.runIntegrationOperation(actor,staleCommand,async()=>receipt);
+    resume(); await assert.rejects(stale,{code:'operation_uncertain'});
   });
   await t.test('whole-batch rewards use accepted manifests, roll back on failure and replay without new credit',async()=>{
     const bf=await teamFixture(pool),ba=await repo.requireActiveMember(bf.identity);
@@ -78,7 +110,9 @@ test('architecture controls against isolated Postgres',{skip:!process.env.TEST_D
     await pool.query('INSERT INTO customer_reward_state(customer_id,user_id,last_report_date,streak_count,freezes) VALUES($1,$2,$3,2,0)',[bf.id,ba.memberId,yesterday]);
     const submissions=[];
     for(let group=0;group<2;group++) {
-      const report={reportId:`batch-report-${group}`,eventId:`batch-event-${group}`,eventName:'Batch Final',vertical:'Sports',handle:`pirate${group}`,items:Array.from({length:26},(_,i)=>({url:`https://tiktok.com/@pirate${group}/video/${i}`,views:'10',screenshotLink:''}))};
+      // Distinct, nonzero video IDs across both reports: handles do not change
+      // TikTok identity, and this reward fixture requires 52 unique targets.
+      const report={reportId:`batch-report-${group}`,eventId:`batch-event-${group}`,eventName:'Batch Final',vertical:'Sports',handle:`pirate${group}`,items:Array.from({length:26},(_,i)=>({url:`https://tiktok.com/@pirate${group}/video/${group*26+i+1}`,views:'10',screenshotLink:''}))};
       const pdf=await repo.generateReport(ba,report,render,{version:1,platform:'tiktok',multiplier:group===0?2:1});
       const url=`https://drive.google.com/file/d/batch-${group}/view`;
       await repo.recordUploadedFile(ba,report.eventId,'application/pdf',{id:`batch-file-${group}`,webViewLink:url},crypto.createHash('sha256').update(Buffer.from(pdf.pdf,'base64')).digest('hex'));
@@ -111,6 +145,15 @@ test('architecture controls against isolated Postgres',{skip:!process.env.TEST_D
     await assert.rejects(repo.finalizeReportBatch(ba,{...batch,batchId:'new-batch-id'},now),{code:'report_already_accepted'});
     await assert.rejects(repo.finalizeReportBatch(ba,{...batch,reports:[submissions[0]]},now),{code:'batch_conflict'});
     await assert.rejects(repo.finalizeReportBatch(foreign,batch,now),{code:'report_required'});
+    // A cached admin actor cannot replay or persist enforcement after downgrade.
+    await pool.query("UPDATE customer_memberships SET role='employee' WHERE member_id=$1",[ba.memberId]);
+    await assert.rejects(repo.finalizeReportBatch(ba,batch,now),{code:'access_changed'});
+    await assert.rejects(repo.finalizeReportBatch(ba,{...batch,batchId:'after-downgrade'},now),{code:'access_changed'});
+    await assert.rejects(repo.recordEvent(ba,{customer_id:bf.id,user_id:ba.memberId,event_id:'after-downgrade',event_type:'report.submitted',occurred_at:now,attributes:{mode:'enforcer',urls:['https://tiktok.com/@pirate/video/1']}},now),{code:'access_changed'});
+    const downgraded=await repo.requireActiveMember(bf.identity);
+    await assert.rejects(repo.finalizeReportBatch(downgraded,batch,now),{code:'not_authorized'});
+    await assert.rejects(repo.finalizeReportBatch(downgraded,{...batch,batchId:'after-downgrade'},now),{code:'not_authorized'});
+    await pool.query("UPDATE customer_memberships SET role='admin' WHERE member_id=$1",[ba.memberId]);
     await pool.query("UPDATE customer_memberships SET platforms=ARRAY['youtube'] WHERE member_id=$1",[ba.memberId]);
     await assert.rejects(repo.finalizeReportBatch(ba,batch,now),{code:'scope_mismatch'});
   });

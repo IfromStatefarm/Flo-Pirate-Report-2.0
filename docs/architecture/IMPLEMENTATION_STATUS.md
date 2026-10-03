@@ -2,9 +2,9 @@
 
 2026-09-23 continuation: [P0 server authority and complete protected-operation inventory](P0_AUTHORIZATION.md) documents the shared authorization resolver, fresh repository permission checks, customer predicates, hardened Google verification, API compatibility and adversarial isolation tests. Remaining release gates below still apply.
 
-Updated 2026-09-23. This follows the [baseline audit](PRODUCTION_READINESS_AUDIT.md) and [future file map](FUTURE_FILE_MAP.md). The baseline describes the repository **before** these implementation changes. It remains the finding/acceptance-gate inventory, not a description of the new source.
+Updated 2026-10-02 for deployment and release-gate status. This follows the [baseline audit](PRODUCTION_READINESS_AUDIT.md) and [future file map](FUTURE_FILE_MAP.md). The baseline describes the repository **before** these implementation changes. It remains the finding/acceptance-gate inventory, not a description of the new source.
 
-**Status: implementation and isolated testing, not approved for commercial production.** No production database migration, API deployment, Google mutation, extension publication, ACL change, or billing configuration was performed. Existing deployed FloSports behavior is unchanged. Do not distribute this candidate until the compatibility gates below pass.
+**Status: production customer API deployed; this extension candidate is not approved for broad distribution.** Four customer functions and 14 migrations were deployed September 30, with a restricted runtime login and managed Google connectors as recorded in the [rollout note](CUSTOMER_API_ROLLOUT_2026-09-29.md). The membership function was repaired on deployment 8. On October 2, `verify:api` passed against all three configured production routes with the installed extension origin, including the Team & Access marker and unauthenticated POST denial. This is a response-contract check, not authenticated workflow approval. The installed-extension Team & Access checks, earlier `invalid_request` diagnosis, and remaining [release checklist](../white-label/CUSTOMER_API_DEPLOYMENT.md#current-production-release-checklist) are still open.
 
 ## Implemented in this working tree
 
@@ -76,14 +76,14 @@ flowchart TB
 
 | Priority / finding | Status | Remaining gate |
 | --- | --- | --- |
-| P0-01 operational authority | API migration implemented; rollout open | Configure server connectors; review inherited sharing; remove SaaS operators' direct Google write authority where SaaS revocation is promised. Transitional delegated tokens cannot satisfy that promise. |
+| P0-01 operational authority | Production API and managed connectors active; authority cutover open | Review inherited sharing; remove SaaS operators' direct Google write authority where SaaS revocation is promised. Transitional delegated tokens cannot satisfy that promise. |
 | P0-02 platform scope | Implemented with unit and database tests | Smoke-test the deployed API with distinct platform assignments and a second customer. |
 | P0-03 authoritative facts | Core report/evidence/duplicate/reward controls implemented | Finish domain transitions and provenance for all automation outcomes; approve reward migration semantics below; verify all provider URL canonicalizers. |
 | P0-04 capture isolation | Core guards implemented | Real Chrome two-account/two-tab/service-worker-restart tests, including queue cancellation and in-flight scopes. Periodic physical removal of expired IndexedDB blobs remains separate from read expiry. |
 | P0-05 enforcement safety | Fail-closed catalog/declared-handle checks implemented | Explicit scout/enforce permissions; server-owned platform-account assignment; trusted target-account resolution for opaque video IDs. Existing UI session checks remain advisory and the report-permission enforcer shortcut remains. |
 | P0-06 projection and parity | Independent read and durable projection implemented | Test against a copied Flo workbook with approved sanitized baselines, reserve W, validate formulas/formatting, resolve discrepancies; add operator reconciliation tooling. |
 | P0-07 unrelated-customer onboarding | Resource reservations, live ancestry/ownership/capability checks and neutral account defaults implemented | Connector identity/ACL verification, real shared-drive and external OAuth consent/distribution tests, staging metadata-call latency and customer-specific account configuration. |
-| P1-01 database defense in depth | Open | Separate migrator/runtime roles, grants/RLS and cross-tenant tests under the actual non-owner runtime role. |
+| P1-01 database defense in depth | Restricted runtime role, forced RLS, and production preflight recorded in the rollout note | Independently verify current production grants and cross-tenant denial under the deployed non-owner runtime role. |
 | P1-02 workflow durability | Partial | Background worker, recovery/reconciliation UI, compensation and crash tests at every provider write boundary. |
 | P1-03 analytics semantics | Partial | Unavailable metrics now explicit; settle scoring, timezone, resolution provenance and independent baselines. |
 | P1-04 message boundary | Sender/default-deny guards implemented | Real extension regression tests across supported forms and embedded same-origin frames; finer per-message schemas. |
@@ -98,9 +98,9 @@ flowchart TB
 | P2-05 supply chain | Build/ignore improvements implemented; remainder open | Full secret/history scan, dependency/SBOM/license and asset audit, signing and reproducibility. |
 | P3-01/P3-02 copy and scaffolding | Open | Neutral support identity/copy and retirement of unused legacy paths after regression checks. |
 
-## FloSports compatibility limits to resolve before deployment
+## FloSports compatibility limits to resolve before extension distribution
 
-This branch changes authority and must be rolled out as a coordinated API/extension change. Existing local captures without a tenant/user tag cannot be reassigned safely; recapture them after upgrade. Existing report rows remain readable. Old generated reports without the new manifest/policy are not automatically promoted into authoritative events.
+This branch changes authority and requires a coordinated API/extension rollout. The production API is active, but the installed extension has not passed the authenticated checks above. Existing local captures without a tenant/user tag cannot be reassigned safely; recapture them after upgrade. Existing report rows remain readable. Old generated reports without the new manifest/policy are not automatically promoted into authoritative events.
 
 The server scoring implementation now preserves the Flo formulas: scout points are 10 per standard item, 20 at 10,000 observed views, or 50 at 100,000, doubled for observed live content; an unexpired Double XP rule applies. Enforcer points are 20 per item with Double XP, a 1.2 multiplier for accepted batches larger than 50 items, and the existing 50-point per-report bonus at streak three or higher. Daily UTC streaks, fifth-day freezes and gap consumption are stored server-side. The browser supplies observations, never authoritative `scoutScore`, streak or point totals. View/live observations are not independently verified; approved parity fixtures and trusted provider metadata remain release gates.
 
@@ -110,14 +110,16 @@ Scanner rewards reserve 15 points per distinct newly struck URL recorded by the 
 
 The Drive JSON and Sheets catalog are still a server-controlled **compatibility source**, not a normalized Postgres rights/configuration model. Workbook editor access can still change this source. The target design is to version customer rights, authorized accounts, selectors and reward policies in Postgres and project approved changes to Google only where needed.
 
-## Migration and rollout order
+## Future migration and rollout order
+
+Use these steps for a new environment or the next extension release. The September 30 production API activation is complete; the [current production release checklist](../white-label/CUSTOMER_API_DEPLOYMENT.md#current-production-release-checklist) tracks the remaining sign-off gates.
 
 1. Review the complete working-tree diff, including pre-existing licensing/team changes. Save sanitized Flo report, whitelist, Double XP, scoreboard and intelligence fixtures; test a neutral second customer. Resolve reward/account-policy gates above first.
 2. Provision isolated staging Google workbooks/folders and server OAuth connectors with least access. Verify resource IDs, parent/shared-drive ACLs, duplicate/nested roots, tab names and W-column reservation. Never use production Google resources for fixture tests.
 3. Run all migrations on an isolated database using `DATABASE_URL_UNPOOLED`; adopt the ledger only after reviewing existing migration contents. A duplicate destination aborts migration. A checksum mismatch requires an additive migration, not editing a ledger record. Preserve backups and rehearse restore before production.
 4. Configure `GOOGLE_CONNECTORS_JSON` in server secrets, keyed by customer ID, with `clientId`, `clientSecret`, `refreshToken`. These values must never enter extension config/builds. Existing identity-client/origin settings still apply. The checked-in Neon definition forwards connector secrets only to the customer API functions.
 5. For an explicitly limited Flo transition, `LEGACY_GOOGLE_USER_TOKEN_CUSTOMERS=flosports` allows the verified employee's token **through the same server command checks**. It does not revoke that employee's independent Google ACL. Leave this variable empty for customers sold SaaS-controlled access; remove it after connector/ACL cutover.
-6. Deploy the API and migration-compatible server first in staging, then load the candidate extension there. Verify reports with/without screenshots, unavailable whitelist, expired licenses, disabled/platform-restricted members, retries, failed uploads, scanner rows and independent statistics. The local `.env.local` and `.neon` were not changed by this work.
+6. The customer API and 14 migrations are already active in production; do not treat this step as an instruction to repeat that rollout. For the next extension release, deploy its compatible API changes in staging first, then load the candidate extension there. Verify reports with/without screenshots, unavailable whitelist, expired licenses, disabled/platform-restricted members, retries, failed uploads, scanner rows and independent statistics.
 7. Reconcile every uncertain operation before reissuing it. `integration_operations` stores identity, command name, request hash, status and result; an uncertain upload may exist in Google even if no manifest was committed. Use Google appProperties to locate the scoped file. For projections, search W for the report ID. If absent, establish that no delayed append remains before an administrator resets a job to pending; this is not an automatic retry instruction.
 8. After the P0 gates pass, schedule a controlled Flo upgrade, monitor projection failures and license denial, and validate a second unrelated company. Keep the old deployment available during staging; do not downgrade a paying customer's controls to a direct-Google client as rollback. Avoid destructive schema rollback; the migrations are additive.
 9. Complete P1 before broad rollout, then P2/P3. Add the durable worker and normalized policy/configuration store incrementally.

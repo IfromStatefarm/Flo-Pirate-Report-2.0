@@ -15,7 +15,7 @@ No application code, credentials, production data, provider resources or deploym
 | Reporting permission bypasses enforcer account checks | **Partially fixed.** The UI shortcut and URL-only approval are removed. The real Chrome execution context breaks YouTube checks; substring approval and the missing server enforcement capability remain; see finding 5. |
 | Opaque YouTube URL trusts caller-supplied owner | **Policy implementation fixed for supported YouTube routes.** Provider owner IDs and protected channel IDs are checked, with fail-closed tests. Deployment omits the new API key; see finding 6. Other providers remain handle-based. |
 | Pre-append failure strands projection | **Original failure path fixed in source and local adapter tests.** A durable claim is now made at the append boundary. New database concurrency coverage exists but was skipped here. Truly uncertain provider outcomes still require reconciliation. |
-| TikTok tracking query bypasses duplicate checks | **Exact reproduction fixed.** Tracking queries are removed for canonical video paths and intra-report duplicate checks use target keys. Stable video-ID normalization across handles/hosts remains incomplete; see finding 12. |
+| TikTok tracking query bypasses duplicate checks | **TikTok implementation fixed; rollout gate remains.** Video IDs now key handle/host variants, supported share links resolve through a restricted resolver, and migration 014 backfills historical reservations. See [rollout and validation requirements](TIKTOK_TARGET_IDENTITY.md). |
 
 ## Priority-one findings
 
@@ -128,6 +128,8 @@ Source: `server/report_policy.js:66–78`.
 The tracking-query fix retains the handle and host in the target hash. URLs containing the same numeric video ID with another handle or accepted mobile host can receive different identities. The policy does not verify non-YouTube owners, so a caller can submit those variants and pass the duplicate guard.
 
 The policy/target-key probe admitted three differently written URLs with the same video ID as distinct targets. Fix: key recognized TikTok videos by validated stable video ID; resolve supported share aliases safely; distinguish different IDs in regression tests. Broader provider canonicalization remains a release gate where duplicate/reward integrity is promised.
+
+Update (2026-09-28): implemented stable TikTok video-ID keys, restricted share resolution, persisted resolution snapshots, regression coverage and an additive historical-reservation backfill. Deployment requires migration 014 and the isolated-database tests; see [TikTok target identity](TIKTOK_TARGET_IDENTITY.md). Broader provider canonicalization remains gated.
 
 ## Verification results
 

@@ -82,13 +82,20 @@ async function loadPeople(cursor = '') {
   renderPeople();
 }
 async function refresh() {
-  try { await verify(); await loadPeople(); message('Team is up to date.'); }
+  try { await verify(); }
   catch (error) { lockPage(error.message); }
+  if (!state.profile) return;
+  try { await loadPeople(); message('Team is up to date.'); }
+  catch (error) { handleTeamError(error); }
+}
+function handleTeamError(error) {
+  if (['not_authorized', 'identity_error', 'subscription_suspended'].includes(error.code)) lockPage(error.message);
+  else message(error.message, true);
 }
 async function task(work) {
   if (state.busy) return;
   state.busy = true; selectionChanged();
-  try { await work(); } catch (error) { message(error.message, true); }
+  try { await work(); } catch (error) { handleTeamError(error); }
   finally { state.busy = false; selectionChanged(); }
 }
 function selectedChanges(disable = false) {
@@ -181,8 +188,11 @@ window.addEventListener('focus', () => {
     // Recheck authority without discarding an in-progress selection or review.
     try {
       await verify();
-      if (!state.selected.size && !document.querySelector('dialog[open]')) await loadPeople();
     } catch (error) { lockPage(error.message); }
+    if (!state.profile) return;
+    try {
+      if (!state.selected.size && !document.querySelector('dialog[open]')) await loadPeople();
+    } catch (error) { handleTeamError(error); }
   });
 });
 void task(refresh);

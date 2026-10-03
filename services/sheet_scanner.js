@@ -110,113 +110,78 @@ export function createSheetScanner({
         func: async (targetPlatform) =>
           new Promise((resolve) => {
             let attempts = 0;
+            let youtubeMetadataChecked = false;
 
-            // Descriptions, comments, and titles can quote removal notices. Only
-            // YouTube's player error UI is evidence that this video is unavailable.
-            const isYouTubeUnavailable = () => Array.from(document.querySelectorAll(
-              'yt-player-error-message-renderer, ytd-video-error-message-renderer, .ytp-error-content-wrap'
-            )).some((error) => {
-              const message = (error.innerText || '').toLowerCase();
-              return [
-                'video unavailable',
-                'video has been removed',
-                'video is private',
-                'this video is no longer available',
-                'account has been terminated',
-                'copyright claim'
-              ].some((phrase) => message.includes(phrase));
-            });
+            // Only a platform's own error surface can establish removal. Page
+            // titles, descriptions, comments and generic 404 text are untrusted.
+            const textOf = (element) => String(element?.innerText || '').toLowerCase().replace(/\s+/g, ' ').trim();
+            const has = (selectors) => selectors.split(',').some((selector) =>
+              Boolean(document.querySelector(selector.trim())));
+            const errorSays = (selector, phrases) => Array.from(document.querySelectorAll(selector))
+              .some((element) => phrases.some((phrase) => textOf(element) === phrase));
+
+            const youtubeRemoval = () => errorSays(
+              'yt-player-error-message-renderer, ytd-video-error-message-renderer, .ytp-error-content-wrap',
+              ['this video has been removed', 'video has been removed',
+                'this account has been terminated',
+                'this video is no longer available due to a copyright claim']
+            );
+
+            const livePostSelectors = {
+              tiktok: '[data-e2e="video-views"], [data-e2e="video-player"] video, video',
+              twitter: 'article[data-testid="tweet"], video',
+              x: 'article[data-testid="tweet"], video',
+              instagram: 'article, video',
+              facebook: '[role="article"], video',
+              rumble: '.video-player video, video',
+              discord: '[id^="chat-messages-"]',
+              twitch: 'video',
+              kick: 'video'
+            };
+
+            const confirmedRemoval = () => {
+              if (targetPlatform === 'youtube') return youtubeRemoval();
+              if (targetPlatform === 'tiktok') {
+                return has('[data-e2e="video-removed"]');
+              }
+              if (targetPlatform === 'twitter' || targetPlatform === 'x') {
+                return errorSays('[data-testid="tweetUnavailable"]',
+                  ['this post has been deleted', 'this tweet has been deleted', 'tweet has been deleted']);
+              }
+              if (targetPlatform === 'instagram') {
+                return errorSays('[data-testid="post-removed"]', ['this post has been removed']);
+              }
+              if (targetPlatform === 'facebook') {
+                return errorSays('[data-testid="post-removed"]', ['this post has been removed']);
+              }
+              if (targetPlatform === 'rumble') {
+                return errorSays('[data-testid="video-removed"]', ['this video has been removed']);
+              }
+              if (targetPlatform === 'discord') {
+                return errorSays('[data-testid="message-deleted"]', ['message deleted', 'this message was deleted']);
+              }
+              return false;
+            };
 
             const checkStatus = () => {
-              const text = document.body.innerText.toLowerCase();
-              const title = document.title.toLowerCase();
-
-              if (targetPlatform !== 'youtube' && (title.includes('404') || title.includes('not found') || title.includes('page not found'))) {
-                return resolve(true);
-              }
-
-              if (targetPlatform === 'tiktok') {
-                if (text.includes('video currently unavailable')) return resolve(true);
-                if (text.includes('video not found')) return resolve(true);
-                if (text.includes("couldn't find this account")) return resolve(true);
-                if (text.includes('page not available')) return resolve(true);
-                if (document.querySelector('[data-e2e="video-removed"]')) return resolve(true);
-
-                if (document.querySelector('[data-e2e="video-views"]') || document.querySelector('video')) {
-                  return resolve(false);
-                }
-              }
-
               if (targetPlatform === 'youtube') {
-                if (isYouTubeUnavailable()) return resolve(true);
-
-                if (text.includes('before you continue to youtube')) return resolve(false);
-
-                if (
-                  document.querySelector('ytd-watch-metadata') ||
-                  document.querySelector('ytd-video-primary-info-renderer')
-                ) {
-                  setTimeout(() => {
-                    resolve(isYouTubeUnavailable());
-                  }, 2500);
-                  return;
+                if (has('ytd-watch-metadata, ytd-video-primary-info-renderer, video')) {
+                  if (youtubeRemoval()) return resolve('removed');
+                  if (!youtubeMetadataChecked) {
+                    youtubeMetadataChecked = true;
+                    setTimeout(checkStatus, 2500);
+                    return;
+                  }
+                  return resolve('active');
                 }
+              } else if (has(livePostSelectors[targetPlatform] || 'video')) {
+                return resolve('active');
               }
 
-              if (targetPlatform === 'twitter' || targetPlatform === 'x') {
-                if (
-                  text.includes('this page doesn’t exist') ||
-                  text.includes('this post has been deleted') ||
-                  text.includes('tweet has been deleted') ||
-                  text.includes('account suspended') ||
-                  text.includes('this media has been disabled in response to a report by the copyright owner') ||
-                  text.includes('this media has been disabled')
-                ) {
-                  return resolve(true);
-                }
-
-                if (document.querySelector('article[data-testid="tweet"]') || document.querySelector('video')) {
-                  setTimeout(() => {
-                    const doubleCheckText = document.body.innerText.toLowerCase();
-                    if (
-                      doubleCheckText.includes('this page doesn’t exist') ||
-                      doubleCheckText.includes('this post has been deleted') ||
-                      doubleCheckText.includes('tweet has been deleted') ||
-                      doubleCheckText.includes('account suspended') ||
-                      doubleCheckText.includes('this media has been disabled in response to a report by the copyright owner') ||
-                      doubleCheckText.includes('this media has been disabled')
-                    ) {
-                      resolve(true);
-                    } else {
-                      resolve(false);
-                    }
-                  }, 2500);
-                  return;
-                }
-              }
-
-              if (targetPlatform === 'instagram' || targetPlatform === 'facebook') {
-                if (text.includes("sorry, this page isn't available")) return resolve(true);
-                if (text.includes('link you followed may be broken')) return resolve(true);
-                if (text.includes("content isn't available")) return resolve(true);
-                if (text.includes('account has been suspended')) return resolve(true);
-                if (text.includes("this video isn't available")) return resolve(true);
-              }
-
-              if (targetPlatform === 'rumble') {
-                if (text.includes('this video is unavailable') || text.includes('page not found')) {
-                  return resolve(true);
-                }
-              }
-
-              if (targetPlatform === 'discord') {
-                if (text.includes('invalid message') || text.includes('message deleted')) {
-                  return resolve(true);
-                }
-              }
+              if (confirmedRemoval()) return resolve('removed');
 
               attempts++;
-              if (attempts >= 30) return resolve(false);
+              if (attempts >= 30) return resolve('unknown');
               setTimeout(checkStatus, 500);
             };
 
@@ -225,7 +190,7 @@ export function createSheetScanner({
         args: [platform]
       });
 
-      return result[0]?.result || false;
+      return result[0]?.result || 'unknown';
     } finally {
       if (tabId) {
         chrome.tabs.remove(tabId).catch(() => {});
@@ -251,6 +216,7 @@ export function createSheetScanner({
     let checkedCount = 0;
     let resolvedCount = 0;
     let activeCount = 0;
+    let unknownCount = 0;
     let completionOutcome = 'completed';
     let completionReason = '';
     let runFailure = null;
@@ -366,8 +332,24 @@ export function createSheetScanner({
         }
 
         if (cellData.status === 'Resolved') {
-          if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
-          await addEnforcerBonusPoints(rowIndex, 0, customerProfile.integrations);
+          // A saved status alone is not proof for a pending server-side reward.
+          const targets = externalMatches.map(({ url }) => url);
+          let allConfirmed = targets.length > 0;
+          for (const targetUrl of targets) {
+            try {
+              if (await verifyTakedownViaTab(targetUrl, detectPlatformDetails(targetUrl).key) !== 'removed') {
+                allConfirmed = false;
+                break;
+              }
+            } catch (error) {
+              allConfirmed = false;
+              break;
+            }
+          }
+          if (allConfirmed) {
+            if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
+            await addEnforcerBonusPoints(rowIndex, 0, customerProfile.integrations);
+          }
           rowIndex++;
           continue;
         }
@@ -376,6 +358,7 @@ export function createSheetScanner({
 
         let newlyStruck = 0;
         let totalActive = 0;
+        let totalUnknown = 0;
         let previouslyDeadCount = 0;
         const deadRanges = [];
 
@@ -391,8 +374,20 @@ export function createSheetScanner({
 
           const isCrossedOut = isUrlCrossedOut(index, end, cellData.formatRuns, cellData.cellStrikethrough);
           if (isCrossedOut) {
-            previouslyDeadCount++;
-            deadRanges.push({ start: index, end, url });
+            // A prior strikethrough might have come from the old text matcher.
+            // It cannot count toward a fresh resolution without verification.
+            let priorAvailability = 'unknown';
+            try {
+              priorAvailability = await verifyTakedownViaTab(url, detectPlatformDetails(url).key);
+            } catch (error) {
+              console.error('Link recheck failed:', error);
+            }
+            if (priorAvailability === 'removed') {
+              previouslyDeadCount++;
+              deadRanges.push({ start: index, end, url });
+            } else {
+              totalUnknown++;
+            }
             continue;
           }
 
@@ -400,25 +395,26 @@ export function createSheetScanner({
 
           const platform = detectPlatformDetails(url).key;
 
-          let isDown = false;
+          let availability = 'unknown';
           try {
-            isDown = await verifyTakedownViaTab(url, platform);
+            availability = await verifyTakedownViaTab(url, platform);
           } catch (error) {
             console.error('Link check failed:', error);
           }
 
           checkedCount += 1;
-          if (isDown) resolvedCount += 1;
-          else activeCount += 1;
+          if (availability === 'removed') resolvedCount += 1;
+          else if (availability === 'active') activeCount += 1;
+          else unknownCount += 1;
           await recordCustomerEvent(customerProfile, 'automation.platform_outcome', {
             run_id: runId,
             platform,
             target_url: url,
-            outcome: isDown ? 'resolved' : 'active',
+            outcome: availability === 'removed' ? 'resolved' : availability,
             row_index: rowIndex + 1
           });
 
-          if (isDown) {
+          if (availability === 'removed') {
             newlyStruck++;
             deadRanges.push({ start: index, end, url });
             sendProgress(`Row ${rowIndex + 1}`, `Link ${matchIndex + 1}/${matches.length} is DOWN. Crossing out...`);
@@ -475,9 +471,12 @@ export function createSheetScanner({
 
             if(stopRequested || !belongsToScope(await getCustomerProfile(),customerProfile)) throw new Error('The account changed during scanning.');
             await updateCellWithRichText(rowIndex, cellValue, newRuns, customerProfile.integrations);
-          } else {
+          } else if (availability === 'active') {
             totalActive++;
             sendProgress(`Row ${rowIndex + 1}`, `Link ${matchIndex + 1}/${matches.length} is ACTIVE.`);
+          } else {
+            totalUnknown++;
+            sendProgress(`Row ${rowIndex + 1}`, `Link ${matchIndex + 1}/${matches.length} could not be verified.`);
           }
 
           await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -491,7 +490,7 @@ export function createSheetScanner({
         if (completionSent) break;
 
         const totalDead = newlyStruck + previouslyDeadCount;
-        if (totalDead > 0 && totalActive === 0) {
+        if (totalDead > 0 && totalActive === 0 && totalUnknown === 0) {
           const previousStatus = cellData.status || '';
           await recordCustomerEvent(customerProfile, 'automation.row_status_changed', {
             run_id: runId,
@@ -561,7 +560,7 @@ export function createSheetScanner({
       chrome.storage.local.set({ closer_enabled: false }).catch(() => {});
     }
     if (runFailure) return { success: false, error: runFailure.message || 'Scanner failed.' };
-    return { success: true, checkedCount, resolvedCount, activeCount, runId };
+    return { success: true, checkedCount, resolvedCount, activeCount, unknownCount, runId };
   }
 
   async function scanSheetForActiveLinks(platform, vertical, startRowUI = 1) {
@@ -574,6 +573,7 @@ export function createSheetScanner({
     let checkedCount = 0;
     let resolvedCount = 0;
     let activeCount = 0;
+    let unknownCount = 0;
     let completionOutcome = 'completed';
     let completionReason = '';
 
@@ -629,18 +629,19 @@ export function createSheetScanner({
           }).catch(() => {});
 
           const checkTask = (async () => {
-            const isDown = await verifyTakedownViaTab(url, platform);
+            const availability = await verifyTakedownViaTab(url, platform);
             checkedCount += 1;
-            if (isDown) resolvedCount += 1;
-            else activeCount += 1;
+            if (availability === 'removed') resolvedCount += 1;
+            else if (availability === 'active') activeCount += 1;
+            else unknownCount += 1;
             await recordCustomerEvent(customerProfile, 'automation.platform_outcome', {
               run_id: runId,
               platform,
               target_url: url,
-              outcome: isDown ? 'resolved' : 'active',
+              outcome: availability === 'removed' ? 'resolved' : availability,
               row_index: rowIndex + 1
             });
-            if (isDown) return;
+            if (availability !== 'active') return;
 
             activeLinks.push({
               url,

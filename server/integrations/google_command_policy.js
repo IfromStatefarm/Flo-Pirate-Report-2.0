@@ -34,6 +34,31 @@ function safeTree(value, depth = 0) {
   }
 }
 
+function validateVerticals(verticals) {
+  assert(Array.isArray(verticals) && verticals.length <= 200, 400, 'invalid_operation', 'Invalid verticals list.');
+  let eventCount = 0;
+  for (const vertical of verticals) {
+    assert(vertical && typeof vertical === 'object' && !Array.isArray(vertical), 400, 'invalid_operation', 'Invalid vertical.');
+    text(vertical.name, 160);
+    assert(vertical.name.trim(), 400, 'invalid_operation', 'A vertical name is required.');
+    assert(Array.isArray(vertical.events) && vertical.events.length <= 1000, 400, 'invalid_operation', 'Invalid vertical events.');
+    eventCount += vertical.events.length;
+    assert(eventCount <= 2000, 400, 'invalid_operation', 'Too many configuration events.');
+    for (const event of vertical.events) {
+      assert(event && typeof event === 'object' && !Array.isArray(event), 400, 'invalid_operation', 'Invalid event.');
+      const names = ['eventName', 'name'].filter(key => Object.hasOwn(event, key));
+      assert(names.length > 0, 400, 'invalid_operation', 'An event name is required.');
+      for (const key of names) {
+        text(event[key], 240);
+        assert(event[key].trim(), 400, 'invalid_operation', 'An event name is required.');
+      }
+      if (Object.hasOwn(event, 'double_xp')) {
+        assert(typeof event.double_xp === 'boolean', 400, 'invalid_operation', 'Invalid Double XP flag.');
+      }
+    }
+  }
+}
+
 export function validateGoogleCommand(actor, command) {
   exact(command, ['name','args','requestId']);
   assert(Object.hasOwn(GOOGLE_OPERATION_PERMISSIONS, command.name) && id(command.requestId) && Array.isArray(command.args), 400, 'invalid_operation', 'Unsupported Google operation.');
@@ -65,7 +90,7 @@ export function validateGoogleCommand(actor, command) {
       assert(Object.keys(a[0]).every(k=>Object.hasOwn(CONFIG_SECTION_PERMISSIONS,k)),400,'invalid_operation','Unsupported configuration section.');
       for (const section of Object.keys(a[0])) requirePermission(actor, CONFIG_SECTION_PERMISSIONS[section]);
       assert(JSON.stringify(a[0]).length<=128*1024,400,'invalid_operation','Configuration is oversized.');
-      if(a[0].verticals) assert(Array.isArray(a[0].verticals),400,'invalid_operation','Verticals must be a list.');
+      if(Object.hasOwn(a[0], 'verticals')) validateVerticals(a[0].verticals);
       if(a[0].gamification_levels) assert(isValidGamificationLevels(a[0].gamification_levels),400,'invalid_operation','Invalid level thresholds.');
       if(a[0].double_xp_settings) assert(isValidDoubleXpRetentionDays(a[0].double_xp_settings.retention_days),400,'invalid_operation','Invalid Double XP retention.');
       if (a[0].platform_selectors) requirePlatforms(actor,Object.keys(a[0].platform_selectors));
@@ -77,4 +102,3 @@ export function validateGoogleCommand(actor, command) {
   }
   return command;
 }
-

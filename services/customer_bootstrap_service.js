@@ -1,5 +1,6 @@
 import {
   CUSTOMER_ACCESS_PROFILE_CACHE_KEY,
+  CUSTOMER_OPERATION_SESSION_KEY,
   createUnavailableAccessProfile,
   hasPermission,
   hasPlatformAccess,
@@ -189,6 +190,7 @@ export function createCustomerBootstrapService({
     });
     if (!result.valid) {
       inMemoryProfile = null;
+      await localStorageArea.set({ [CUSTOMER_OPERATION_SESSION_KEY]: crypto.randomUUID() });
       await localStorageArea.remove(CUSTOMER_ACCESS_PROFILE_CACHE_KEY);
       return null;
     }
@@ -218,14 +220,17 @@ export function createCustomerBootstrapService({
   }
 
   async function storeVerifiedProfile(profile) {
-    const previous = inMemoryProfile ||
-      (await localStorageArea.get(CUSTOMER_ACCESS_PROFILE_CACHE_KEY))?.[CUSTOMER_ACCESS_PROFILE_CACHE_KEY];
+    const stored = await localStorageArea.get([CUSTOMER_ACCESS_PROFILE_CACHE_KEY, CUSTOMER_OPERATION_SESSION_KEY]);
+    const previous = inMemoryProfile || stored?.[CUSTOMER_ACCESS_PROFILE_CACHE_KEY];
     const scopeChanged = !previous ||
       previous.customerId !== profile.customerId || previous.userId !== profile.userId;
+    const session = scopeChanged || !stored?.[CUSTOMER_OPERATION_SESSION_KEY]
+      ? crypto.randomUUID() : stored[CUSTOMER_OPERATION_SESSION_KEY];
+    if (scopeChanged) await localStorageArea.set({ [CUSTOMER_OPERATION_SESSION_KEY]: session });
     if (scopeChanged) await onScopeChange();
     inMemoryProfile = profile;
     const writes = [
-      localStorageArea.set({ [CUSTOMER_ACCESS_PROFILE_CACHE_KEY]: profile }),
+      localStorageArea.set({ [CUSTOMER_ACCESS_PROFILE_CACHE_KEY]: profile, [CUSTOMER_OPERATION_SESSION_KEY]: session }),
       localStorageArea.remove(CUSTOMER_BOOTSTRAP_DENIAL_KEY),
       localStorageArea.remove(LEGACY_LOCAL_KEYS),
       sessionStorageArea.remove(LEGACY_SESSION_KEYS),
@@ -317,7 +322,12 @@ export function createCustomerBootstrapService({
       const status = error?.profileStatus || (email ? 'bootstrap_error' : 'logged_out');
       const message = error?.message || 'Customer access could not be verified.';
       const authoritativeDenial = ['identity_error', 'not_a_member', 'ambiguous_customer'].includes(status);
-      if (email && authoritativeDenial) { inMemoryProfile = null; await onScopeChange(); await storeDenial(email, error); }
+      if (email && authoritativeDenial) {
+        await localStorageArea.set({ [CUSTOMER_OPERATION_SESSION_KEY]: crypto.randomUUID() });
+        inMemoryProfile = null;
+        await onScopeChange();
+        await storeDenial(email, error);
+      }
       if (allowCachedFallback && verifiedInMemory && verifiedInMemory.expiresAt > now() && !authoritativeDenial) {
         return toPublicAccessProfile(verifiedInMemory, { loadedAt: now() });
       }
@@ -383,11 +393,13 @@ export function createCustomerBootstrapService({
 
   async function clearProfileCache() {
     inMemoryProfile = null;
+    await localStorageArea.set({ [CUSTOMER_OPERATION_SESSION_KEY]: crypto.randomUUID() });
     await localStorageArea.remove([CUSTOMER_ACCESS_PROFILE_CACHE_KEY, CUSTOMER_BOOTSTRAP_DENIAL_KEY]);
   }
 
   async function logout() {
     generation += 1;
+    await localStorageArea.set({ [CUSTOMER_OPERATION_SESSION_KEY]: crypto.randomUUID() });
     await onScopeChange();
     inMemoryProfile = null;
     inFlightProfilePromise = null;

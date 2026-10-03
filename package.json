@@ -9,6 +9,7 @@
     "test:migration": "node --test tests/customer_migration.test.mjs tests/flosports_migration.test.mjs",
     "audit:flosports-fallbacks": "node scripts/audit_flosports_fallbacks.mjs",
     "configure:api": "node scripts/configure_customer_api.mjs",
+    "verify:api": "node server/scripts/verify_customer_api.mjs",
     "db:migrate": "node --env-file=.env.local server/scripts/migrate.mjs",
     "db:seed:flosports": "node server/scripts/seed_flosports.mjs",
     "customer:setup": "node --env-file=.env.local server/scripts/customer_setup.mjs",
@@ -21,7 +22,10 @@
     "test:ci": "node scripts/test_ci.mjs",
     "test:architecture": "node --test tests/architecture_security.test.mjs tests/google_operations.test.mjs tests/operations_postgres.test.mjs",
     "test:tenant-isolation": "node --test --test-concurrency=1 tests/tenant_isolation_postgres.test.mjs tests/customer_authority_postgres.test.mjs tests/google_resource_postgres.test.mjs tests/customer_bootstrap.test.mjs tests/google_resource_guard.test.mjs",
-    "security:tenant:preflight": "node --env-file=.env.local server/scripts/tenant_isolation_preflight.mjs"
+    "security:tenant:preflight": "node --env-file=.env.local server/scripts/tenant_isolation_preflight.mjs",
+    "test:chrome": "node --test tests/browser/*.test.mjs",
+    "test:youtube-deployment": "node --test tests/youtube_deployment.test.mjs",
+    "smoke:youtube": "node server/scripts/youtube_preflight.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.3.0",
@@ -30,6 +34,11 @@
     "pg": "^8.23.0"
   },
   "devDependencies": {
-    "neon": "^4.14.1"
+    "neon": "^4.22.0",
+    "playwright": "^1.58.2"
+  },
+  "overrides": {
+    "@hono/node-server": "^2.1.3",
+    "diff": "^5.2.2"
   }
 }

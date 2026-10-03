@@ -250,3 +250,48 @@ test('requires approval to return the activated role and status', async () => {
     /status does not match the requested transition/
   );
 });
+
+test('invalid team requests retain safe validation and compatibility diagnostics', async () => {
+  const payload = { operation: 'team_list', query: '', role: '', status: '', cursor: '' };
+  const service = createService(async () => responseJson({
+    error: { code: 'invalid_request', message: 'request.query is not supported.', utilization: null }
+  }, 400));
+  await assert.rejects(service.teamRequest(ACTOR, payload), error => {
+    assert.equal(error.code, 'invalid_request');
+    assert.equal(error.message, 'The membership request was rejected as invalid.');
+    assert.equal(error.validationDetail, 'request.query is not supported.');
+    assert.deepEqual(error.diagnostics, { httpStatus: 400, operation: 'team_list', protocolVersion: 1,
+      validationDetail: 'request.query is not supported.', teamCapability: 'unadvertised' });
+    const logged = JSON.stringify(error);
+    for (const secret of ['verified-google-token', ACTOR.email, ACTOR.customerId, ENDPOINT]) assert.ok(!logged.includes(secret));
+    return true;
+  });
+});
+
+test('unsafe server validation details never reach membership diagnostics', async () => {
+  for (const message of ['<script>alert(1)</script>', 'Bearer secret-token', 'person@acme.example is invalid.',
+    'request.secret_token_value is not supported.', 'request.query is not supported.\nBearer secret', 'x'.repeat(241),
+    { message: 'request.query is not supported.' }]) {
+    const service = createService(async () => responseJson({error: {code: 'invalid_request', message, utilization: null}}, 400));
+    await assert.rejects(service.listMembers(ACTOR), error => {
+      assert.equal(error.code, 'invalid_request');
+      assert.equal(error.diagnostics.validationDetail, null);
+      return true;
+    });
+  }
+});
+
+test('team diagnostics distinguish an advertised handler without changing authorization failures', async () => {
+  for (const [marker, expected] of [['team-access-v1', 'supported'], ['unknown-secret', 'mismatch']]) {
+    const service = createService(async () => new Response(JSON.stringify({error: {
+      code: 'not_authorized', message: 'Untrusted server copy', utilization: null
+    }}), {status: 403, headers: {'X-Rights-Reporter-Team': marker}}));
+    await assert.rejects(service.teamRequest(ACTOR, {operation:'team_history', cursor:''}), error => {
+      assert.equal(error.code, 'not_authorized');
+      assert.equal(error.diagnostics.teamCapability, expected);
+      assert.equal(error.diagnostics.validationDetail, null);
+      assert.ok(!JSON.stringify(error).includes('unknown-secret'));
+      return true;
+    });
+  }
+});

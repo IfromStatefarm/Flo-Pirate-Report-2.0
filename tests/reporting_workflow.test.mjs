@@ -28,7 +28,11 @@ function setup(t, { platform = 'youtube', count = 11, failure, uploadScreenshots
       get: async keys => structuredClone(Object.fromEntries(
         (Array.isArray(keys) ? keys : [keys]).map(key => [key, state[key]])
       )),
-      set: async values => { await hooks.onWrite?.(values); Object.assign(state, structuredClone(values)); },
+      set: async values => {
+        await hooks.onWrite?.(values);
+        if (values.piracy_cart?.length === 0 && values.report_operation_v1) failAt('cleanup-persist');
+        Object.assign(state, structuredClone(values));
+      },
       remove: async keys => { (Array.isArray(keys) ? keys : [keys]).forEach(key => { delete state[key]; }); }
     } }
   };
@@ -42,7 +46,7 @@ function setup(t, { platform = 'youtube', count = 11, failure, uploadScreenshots
   function failAt(stage) {
     if (failureStage === stage) throw new Error(`${stage} failed`);
   }
-  const workflow = createReportingWorkflow({
+  const dependencies = {
     getCustomerProfile: async () => profile,
     getCustomerTheme: async () => ({}),
     getAuthToken: async () => { await hooks.onAuthentication?.(); failAt('authentication'); return 'token'; },
@@ -77,6 +81,7 @@ function setup(t, { platform = 'youtube', count = 11, failure, uploadScreenshots
     },
     deleteImages: async (ids, scope) => {
       assert.deepEqual(scope, profile);
+      failAt('cleanup-delete');
       deletedImages.push(...ids);
       ids.forEach(id => images.delete(id));
     },
@@ -84,15 +89,78 @@ function setup(t, { platform = 'youtube', count = 11, failure, uploadScreenshots
     getUserEmail: async () => 'scout@example.com',
     checkIfAuthorized: async () => false,
     recordCustomerEvent: async () => {}
-  });
+  };
+  let workflow = createReportingWorkflow(dependencies);
   return {
     state, originalCart, generatedUrls, generatedReports, screenshotUploads, finalizedBatches,
     profile, workflow, deletedImages, images,
     add: (data, method = 'handleAddVideo') => workflow[method]({ id: 1, windowId: 1, url: 'https://example.com' }, data),
     retry: () => { failureStage = undefined; },
+    restart: () => { workflow = createReportingWorkflow(dependencies); },
     run: () => workflow.handleBatchReport({ eventName: 'Event', vertical: 'Sport', uploadScreenshots })
   };
 }
+
+for (const failure of ['authentication', 'folder', 'pdf', 'upload', 'screenshot-upload', 'finalization']) {
+  test(`worker restart after ${failure} failure completes one logical report`, async t => {
+    const fixture = setup(t, { count: 2, uploadScreenshots: true, failure });
+    assert.equal((await fixture.run()).success, false);
+    const reportId = Object.values(fixture.state.report_operation_v1?.groups || {})[0]?.reportId;
+    fixture.retry();
+    fixture.restart();
+    assert.equal((await fixture.run()).success, true);
+    assert.equal(fixture.finalizedBatches.length, 1);
+    assert.equal(fixture.finalizedBatches[0].length, 1);
+    assert.ok(fixture.finalizedBatches[0][0].reportId);
+    if (reportId) assert.equal(fixture.finalizedBatches[0][0].reportId, reportId);
+    assert.equal(fixture.state.piracy_cart, undefined);
+    assert.equal(fixture.state.report_operation_v1, undefined);
+    assert.deepEqual(fixture.deletedImages, fixture.originalCart.map(item => item.screenshotId));
+  });
+}
+
+test('worker restart after accepted report retries local image cleanup without another upload', async t => {
+  const fixture = setup(t, { count: 2, uploadScreenshots: true, failure: 'cleanup-delete' });
+  assert.equal((await fixture.run()).success, false);
+  const operation = Object.values(fixture.state.report_operation_v1.groups)[0];
+  assert.ok(operation.submission);
+  assert.deepEqual(fixture.state.piracy_cart, fixture.originalCart);
+  assert.deepEqual(fixture.deletedImages, []);
+  assert.equal(fixture.generatedReports.length, 1);
+  assert.equal(fixture.screenshotUploads.length, 2);
+
+  fixture.retry();
+  fixture.restart();
+  assert.equal((await fixture.run()).success, true);
+  assert.equal(fixture.generatedReports.length, 1);
+  assert.equal(fixture.screenshotUploads.length, 2);
+  assert.equal(fixture.finalizedBatches.length, 2);
+  assert.deepEqual(fixture.finalizedBatches.map(batch => batch[0].reportId),
+    [operation.reportId, operation.reportId]);
+  assert.equal(fixture.state.piracy_cart, undefined);
+  assert.equal(fixture.state.report_operation_v1, undefined);
+  assert.deepEqual(fixture.deletedImages, fixture.originalCart.map(item => item.screenshotId));
+});
+
+test('worker restart after image cleanup replays the cached acceptance without requiring local images', async t => {
+  const fixture = setup(t, { count: 2, uploadScreenshots: true, failure: 'cleanup-persist' });
+  assert.equal((await fixture.run()).success, false);
+  const operation = Object.values(fixture.state.report_operation_v1.groups)[0];
+  assert.ok(operation.submission);
+  assert.deepEqual(fixture.state.piracy_cart, fixture.originalCart);
+  assert.deepEqual(fixture.deletedImages, fixture.originalCart.map(item => item.screenshotId));
+  assert.equal(fixture.images.size, 0);
+
+  fixture.retry();
+  fixture.restart();
+  assert.equal((await fixture.run()).success, true);
+  assert.equal(fixture.generatedReports.length, 1);
+  assert.equal(fixture.screenshotUploads.length, 2);
+  assert.deepEqual(fixture.finalizedBatches.map(batch => batch[0].reportId),
+    [operation.reportId, operation.reportId]);
+  assert.equal(fixture.state.piracy_cart, undefined);
+  assert.equal(fixture.state.report_operation_v1, undefined);
+});
 
 for (const failure of ['authentication', 'folder', 'pdf', 'upload', 'finalization']) {
   test(`YouTube retains all 11 queued items after ${failure} failure`, async t => {

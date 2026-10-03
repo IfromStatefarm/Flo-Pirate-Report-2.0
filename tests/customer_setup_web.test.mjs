@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import vm from 'node:vm';
 import { startCustomerSetupServer, sessionCookie } from './seller_test_helpers.mjs';
+import { renderSubscription } from '../server/subscription_web.js';
 
 const FLOSPORTS = JSON.parse(await fs.readFile(new URL('../migrations/flosports/customer.json', import.meta.url), 'utf8'));
 
@@ -237,4 +238,35 @@ test('customer directory opens an existing profile and saves a reviewed update',
   assert.equal(updated.expectedConfigVersion, 1);
   assert.match(saved.text, /Customer updated successfully/);
   assert.match(saved.text, /audit_customer_update/);
+});
+
+test('customer search forwards the term and displays an empty search result', async (t) => {
+  const searches = [];
+  const server = await startCustomerSetupServer({
+    pool: {}, port: 0,
+    list: async (_pool, search) => {
+      searches.push(search);
+      return [];
+    }
+  });
+  t.after(() => server.close());
+  const response = await request(server.url, { path: '/customers?q=%20%20flosports.tv%20%20' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(searches, ['flosports.tv']);
+  assert.match(response.text, /name="q" type="search" value="flosports\.tv"/);
+  assert.match(response.text, /No customers match your search/);
+  assert.match(response.text, /href="\/customers">Clear/);
+
+  const escaped = await request(server.url, { path: '/customers?q=%3Cscript%3E' });
+  assert.equal(escaped.status, 200);
+  assert.match(escaped.text, /value="&lt;script&gt;"/);
+  assert.doesNotMatch(escaped.text, /value="<script>"/);
+});
+
+test('subscription page links back to the same customer edit page', () => {
+  const html = renderSubscription('csrf-token', {
+    customerId: 'flosports', displayName: 'FloSports Reporter', configVersion: 1,
+    active: true, config: FLOSPORTS
+  }, { subscription: null, billingLink: null, audit: [] });
+  assert.match(html, /href="\/customers\/flosports\/edit">Back to edit customer<\/a>/);
 });
